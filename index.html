@@ -1063,6 +1063,29 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   touch-action:manipulation;
 }
 
+
+/* ===== Public schedule summary ===== */
+.public-schedule-wrap{width:min(900px,100%);margin:0 auto}
+.public-schedule-filter{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.public-schedule-filter button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 12px;font-size:12px;font-weight:800;color:#44524f}
+.public-schedule-filter button.on{background:var(--gs);border-color:#b8dccc;color:var(--gd)}
+.schedule-summary-card{background:#fff;border:1px solid var(--line);border-radius:15px;padding:13px 14px;margin:9px 0;box-shadow:0 4px 14px rgba(7,67,48,.04)}
+.schedule-summary-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.schedule-summary-date{font-size:12px;color:var(--muted);font-weight:800;margin-bottom:4px}
+.schedule-summary-title{font-size:15px;font-weight:900;color:var(--ink)}
+.schedule-summary-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.schedule-meta-chip{display:inline-flex;align-items:center;gap:5px;background:#f6f9f7;border:1px solid var(--line);border-radius:999px;padding:5px 8px;font-size:11px;color:#4b5a56}
+.schedule-meta-chip.teacher{background:var(--gs);border-color:#cde6dc;color:var(--gd)}
+.schedule-summary-seat{font-size:11px;font-weight:900;color:var(--gd);white-space:nowrap}
+.schedule-empty{padding:24px;text-align:center;color:var(--muted);background:#fff;border:1px dashed var(--line);border-radius:14px}
+@media(max-width:760px){
+  .public-schedule-wrap{width:100%}
+  .schedule-summary-card{padding:12px}
+  .schedule-summary-top{gap:8px}
+  .schedule-summary-title{font-size:14px}
+  .schedule-summary-seat{font-size:10px}
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
@@ -1071,6 +1094,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB PDF CLOSE HOTFIX 2026-08-09 -->
 <!-- SPEAKHUB RESCHEDULE SAME-PROGRAM FILTER FIX 2026-08-09 -->
 <!-- SPEAKHUB TOPICS ROUTER DIRECT FIX 2026-08-09 -->
+<!-- SPEAKHUB PUBLIC SCHEDULE SUMMARY 2026-08-09 -->
 </head>
 <body>
 
@@ -1093,7 +1117,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
         <div class="hero-actions">
           <button class="btn primary" onclick="startBooking()">📅 Đặt chỗ học ngay</button>
           <button class="btn secondary2" onclick="startPlacement()">🧪 Kiểm tra xếp lớp ›</button>
-          <button class="btn tertiary" onclick="viewScheduleEntry() schedule-cta">Xem lịch học</button>
+          <button class="btn tertiary schedule-cta" onclick="viewScheduleEntry()">Xem lịch học</button>
         </div>
         <div class="tiny">👥 Hơn 700 học viên đã và đang học cùng SpeakHub</div>
       </div>
@@ -1558,8 +1582,8 @@ function showLanding(){
 function startBooking(){showApp();go('booking')}
 function startPlacement(){state.placementBirthYear=null;showApp();go('placement')}
 function viewScheduleEntry(){
-  if(state.logged){showApp();go('history')}
-  else{state.loginReturn='history';showApp();go('login')}
+  showApp();
+  go('publicSchedule');
 }
 function openLoginForHistory(){state.loginReturn='history';showApp();go('login')}
 function startWeeklyTestFromLanding(){showApp(); if(state.logged) go('weekly'); else {state.loginReturn='weekly';go('login')}}
@@ -1583,6 +1607,7 @@ function go(route){
   else if(route==='notifications')renderNotifications(rv);
   else if(route==='login')renderLogin(rv);
   else if(route==='menu')renderMenu(rv);
+  else if(route==='publicSchedule')renderPublicSchedule(rv);
   window.scrollTo(0,0);
 }
 
@@ -1741,6 +1766,121 @@ function sessionsForDay(day){
   const d=String(day).padStart(2,'0');
   const date=`${y}-${m}-${d}`;
   return filteredMonthSessions().filter(s=>s.session_date===date);
+}
+
+
+let publicScheduleProgram='ALL';
+
+function publicScheduleDateRange(){
+  const now=new Date();
+  const from=now.toISOString().slice(0,10);
+  const end=new Date(now);
+  end.setDate(end.getDate()+21);
+  const to=end.toISOString().slice(0,10);
+  return {from,to};
+}
+
+function setPublicScheduleProgram(code){
+  publicScheduleProgram=code;
+  renderPublicSchedule(document.getElementById('routeView'));
+}
+
+function publicScheduleProgramButtons(){
+  const defs=[
+    ['ALL','Tất cả'],
+    ['KID_STARTER','Kid Starter'],
+    ['KID_COMMUNICATOR','Kid Communicator'],
+    ['ADULT_BEGINNER','Adult Beginner'],
+    ['ADULT_INTERMEDIATE','Adult Intermediate']
+  ];
+  return defs.map(([code,label])=>
+    `<button class="${publicScheduleProgram===code?'on':''}" onclick="setPublicScheduleProgram('${code}')">${label}</button>`
+  ).join('');
+}
+
+function formatScheduleDay(dateStr){
+  const d=new Date(dateStr+'T00:00:00');
+  const wd=['CN','T2','T3','T4','T5','T6','T7'][d.getDay()];
+  return `${wd}, ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+async function renderPublicSchedule(rv){
+  setTitle('Lịch học SpeakHub','Xem nhanh các lớp sắp tới · Không cần đăng nhập');
+
+  const {from,to}=publicScheduleDateRange();
+
+  rv.innerHTML=`<div class="public-schedule-wrap">
+    <section class="card" style="padding:18px">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+        <div>
+          <h2 style="margin:0 0 5px">Các lớp sắp tới</h2>
+          <div class="tiny">Hiển thị lịch trong 3 tuần tới</div>
+        </div>
+        <button class="btn primary small" onclick="go('booking')">Đặt chỗ</button>
+      </div>
+
+      <div class="public-schedule-filter" style="margin-top:14px">
+        ${publicScheduleProgramButtons()}
+      </div>
+
+      <div id="publicScheduleList">
+        <div class="schedule-empty">Đang tải lịch học...</div>
+      </div>
+
+      <button class="btn secondary" style="width:100%;margin-top:12px" onclick="showLanding()">← Quay lại trang chủ</button>
+    </section>
+  </div>`;
+
+  try{
+    const res=await fetch(`/api/sessions?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,{cache:'no-store'});
+    const data=await res.json();
+    if(!res.ok) throw new Error(data?.error||'Không tải được lịch');
+
+    let sessions=Array.isArray(data.sessions)?data.sessions:[];
+    sessions=sessions
+      .filter(s=>String(s.status||'OPEN').toUpperCase()==='OPEN')
+      .filter(s=>Number(s.available_seats)>0)
+      .filter(s=>publicScheduleProgram==='ALL'||String(s.program_code||'').toUpperCase()===publicScheduleProgram)
+      .sort((a,b)=>{
+        const aa=`${a.session_date} ${a.starts_at}`;
+        const bb=`${b.session_date} ${b.starts_at}`;
+        return aa.localeCompare(bb);
+      });
+
+    const list=document.getElementById('publicScheduleList');
+    if(!list)return;
+
+    if(!sessions.length){
+      list.innerHTML=`<div class="schedule-empty">Chưa có lớp phù hợp trong thời gian này.</div>`;
+      return;
+    }
+
+    list.innerHTML=sessions.map(s=>{
+      const teacher=s.teacher_name
+        ? `${s.teacher_name}${s.teacher_country?` · ${s.teacher_country}`:''}`
+        : 'Giáo viên đang cập nhật';
+
+      return `<div class="schedule-summary-card">
+        <div class="schedule-summary-top">
+          <div>
+            <div class="schedule-summary-date">${formatScheduleDay(s.session_date)}</div>
+            <div class="schedule-summary-title">${s.program_name||''}</div>
+          </div>
+          <div class="schedule-summary-seat">Còn ${s.available_seats} chỗ</div>
+        </div>
+
+        <div class="schedule-summary-meta">
+          <span class="schedule-meta-chip">🕘 ${shortTime(s.starts_at)}–${shortTime(s.ends_at)}</span>
+          <span class="schedule-meta-chip teacher">👤 ${teacher}</span>
+          ${s.room_name?`<span class="schedule-meta-chip">📍 ${s.room_name}</span>`:''}
+        </div>
+      </div>`;
+    }).join('');
+  }catch(err){
+    console.error('public schedule',err);
+    const list=document.getElementById('publicScheduleList');
+    if(list) list.innerHTML=`<div class="booking-warning">Không tải được lịch học. Vui lòng thử lại.</div>`;
+  }
 }
 
 async function renderBooking(rv){
