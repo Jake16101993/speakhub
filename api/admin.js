@@ -89,7 +89,7 @@ async function handleSessions(request){
       supabase.from('programs').select('id,code,name').order('name'),
       supabase.from('rooms').select('id,name').order('name'),
       supabase.from('class_sessions').select(`
-        id,session_date,session_period,starts_at,ends_at,capacity,status,is_recurring,
+        id,session_date,session_period,starts_at,ends_at,capacity,status,is_recurring,recurrence_source_id,
         teacher_name,teacher_country,topic_title,topic_storage_path,
         programs(name),rooms(name)
       `).order('session_date',{ascending:false}).limit(200)
@@ -135,8 +135,6 @@ async function handleSessions(request){
       return Response.json({error:'INVALID_SESSION_TYPE'},{status:400});
     }
 
-    // Keep compatibility with the existing schema: use the first room if room_id is required,
-    // but room is no longer exposed in the admin/public timetable UI.
     let roomId=b.room_id||null;
     if(!roomId){
       const {data:firstRoom,error:roomErr}=await supabase
@@ -149,27 +147,9 @@ async function handleSessions(request){
       roomId=firstRoom?.id||null;
     }
 
-    const start=new Date(`${b.session_date}T00:00:00`);
-    if(Number.isNaN(start.getTime())){
-      return Response.json({error:'INVALID_DATE'},{status:400});
-    }
-
-    const dates=[];
-    if(sessionType==='RECURRING'){
-      // Materialize the weekly class now, up to exactly 3 calendar months ahead.
-      // No cron/background job is required.
-      const limit=new Date(start);
-      limit.setMonth(limit.getMonth()+3);
-      for(let d=new Date(start); d<=limit; d.setDate(d.getDate()+7)){
-        dates.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
-      }
-    }else{
-      dates.push(b.session_date);
-    }
-
-    const rows=dates.map(sessionDate=>({
+    const common={
       program_id:b.program_id,
-      session_date:sessionDate,
+      session_date:b.session_date,
       session_period:b.session_period,
       starts_at:b.starts_at,
       ends_at:b.ends_at,
@@ -177,41 +157,68 @@ async function handleSessions(request){
       teacher_name:b.teacher_name||null,
       teacher_country:b.teacher_country||null,
       capacity:Number(b.capacity||10),
-      status:'OPEN',
-      is_recurring:sessionType==='RECURRING'
-    }));
+      status:'OPEN'
+    };
 
-    // Avoid accidental duplicates when admin clicks twice.
-    const {data:existing,error:existingErr}=await supabase
-      .from('class_sessions')
-      .select('session_date,starts_at,ends_at')
-      .eq('program_id',b.program_id)
-      .in('session_date',dates);
+    if(sessionType==='ONE_OFF'){
+      const {data,error}=await supabase
+        .from('class_sessions')
+        .insert({...common,is_recurring:false,recurrence_source_id:null})
+        .select('id,session_date')
+        .single();
 
-    if(existingErr) throw existingErr;
+      if(error)return Response.json({error:error.message},{status:400});
 
-    const existingKeys=new Set((existing||[]).map(x=>`${x.session_date}|${String(x.starts_at).slice(0,5)}|${String(x.ends_at).slice(0,5)}`));
-    const toInsert=rows.filter(x=>!existingKeys.has(`${x.session_date}|${String(x.starts_at).slice(0,5)}|${String(x.ends_at).slice(0,5)}`));
-
-    if(!toInsert.length){
-      return Response.json({error:'SESSION_ALREADY_EXISTS'},{status:409});
+      return Response.json({
+        success:true,
+        session_type:'ONE_OFF',
+        created_count:1,
+        sessions:[data]
+      },{status:201});
     }
 
-    const {data,error}=await supabase
+    const {data:seed,error:seedErr}=await supabase
       .from('class_sessions')
-      .insert(toInsert)
-      .select('id,session_date');
+      .insert({...common,is_recurring:true,recurrence_source_id:null})
+      .select('id,session_date')
+      .single();
 
-    if(error){
-      return Response.json({error:error.message},{status:400});
+    if(seedErr)return Response.json({error:seedErr.message},{status:400});
+
+    const start=new Date(`${b.session_date}T00:00:00`);
+    const limit=new Date(start);
+    limit.setMonth(limit.getMonth()+3);
+
+    const children=[];
+    const d=new Date(start);
+    d.setDate(d.getDate()+7);
+
+    while(d<=limit){
+      children.push({
+        ...common,
+        session_date:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,
+        is_recurring:true,
+        recurrence_source_id:seed.id
+      });
+      d.setDate(d.getDate()+7);
+    }
+
+    let inserted=[];
+    if(children.length){
+      const {data,error}=await supabase
+        .from('class_sessions')
+        .insert(children)
+        .select('id,session_date');
+
+      if(error)return Response.json({error:error.message},{status:400});
+      inserted=data||[];
     }
 
     return Response.json({
       success:true,
-      session_type:sessionType,
-      created_count:data?.length||0,
-      skipped_count:rows.length-(data?.length||0),
-      sessions:data||[]
+      session_type:'RECURRING',
+      created_count:1+inserted.length,
+      sessions:[seed,...inserted]
     },{status:201});
   }
 

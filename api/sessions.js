@@ -1,3 +1,106 @@
+
+function dateYmd(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+async function supabaseRest(url,key,path,options={}){
+  const res=await fetch(`${url}/rest/v1/${path}`,{
+    ...options,
+    headers:{
+      apikey:key,
+      Authorization:`Bearer ${key}`,
+      'Content-Type':'application/json',
+      Prefer: options.prefer || '',
+      ...(options.headers||{})
+    }
+  });
+
+  let data=null;
+  const text=await res.text();
+  if(text){
+    try{ data=JSON.parse(text) }catch{ data=text }
+  }
+
+  if(!res.ok){
+    throw new Error(typeof data==='string'?data:JSON.stringify(data));
+  }
+  return data;
+}
+
+async function materializeRecurringSessions(supabaseUrl,secretKey){
+  if(!secretKey)return;
+
+  const seeds=await supabaseRest(
+    supabaseUrl,
+    secretKey,
+    'class_sessions?select=id,program_id,session_date,session_period,starts_at,ends_at,room_id,teacher_name,teacher_country,capacity,status,is_recurring,recurrence_source_id&is_recurring=eq.true&recurrence_source_id=is.null',
+    {method:'GET'}
+  );
+
+  const today=new Date();
+  today.setHours(0,0,0,0);
+  const horizon=new Date(today);
+  horizon.setMonth(horizon.getMonth()+3);
+
+  for(const seed of seeds||[]){
+    let cursor=new Date(`${seed.session_date}T00:00:00`);
+    if(Number.isNaN(cursor.getTime()))continue;
+
+    while(cursor<today) cursor.setDate(cursor.getDate()+7);
+
+    const dates=[];
+    for(let d=new Date(cursor); d<=horizon; d.setDate(d.getDate()+7)){
+      dates.push(dateYmd(d));
+    }
+    if(!dates.length)continue;
+
+    const minDate=dates[0];
+    const maxDate=dates[dates.length-1];
+
+    const existing=await supabaseRest(
+      supabaseUrl,
+      secretKey,
+      `class_sessions?select=session_date,starts_at,ends_at&program_id=eq.${encodeURIComponent(seed.program_id)}&session_date=gte.${minDate}&session_date=lte.${maxDate}`,
+      {method:'GET'}
+    );
+
+    const keys=new Set((existing||[]).map(x=>
+      `${x.session_date}|${String(x.starts_at).slice(0,5)}|${String(x.ends_at).slice(0,5)}`
+    ));
+
+    const children=dates
+      .filter(date=>date!==seed.session_date)
+      .filter(date=>!keys.has(`${date}|${String(seed.starts_at).slice(0,5)}|${String(seed.ends_at).slice(0,5)}`))
+      .map(date=>({
+        program_id:seed.program_id,
+        session_date:date,
+        session_period:seed.session_period,
+        starts_at:seed.starts_at,
+        ends_at:seed.ends_at,
+        room_id:seed.room_id,
+        teacher_name:seed.teacher_name,
+        teacher_country:seed.teacher_country,
+        capacity:seed.capacity,
+        status:seed.status||'OPEN',
+        is_recurring:true,
+        recurrence_source_id:seed.id
+      }));
+
+    if(children.length){
+      await supabaseRest(
+        supabaseUrl,
+        secretKey,
+        'class_sessions',
+        {
+          method:'POST',
+          body:JSON.stringify(children),
+          prefer:'return=minimal'
+        }
+      );
+    }
+  }
+}
+
 export default {
   async fetch(request) {
     try {
@@ -35,12 +138,23 @@ export default {
 
       const supabaseUrl = process.env.SUPABASE_URL;
       const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+      const secretKey = process.env.SUPABASE_SECRET_KEY;
 
       if (!supabaseUrl || !publishableKey) {
         return Response.json(
           { error: 'Supabase environment variables are missing' },
           { status: 500 }
         );
+      }
+
+      // If an existing DB row is manually changed to is_recurring=true,
+      // this automatically creates the missing weekly bookable sessions.
+      if(secretKey){
+        try{
+          await materializeRecurringSessions(supabaseUrl,secretKey);
+        }catch(e){
+          console.error('Recurring session expansion failed:',e);
+        }
       }
 
       const response = await fetch(
