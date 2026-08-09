@@ -108,7 +108,7 @@ async function api(url,opt={}){
 async function login(){
   const msg=document.getElementById('loginMsg');msg.innerHTML='';
   try{
-    const data=await api('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('adminPassword').value})});
+    const data=await api('/api/admin?action=login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('adminPassword').value})});
     token=data.token;localStorage.setItem('speakhub_admin_token',token);boot();
   }catch(e){msg.innerHTML='<div class="error">Sai mật khẩu hoặc chưa cấu hình admin.</div>'}
 }
@@ -126,7 +126,7 @@ function showTab(name,btn){
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));btn.classList.add('on');
 }
 async function loadOverview(){
-  const d=await api('/api/admin/overview');
+  const d=await api('/api/admin?action=overview');
   document.getElementById('tab-overview').innerHTML=`<div class="grid4">
     <div class="card stat"><span class="muted">Customers</span><b>${d.counts.customers}</b></div>
     <div class="card stat"><span class="muted">Paid orders</span><b>${d.counts.paid_orders}</b></div>
@@ -135,7 +135,7 @@ async function loadOverview(){
   </div>`;
 }
 async function loadSessions(){
-  const d=await api('/api/admin/sessions');
+  const d=await api('/api/admin?action=sessions');
   cache=d;
   document.getElementById('sProgram').innerHTML=d.programs.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
   document.getElementById('sRoom').innerHTML=d.rooms.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
@@ -147,7 +147,7 @@ async function loadSessions(){
 async function createSession(){
   const msg=document.getElementById('sessionMsg');msg.innerHTML='';
   try{
-    await api('/api/admin/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    await api('/api/admin?action=sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       program_id:sProgram.value,session_date:sDate.value,session_period:sPeriod.value,starts_at:sStart.value,ends_at:sEnd.value,room_id:sRoom.value,
       teacher_name:sTeacher.value.trim(),teacher_country:sCountry.value.trim(),capacity:Number(sCapacity.value)
     })});
@@ -155,11 +155,11 @@ async function createSession(){
   }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
 }
 async function loadCustomers(){
-  const d=await api('/api/admin/customers');
+  const d=await api('/api/admin?action=customers');
   document.getElementById('customersTable').innerHTML=table(['Tên','SĐT','Status','Ngày tạo'],d.customers.map(x=>[x.full_name||'',x.phone,`<span class="badge">${x.status}</span>`,fmt(x.created_at)]));
 }
 async function loadBookings(){
-  const d=await api('/api/admin/bookings');
+  const d=await api('/api/admin?action=bookings');
   document.getElementById('bookingsTable').innerHTML=table(['Học viên','SĐT','Ngày','Giờ','Lớp','Thanh toán'],d.bookings.map(x=>[
     x.full_name||'',x.phone,x.session_date,`${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,x.program_name,`<span class="badge">${x.payment_status}</span>`
   ]));
@@ -170,7 +170,7 @@ async function uploadTopic(){
   if(!file){msg.innerHTML='<div class="error">Chọn PDF trước.</div>';return}
   const fd=new FormData();fd.append('session_id',topicSession.value);fd.append('title',topicTitle.value.trim());fd.append('file',file);
   try{
-    await api('/api/admin/topics/upload',{method:'POST',body:fd});
+    await api('/api/admin?action=topic-upload',{method:'POST',body:fd});
     msg.innerHTML='<div class="ok">Upload topic thành công.</div>';document.getElementById('topicFile').value='';await loadSessions();
   }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
 }
