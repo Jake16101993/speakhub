@@ -1317,6 +1317,63 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   }
 }
 
+
+/* ===== V5.1 menu polish ===== */
+.side button{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  gap:7px !important;
+  white-space:nowrap !important;
+}
+.side button .badge{
+  margin-left:auto !important;
+  flex:0 0 auto !important;
+}
+@media(max-width:760px){
+  .mobile-nav{
+    grid-template-columns:repeat(5,minmax(0,1fr)) !important;
+  }
+  .mobile-nav button,
+  .mobile-nav .book-wrap{
+    font-size:11px !important;
+    font-weight:800 !important;
+  }
+  .mobile-nav .book-label{
+    font-size:11px !important;
+    font-weight:800 !important;
+  }
+  .mobile-nav .book{
+    width:52px !important;
+    height:52px !important;
+    font-size:24px !important;
+  }
+  .quick-grid .quick{
+    text-align:center !important;
+  }
+  .quick-grid .quick b,
+  .quick-grid .quick p{
+    text-align:center !important;
+  }
+}
+
+
+.mobile-schedule-count{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:17px;
+  height:17px;
+  padding:0 4px;
+  border-radius:999px;
+  background:#ef3d3d;
+  color:#fff;
+  font-size:9px;
+  font-weight:900;
+  margin-left:2px;
+  vertical-align:top;
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
@@ -1333,6 +1390,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB TIMETABLE STICKY COMPACT V4 2026-08-09 -->
 <!-- SPEAKHUB TIMETABLE FIRST-COLUMN FIT V4.1 -->
 <!-- SPEAKHUB NAV + MY UPCOMING CLASSES FIX V5 2026-08-09 -->
+<!-- SPEAKHUB MENU POLISH + SCHEDULE COUNT V5.1 -->
 </head>
 <body>
 
@@ -1483,7 +1541,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
       <button data-route="placement" onclick="go('placement')">🧪 Kiểm tra phân lớp</button>
       <button data-route="weekly" onclick="go('weekly')">📈 Test</button>
       <button data-route="booking" onclick="go('booking')">📅 Đặt chỗ</button>
-      <button data-route="history" onclick="go('history')">🕘 Lịch học của tôi</button>
+      <button data-route="history" onclick="go('history')">🕘 Lịch học của tôi <span id="myScheduleBadge" class="badge" style="display:none">0</span></button>
       <button data-route="community" onclick="go('community')">👥 Cộng đồng <span class="count">5</span></button>
       <button data-route="chat" onclick="go('chat')">💬 Chat với SpeakHub <span class="count">3</span></button>
       <button data-route="notifications" onclick="go('notifications')">🔔 Thông báo <span class="count">2</span></button>
@@ -1499,10 +1557,9 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 </div>
 <nav class="mobile-nav">
   <button onclick="go('dashboard')">🏠<br>Trang chủ</button>
-  <button onclick="go('history')">📅<br>Lịch học</button>
+  <button id="mobileMyScheduleTab" onclick="go('history')">📅<br>Lịch học</button>
   <button class="book-wrap" onclick="go('booking')"><span class="book">＋</span><span class="book-label">Đặt chỗ</span></button>
   <button onclick="go('community')">👥<br>Cộng đồng</button>
-  <button onclick="go('chat')">💬<br>Chat</button>
   <button onclick="go('weekly')">📈<br>Theo dõi</button>
 </nav>
 </div>
@@ -1891,6 +1948,22 @@ function progressChartHTML(){
 }
 
 
+
+function updateMyScheduleBadges(){
+  const count=Array.isArray(state.realUpcoming)?state.realUpcoming.length:0;
+
+  const side=document.getElementById('myScheduleBadge');
+  if(side){
+    side.textContent=String(count);
+    side.style.display=count>0?'inline-flex':'none';
+  }
+
+  const mobile=document.getElementById('mobileMyScheduleTab');
+  if(mobile){
+    mobile.innerHTML=`📅${count>0?`<span class="mobile-schedule-count">${count}</span>`:''}<br>Lịch học`;
+  }
+}
+
 function upcomingLessonsHTML(){
   const lessons=Array.isArray(state.realUpcoming)?state.realUpcoming:[];
   if(!lessons.length){
@@ -1900,6 +1973,7 @@ function upcomingLessonsHTML(){
 }
 
 function renderDashboard(rv){
+  updateMyScheduleBadges();
   setTitle(state.firstTimeName?('Chào buổi tối, '+state.firstTimeName+'! 👋'):'Chào buổi tối! 👋','Sẵn sàng nói tiếng Anh hôm nay chưa?');
   rv.innerHTML=`
   <div class="dashboard-grid">
