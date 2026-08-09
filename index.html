@@ -1164,6 +1164,108 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   }
 }
 
+
+/* ===== Timetable mobile compact + sticky refinement ===== */
+.schedule-table-scroll{
+  overflow:auto !important;
+  -webkit-overflow-scrolling:touch;
+  max-height:72vh;
+  border:1px solid var(--line);
+  border-radius:14px;
+  position:relative;
+}
+.schedule-grid{
+  border-collapse:separate;
+  border-spacing:0;
+}
+.schedule-grid thead th{
+  position:sticky !important;
+  top:0 !important;
+  z-index:20 !important;
+  white-space:nowrap;
+}
+.schedule-grid thead th:first-child{
+  left:0 !important;
+  z-index:30 !important;
+}
+.schedule-grid td:first-child{
+  position:sticky !important;
+  left:0 !important;
+  z-index:12 !important;
+}
+.schedule-class-cell{
+  min-width:78px !important;
+  width:78px !important;
+  max-width:78px !important;
+  padding:7px 5px !important;
+  font-size:11px !important;
+  line-height:1.08 !important;
+  text-align:center !important;
+  word-break:normal;
+  overflow-wrap:normal;
+}
+.schedule-class-name{
+  display:inline-block;
+  font-weight:900;
+  line-height:1.08;
+}
+.schedule-grid th:not(:first-child),
+.schedule-grid td:not(:first-child){
+  min-width:136px !important;
+}
+.schedule-grid td{
+  padding:5px !important;
+}
+.schedule-cell{
+  padding:6px 7px !important;
+  margin:2px 0 !important;
+  min-width:122px;
+}
+.schedule-cell b{
+  font-size:10.5px !important;
+  line-height:1.15;
+  white-space:nowrap;
+}
+.schedule-cell span{
+  font-size:9.5px !important;
+  line-height:1.15;
+  white-space:nowrap;
+}
+.schedule-cell .seat{
+  font-size:9.5px !important;
+}
+@media(max-width:760px){
+  .schedule-table-scroll{
+    max-height:68vh;
+  }
+  .schedule-grid{
+    min-width:1030px !important;
+  }
+  .schedule-class-cell{
+    min-width:66px !important;
+    width:66px !important;
+    max-width:66px !important;
+    font-size:10px !important;
+    padding:6px 3px !important;
+  }
+  .schedule-grid th:first-child{
+    min-width:66px !important;
+    width:66px !important;
+    max-width:66px !important;
+    font-size:10px !important;
+    padding-left:3px !important;
+    padding-right:3px !important;
+  }
+  .schedule-grid th:not(:first-child),
+  .schedule-grid td:not(:first-child){
+    min-width:132px !important;
+  }
+  .schedule-cell{
+    min-width:120px;
+    padding:5px 6px !important;
+  }
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
@@ -1177,6 +1279,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB TIMETABLE + 3 MONTH LIMIT 2026-08-09 -->
 <!-- SPEAKHUB TIMETABLE REFINED V2 2026-08-09 -->
 <!-- SPEAKHUB TIMETABLE V3 2026-08-09 -->
+<!-- SPEAKHUB TIMETABLE STICKY COMPACT V4 2026-08-09 -->
 </head>
 <body>
 
@@ -1327,6 +1430,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
       <button data-route="placement" onclick="go('placement')">🧪 Kiểm tra phân lớp</button>
       <button data-route="weekly" onclick="go('weekly')">📈 Test</button>
       <button data-route="booking" onclick="go('booking')">📅 Đặt chỗ</button>
+      <button data-route="publicSchedule" onclick="go('publicSchedule')">🗓️ Xem lịch học</button>
       <button data-route="history" onclick="go('history')">🕘 Lịch sử đặt chỗ</button>
       <button data-route="community" onclick="go('community')">👥 Cộng đồng <span class="count">5</span></button>
       <button data-route="chat" onclick="go('chat')">💬 Chat với SpeakHub <span class="count">3</span></button>
@@ -1343,7 +1447,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 </div>
 <nav class="mobile-nav">
   <button onclick="go('dashboard')">🏠<br>Trang chủ</button>
-  <button onclick="go('history')">📅<br>Lịch học</button>
+  <button onclick="go('publicSchedule')">📅<br>Lịch học</button>
   <button class="book-wrap" onclick="go('booking')"><span class="book">＋</span><span class="book-label">Đặt chỗ</span></button>
   <button onclick="go('community')">👥<br>Cộng đồng</button>
   <button onclick="go('weekly')">📈<br>Theo dõi</button>
@@ -1935,7 +2039,32 @@ function scheduleDateTimeLabel(s){
   const parts=String(s.session_date||'').split('-');
   const m=parts[1]||'';
   const d=parts[2]||'';
-  return `${d}/${m} (${compactTime(s.starts_at)}-${compactTime(s.ends_at)})`;
+
+  const startRaw=String(s.starts_at||'').slice(0,5);
+  const endRaw=String(s.ends_at||'').slice(0,5);
+  const [sh,sm]=startRaw.split(':').map(Number);
+  const [eh,em]=endRaw.split(':').map(Number);
+
+  const startMeridiem=sh>=12?'pm':'am';
+  const endMeridiem=eh>=12?'pm':'am';
+  const fmt=(h,m,withSuffix)=>{
+    const h12=((h+11)%12)+1;
+    const core=m===0?`${h12}`:`${h12}:${String(m).padStart(2,'0')}`;
+    return withSuffix?core+(h>=12?'pm':'am'):core;
+  };
+
+  const sameMeridiem=startMeridiem===endMeridiem;
+  const start=fmt(sh,sm,!sameMeridiem);
+  const end=fmt(eh,em,true);
+
+  return `${d}/${m} (${start}-${end})`;
+}
+
+
+function compactProgramLabel(name){
+  const parts=String(name||'').trim().split(/\s+/);
+  if(parts.length<=1)return name||'';
+  return `${parts[0]}<br>${parts.slice(1).join(' ')}`;
 }
 
 function renderScheduleTable(sessions){
@@ -1988,7 +2117,7 @@ function renderScheduleTable(sessions){
       </thead>
       <tbody>
         ${orderedPrograms.map(p=>`<tr>
-          <td class="schedule-class-cell">${p.name}</td>
+          <td class="schedule-class-cell"><span class="schedule-class-name">${compactProgramLabel(p.name)}</span></td>
           ${weekdays.map(([wd])=>{
             const items=(p.days[wd]||[])
               .sort((a,b)=>`${a.session_date} ${a.starts_at}`.localeCompare(`${b.session_date} ${b.starts_at}`));
@@ -2036,7 +2165,7 @@ async function renderPublicSchedule(rv){
 
       <div id="scheduleLimitNote" class="schedule-limit-note">Chỉ xem trước lịch tối đa 3 tháng.</div>
       <div id="publicScheduleList"><div class="schedule-empty">Đang tải lịch học...</div></div>
-      <div class="schedule-legend">Mỗi ô tóm tắt lớp, giờ học, giáo viên và số chỗ còn lại. Không hiển thị phòng học.</div>
+      <div class="schedule-legend">Kéo ngang để xem T2–CN. Cột lớp và dòng thứ luôn được giữ cố định.</div>
 
       <button class="btn secondary" style="width:100%;margin-top:14px" onclick="showLanding()">← Quay lại trang chủ</button>
     </section>
