@@ -925,8 +925,53 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   }
 }
 
+
+/* Mobile topic PDF: use full viewport, no clipped inner frame */
+@media(max-width:760px){
+  .pdf-modal{
+    padding:0 !important;
+    align-items:stretch !important;
+    justify-content:stretch !important;
+  }
+  .pdf-panel{
+    width:100vw !important;
+    height:100dvh !important;
+    max-width:none !important;
+    max-height:none !important;
+    border-radius:0 !important;
+  }
+  .pdf-head{
+    flex:0 0 auto;
+    padding:10px 12px !important;
+    gap:8px;
+  }
+  .pdf-frame{
+    flex:1 1 auto;
+    min-height:0;
+    height:calc(100dvh - 60px) !important;
+    width:100% !important;
+    overflow:auto !important;
+    -webkit-overflow-scrolling:touch;
+  }
+  .pdf-mobile-open{
+    display:inline-flex !important;
+  }
+}
+.pdf-mobile-open{
+  display:none;
+  border:0;
+  background:var(--gs);
+  color:var(--gd);
+  border-radius:9px;
+  padding:8px 10px;
+  font-size:12px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
+<!-- SPEAKHUB MOBILE PDF FIX 2026-08-09 -->
 </head>
 <body>
 
@@ -1124,6 +1169,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <script>
 /* Remove legacy prototype/example booking data. Real history comes from DB only. */
 localStorage.removeItem('speakhub_paid_lessons');
+let currentTopicSignedUrl='';
 const state={
   route:'landing',
   logged:localStorage.getItem('speakhub_login')==='1',
@@ -2529,6 +2575,21 @@ async function openRealTopic(bookingId){
     const frame=document.getElementById('pdfFrame');
     const title=document.getElementById('pdfTitle');
 
+    currentTopicSignedUrl=data.signed_url;
+
+    // Mobile browsers handle multi-page PDF scrolling + pinch zoom much better
+    // in their native PDF viewer than inside an iframe.
+    if(window.matchMedia('(max-width: 760px)').matches){
+      const w=window.open(data.signed_url,'_blank','noopener');
+      if(!w){
+        // Popup blocked: fall back to the in-app full-screen viewer.
+        if(title) title.innerText=data.title||'Topic SpeakHub';
+        if(frame) frame.src=data.signed_url;
+        if(modal) modal.classList.add('show');
+      }
+      return;
+    }
+
     if(title) title.innerText=data.title||'Topic SpeakHub';
     if(frame) frame.src=data.signed_url;
     if(modal) modal.classList.add('show');
@@ -2648,6 +2709,12 @@ function openCommunityPost(i){
     ${(p.comments||[]).map(c=>`<div class="comment"><div class="comment-head"><b>${c.author}</b><span>${c.time}</span></div><div>${c.text}</div></div>`).join('')||'<p class="tiny">Chưa có bình luận.</p>'}
     <div class="commentbox"><input id="comment${i}" placeholder="Viết bình luận..."><button class="btn secondary small" onclick="addComment(${i})">Gửi</button></div>
   </section></div>`
+}
+
+
+function openTopicNative(){
+  if(!currentTopicSignedUrl)return;
+  window.open(currentTopicSignedUrl,'_blank','noopener');
 }
 
 function renderCommunity(rv){
