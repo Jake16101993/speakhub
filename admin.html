@@ -23,6 +23,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 </style>
 <!-- SPEAKHUB ADMIN RECURRING SESSION 2026-08-09 -->
 <!-- SPEAKHUB ADMIN PROGRAM + TEACHER FIX 2026-08-09 -->
+<!-- SPEAKHUB ADMIN DUPLICATE-SAFE SESSION FIX -->
 </head>
 <body>
 <div class="wrap">
@@ -186,7 +187,7 @@ async function createSession(){
   }
 
   try{
-    await api('/api/admin?action=sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    const result=await api('/api/admin?action=sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       program_id:sProgram.value,
       session_type:sType.value,
       session_date:sDate.value,
@@ -196,8 +197,21 @@ async function createSession(){
       teacher_id:sTeacher.value||null,
       capacity:Number(sCapacity.value)
     })});
-    msg.innerHTML=`<div class="ok">${sType.value==='RECURRING'?'Đã tạo lớp cố định cho các tuần trong 3 tháng tới.':'Đã tạo lớp lẻ.'}</div>`;await loadSessions();await loadOverview();
-  }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
+
+    if(result.reused_existing){
+      msg.innerHTML='<div class="ok">Session này đã tồn tại. Đã chuyển session hiện có thành lớp cố định và hệ thống sẽ tự lặp các tuần sau.</div>';
+    }else{
+      msg.innerHTML=`<div class="ok">${sType.value==='RECURRING'?'Đã tạo lớp cố định. Các tuần sau sẽ tự được sinh từ DB.':'Đã tạo lớp lẻ.'}</div>`;
+    }
+
+    await loadSessions();
+    await loadOverview();
+  }catch(e){
+    const friendly=e.message==='SESSION_ALREADY_EXISTS'
+      ?'Session này đã tồn tại đúng lớp, ngày và giờ. Không thể tạo trùng.'
+      :e.message;
+    msg.innerHTML=`<div class="error">${friendly}</div>`;
+  }
 }
 async function loadCustomers(){
   const d=await api('/api/admin?action=customers');
