@@ -845,6 +845,343 @@ async function handlePlacementHistory(request){
   });
 }
 
+
+function progressSchema(){
+  return {
+    type:'object',
+    additionalProperties:false,
+    properties:{
+      overall_score:{type:'integer',minimum:0,maximum:100},
+      grammar_score:{type:'integer',minimum:0,maximum:100},
+      vocabulary_score:{type:'integer',minimum:0,maximum:100},
+      fluency_score:{type:'integer',minimum:0,maximum:100},
+      pronunciation_score:{type:'integer',minimum:0,maximum:100},
+      comprehension_score:{type:'integer',minimum:0,maximum:100},
+      summary_vi:{type:'string'},
+      strengths_vi:{type:'array',items:{type:'string'},minItems:2,maxItems:5},
+      improvements_vi:{type:'array',items:{type:'string'},minItems:2,maxItems:5},
+      speaking_feedback_vi:{type:'array',items:{type:'string'},minItems:3,maxItems:6},
+      recommended_study_focus_vi:{type:'array',items:{type:'string'},minItems:3,maxItems:6},
+      grammar_examples:{
+        type:'array',
+        minItems:0,
+        maxItems:4,
+        items:{
+          type:'object',
+          additionalProperties:false,
+          properties:{
+            original:{type:'string'},
+            corrected:{type:'string'},
+            explanation_vi:{type:'string'}
+          },
+          required:['original','corrected','explanation_vi']
+        }
+      }
+    },
+    required:[
+      'overall_score','grammar_score','vocabulary_score','fluency_score',
+      'pronunciation_score','comprehension_score','summary_vi',
+      'strengths_vi','improvements_vi','speaking_feedback_vi',
+      'recommended_study_focus_vi','grammar_examples'
+    ]
+  };
+}
+
+async function verifyProgressBooking(customerId,bookingId){
+  if(!bookingId || bookingId==='TEST_MODE_PROGRESS'){
+    return {
+      booking:null,
+      session:null,
+      topic:'General English',
+      program:'Adult Intermediate',
+      is_test_mode:true
+    };
+  }
+
+  const {data,error}=await supabase
+    .from('bookings')
+    .select(`
+      id,user_id,session_id,status,
+      class_sessions(
+        id,session_date,topic_title,
+        programs(name)
+      )
+    `)
+    .eq('id',bookingId)
+    .eq('user_id',customerId)
+    .maybeSingle();
+
+  if(error) throw error;
+  if(!data) return {error:'BOOKING_NOT_FOUND',status:404};
+  if(data.status!=='CONFIRMED') return {error:'BOOKING_NOT_CONFIRMED',status:400};
+
+  return {
+    booking:data,
+    session:data.class_sessions||null,
+    topic:data.class_sessions?.topic_title||'General English',
+    program:data.class_sessions?.programs?.name||'SpeakHub',
+    is_test_mode:false
+  };
+}
+
+async function handleProgressScore(request){
+  if(request.method!=='POST'){
+    return Response.json({error:'Method not allowed'},{status:405});
+  }
+  if(!process.env.OPENAI_API_KEY){
+    return Response.json({error:'OPENAI_API_KEY_MISSING'},{status:500});
+  }
+
+  const b=await request.json().catch(()=>({}));
+  const customerId=String(b.customer_id||'');
+  const token=String(b.token||'');
+  const bookingId=String(b.booking_id||'');
+
+  const auth=await requireActiveCustomer(customerId,token);
+  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+
+  const verified=await verifyProgressBooking(customerId,bookingId);
+  if(verified.error) return Response.json({error:verified.error},{status:verified.status});
+
+  const quizItems=Array.isArray(b.quiz_items)?b.quiz_items:[];
+  const quizCorrect=quizItems.length
+    ? quizItems.filter(x=>Number(x.selected_index)===Number(x.correct_index)).length
+    : 0;
+  const quizScore=quizItems.length?Math.round(100*quizCorrect/quizItems.length):0;
+
+  const q1=String(b.question_1||'').trim();
+  const q2=String(b.question_2||'').trim();
+  const t1=String(b.transcript_1||'').trim();
+  const t2=String(b.transcript_2||'').trim();
+
+  if(!t1 || !t2){
+    return Response.json({error:'TWO_SPEAKING_ANSWERS_REQUIRED'},{status:400});
+  }
+
+  const clarity1=Number.isFinite(Number(b.transcription_confidence_1))
+    ? Math.round(Number(b.transcription_confidence_1)*100)
+    : null;
+  const clarity2=Number.isFinite(Number(b.transcription_confidence_2))
+    ? Math.round(Number(b.transcription_confidence_2)*100)
+    : null;
+
+  const prompt=`You are the SpeakHub Progress Test Assessor.
+
+GOAL:
+Measure change in practical English ability over time. This is NOT a topic-memory quiz and NOT IELTS.
+Use the same practical speaking-club benchmark every session so scores remain comparable.
+
+PROGRAM:
+${verified.program}
+
+SESSION TOPIC:
+${verified.topic}
+
+STANDARDIZED MULTIPLE CHOICE:
+Score: ${quizScore}/100
+Question data: ${JSON.stringify(quizItems)}
+
+SPEAKING 1 — STANDARDIZED GENERAL ENGLISH:
+Question: ${q1}
+Transcript: ${t1}
+
+SPEAKING 2 — LIGHTLY RELATED TO SESSION TOPIC:
+Question: ${q2}
+Transcript: ${t2}
+
+TRANSCRIPTION CLARITY PROXY:
+Q1: ${clarity1===null?'unknown':clarity1+'/100'}
+Q2: ${clarity2===null?'unknown':clarity2+'/100'}
+
+WEIGHTING:
+- Speaking ability is the main signal.
+- Speaking 1 is especially important because it is standardized/general and supports comparison over time.
+- Speaking 2 tests transfer/application of English to the recent topic, but do NOT reward topic knowledge itself.
+- Multiple choice supports Grammar/Vocabulary/Comprehension but should not dominate Overall.
+
+SCORING:
+Grammar: practical sentence control.
+Vocabulary: range and appropriateness.
+Fluency: continuity, linking, ability to sustain speech.
+Pronunciation: only a speech-clarity proxy; do not claim phoneme-level precision.
+Comprehension: standardized quiz + whether the learner understood both speaking prompts.
+Overall: practical communication progress score.
+
+IMPORTANT:
+- Keep the benchmark stable across sessions.
+- Do not raise/lower standards based on the topic.
+- Topic familiarity must not inflate the score.
+- Give detailed Vietnamese feedback.
+- grammar_examples must only contain genuine errors visible in transcripts.
+- recommended_study_focus_vi must be actionable.
+`;
+
+  const resp=await fetch('https://api.openai.com/v1/responses',{
+    method:'POST',
+    headers:{
+      Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type':'application/json'
+    },
+    body:JSON.stringify({
+      model:process.env.OPENAI_PLACEMENT_MODEL||'gpt-5-mini',
+      store:false,
+      input:[
+        {
+          role:'developer',
+          content:[{type:'input_text',text:'Return only the requested structured English progress assessment.'}]
+        },
+        {
+          role:'user',
+          content:[{type:'input_text',text:prompt}]
+        }
+      ],
+      text:{
+        format:{
+          type:'json_schema',
+          name:'speakhub_progress_result',
+          strict:true,
+          schema:progressSchema()
+        }
+      }
+    })
+  });
+
+  const data=await resp.json().catch(()=>({}));
+  if(!resp.ok){
+    console.error('OpenAI progress scoring error',data);
+    return Response.json({
+      error:'PROGRESS_AI_FAILED',
+      details:data?.error?.message||'OpenAI progress scoring failed'
+    },{status:502});
+  }
+
+  let result;
+  try{
+    result=JSON.parse(extractResponseText(data));
+  }catch(err){
+    console.error('progress result parse error',data);
+    return Response.json({error:'PROGRESS_RESULT_INVALID'},{status:502});
+  }
+
+  const clarityVals=[clarity1,clarity2].filter(Number.isFinite);
+  if(clarityVals.length){
+    const avg=Math.round(clarityVals.reduce((a,b)=>a+b,0)/clarityVals.length);
+    result.pronunciation_score=Math.round(
+      0.65*Number(result.pronunciation_score||0)+0.35*avg
+    );
+  }
+
+  const row={
+    customer_id:customerId,
+    booking_id:verified.booking?.id||null,
+    session_id:verified.session?.id||null,
+    program_name:verified.program,
+    topic_title:verified.topic,
+    quiz_score:quizScore,
+    quiz_items:quizItems,
+    question_1:q1,
+    question_2:q2,
+    transcript_1:t1,
+    transcript_2:t2,
+    transcription_confidence_1:Number.isFinite(Number(b.transcription_confidence_1))?Number(b.transcription_confidence_1):null,
+    transcription_confidence_2:Number.isFinite(Number(b.transcription_confidence_2))?Number(b.transcription_confidence_2):null,
+    grammar_score:result.grammar_score,
+    vocabulary_score:result.vocabulary_score,
+    fluency_score:result.fluency_score,
+    pronunciation_score:result.pronunciation_score,
+    comprehension_score:result.comprehension_score,
+    overall_score:result.overall_score,
+    summary_vi:result.summary_vi,
+    strengths_vi:result.strengths_vi,
+    improvements_vi:result.improvements_vi,
+    speaking_feedback_vi:result.speaking_feedback_vi,
+    recommended_study_focus_vi:result.recommended_study_focus_vi,
+    grammar_examples:result.grammar_examples,
+    raw_result:result,
+    model_used:process.env.OPENAI_PLACEMENT_MODEL||'gpt-5-mini',
+    status:'COMPLETED'
+  };
+
+  // Production: one progress result per booking. Test-mode fallback can save multiple attempts.
+  let saved;
+  if(verified.booking?.id){
+    const {data:existing,error:findErr}=await supabase
+      .from('progress_tests')
+      .select('id')
+      .eq('customer_id',customerId)
+      .eq('booking_id',verified.booking.id)
+      .maybeSingle();
+    if(findErr) throw findErr;
+
+    if(existing?.id){
+      const {data:updateData,error:updateErr}=await supabase
+        .from('progress_tests')
+        .update(row)
+        .eq('id',existing.id)
+        .select('id,created_at')
+        .single();
+      if(updateErr) throw updateErr;
+      saved=updateData;
+    }else{
+      const {data:insertData,error:insertErr}=await supabase
+        .from('progress_tests')
+        .insert(row)
+        .select('id,created_at')
+        .single();
+      if(insertErr) throw insertErr;
+      saved=insertData;
+    }
+  }else{
+    const {data:insertData,error:insertErr}=await supabase
+      .from('progress_tests')
+      .insert(row)
+      .select('id,created_at')
+      .single();
+    if(insertErr) throw insertErr;
+    saved=insertData;
+  }
+
+  return Response.json({
+    success:true,
+    progress_test_id:saved.id,
+    created_at:saved.created_at,
+    quiz_score:quizScore,
+    topic_title:verified.topic,
+    program_name:verified.program,
+    ...result
+  });
+}
+
+async function handleProgressHistory(request){
+  if(request.method!=='GET'){
+    return Response.json({error:'Method not allowed'},{status:405});
+  }
+
+  const url=new URL(request.url);
+  const customerId=url.searchParams.get('customer_id');
+  const token=url.searchParams.get('token');
+
+  const auth=await requireActiveCustomer(customerId,token);
+  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+
+  const {data,error}=await supabase
+    .from('progress_tests')
+    .select(`
+      id,created_at,booking_id,session_id,program_name,topic_title,quiz_score,
+      grammar_score,vocabulary_score,fluency_score,pronunciation_score,
+      comprehension_score,overall_score,summary_vi,strengths_vi,
+      improvements_vi,speaking_feedback_vi,recommended_study_focus_vi,
+      grammar_examples,status
+    `)
+    .eq('customer_id',customerId)
+    .eq('status','COMPLETED')
+    .order('created_at',{ascending:true})
+    .limit(100);
+
+  if(error) throw error;
+  return Response.json({success:true,tests:data||[]});
+}
+
 export default {
   async fetch(request){
     try{
@@ -862,6 +1199,8 @@ export default {
       if(action==='placement-transcribe') return await handlePlacementTranscribe(request);
       if(action==='placement-score') return await handlePlacementScore(request);
       if(action==='placement-history') return await handlePlacementHistory(request);
+      if(action==='progress-score') return await handleProgressScore(request);
+      if(action==='progress-history') return await handleProgressHistory(request);
 
       if(!requireAdmin(request)){
         return Response.json({error:'UNAUTHORIZED'},{status:401});
