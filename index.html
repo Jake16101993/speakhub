@@ -1302,6 +1302,15 @@ function progressChartHTML(){
   <div class="progress-note"><span class="progress-pill">↑ +18 điểm từ tuần đầu</span><span class="tiny">Cập nhật sau mỗi Weekly Test</span></div>`;
 }
 
+
+function upcomingLessonsHTML(){
+  const lessons=Array.isArray(state.realUpcoming)?state.realUpcoming:[];
+  if(!lessons.length){
+    return `<div class="tiny" style="padding:14px 0">Chưa có lịch học sắp tới.</div>`;
+  }
+  return lessons.slice(0,3).map((x,i)=>confirmedBookingCard(x,i,true)).join('');
+}
+
 function renderDashboard(rv){
   setTitle(state.firstTimeName?('Chào buổi tối, '+state.firstTimeName+'! 👋'):'Chào buổi tối! 👋','Sẵn sàng nói tiếng Anh hôm nay chưa?');
   rv.innerHTML=`
@@ -1870,56 +1879,93 @@ function stopPaymentPolling(){
 }
 
 function startPaymentPolling(orderId,token){
+  let pollCount=0;
+
   const check=async()=>{
     try{
-      const res=await fetch(`/api/orders/status?order_id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(token)}`);
+      pollCount++;
+
+      const statusUrl=`/api/orders/status?order_id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(token)}`;
+      const res=await fetch(statusUrl,{cache:'no-store'});
       const data=await res.json();
-      if(!res.ok)return;
 
-      const order=data.order;
+      if(!res.ok){
+        console.warn('order status failed',data);
+        return;
+      }
+
+      let order=data.order||{};
       const box=document.getElementById('paymentStatusBox');
+      const paymentStatus=String(order.payment_status||'').toUpperCase();
+      const orderStatus=String(order.order_status||'').toUpperCase();
 
-      if(order.payment_status==='PAID' && order.order_status==='CONFIRMED'){
+      if(paymentStatus==='PAID' && orderStatus==='CONFIRMED'){
         stopPaymentPolling();
         showRealPaymentSuccess(order);
         return;
       }
 
-      if(order.payment_status==='PENDING' && order.order_status==='PENDING'){
+      if(paymentStatus==='EXPIRED' || orderStatus==='CANCELLED'){
+        stopPaymentPolling();
+        if(box) box.innerHTML=`<b>⌛ Đơn đã hết hạn</b><div class="tiny">Chỗ giữ tạm đã được giải phóng. Vui lòng tạo booking mới.</div>`;
+        return;
+      }
+
+      // While the order is not confirmed, ask the server to reconcile with PayOS.
+      // Run immediately on the first poll, then every ~5 seconds.
+      if(pollCount===1 || pollCount%2===0){
         try{
+          console.log('SpeakHub: reconciling PayOS order',orderId);
+
           const reconcileRes=await fetch('/api/payos/reconcile',{
             method:'POST',
-            headers:{'Content-Type':'application/json'},
+            headers:{
+              'Content-Type':'application/json',
+              'Accept':'application/json'
+            },
+            cache:'no-store',
             body:JSON.stringify({
               order_id:orderId,
               checkout_token:token
             })
           });
-          const reconcileData=await reconcileRes.json();
 
-          if(reconcileRes.ok && reconcileData?.payment_confirmed){
-            const statusRes=await fetch(`/api/orders/status?order_id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(token)}`);
-            const statusData=await statusRes.json();
+          const reconcileData=await reconcileRes.json().catch(()=>({}));
+          console.log('SpeakHub: reconcile response',reconcileRes.status,reconcileData);
 
-            if(statusRes.ok && statusData?.order?.payment_status==='PAID'){
-              stopPaymentPolling();
-              showRealPaymentSuccess(statusData.order);
-              return;
+          // Always reload SpeakHub order after a successful reconcile request.
+          // The backend remains the source of truth.
+          if(reconcileRes.ok){
+            const statusRes=await fetch(statusUrl,{cache:'no-store'});
+            const statusData=await statusRes.json().catch(()=>({}));
+
+            if(statusRes.ok && statusData?.order){
+              order=statusData.order;
+              const newPaymentStatus=String(order.payment_status||'').toUpperCase();
+              const newOrderStatus=String(order.order_status||'').toUpperCase();
+
+              if(newPaymentStatus==='PAID' && newOrderStatus==='CONFIRMED'){
+                stopPaymentPolling();
+                showRealPaymentSuccess(order);
+                return;
+              }
             }
+          }else{
+            console.warn('reconcile failed',reconcileData);
           }
         }catch(reconcileErr){
           console.warn('reconcile polling',reconcileErr);
         }
       }
 
-      if(order.payment_status==='EXPIRED' || order.order_status==='CANCELLED'){
-        stopPaymentPolling();
-        if(box) box.innerHTML=`<b>⌛ Đơn đã hết hạn</b><div class="tiny">Chỗ giữ tạm đã được giải phóng. Vui lòng tạo booking mới.</div>`;
+      if(box){
+        box.innerHTML=`<b>⌛ Đang chờ thanh toán...</b><div class="tiny">Sau khi ngân hàng ghi nhận giao dịch, hệ thống sẽ tự xác nhận booking.</div>`;
       }
     }catch(e){
       console.warn('payment polling',e);
     }
   };
+
   check();
   state.paymentPollTimer=setInterval(check,2500);
 }
