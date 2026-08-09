@@ -968,9 +968,95 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   }
 }
 
+
+/* ===== SpeakHub reliable mobile PDF popup ===== */
+.pdf-canvas-viewer{
+  display:none;
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  background:#e7ece9;
+  padding:10px 8px 28px;
+  touch-action:pan-x pan-y;
+}
+.pdf-canvas-pages{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:12px;
+  width:100%;
+}
+.pdf-canvas-page{
+  display:block;
+  background:#fff;
+  box-shadow:0 3px 14px rgba(0,0,0,.14);
+}
+.pdf-viewer-loading{
+  padding:28px 14px;
+  text-align:center;
+  color:var(--muted);
+}
+.pdf-mobile-tools{
+  display:none;
+  align-items:center;
+  gap:6px;
+}
+.pdf-mobile-tools button{
+  border:1px solid var(--line);
+  background:#fff;
+  color:var(--gd);
+  border-radius:9px;
+  height:34px;
+  padding:0 9px;
+  font-size:12px;
+  font-weight:900;
+}
+.pdf-page-count{
+  min-width:38px;
+  text-align:center;
+  font-size:11px;
+  color:var(--muted);
+  white-space:nowrap;
+}
+@media(max-width:760px){
+  .pdf-modal{
+    padding:0!important;
+    align-items:stretch!important;
+    justify-content:stretch!important;
+    overflow:hidden!important;
+  }
+  .pdf-panel{
+    width:100vw!important;
+    height:100dvh!important;
+    max-width:none!important;
+    max-height:none!important;
+    border-radius:0!important;
+    display:flex!important;
+    flex-direction:column!important;
+    overflow:hidden!important;
+  }
+  .pdf-head{
+    flex:0 0 52px!important;
+    min-height:52px!important;
+    padding:8px 9px!important;
+    gap:7px;
+  }
+  .pdf-head>b{
+    max-width:34vw;
+    font-size:12px;
+  }
+  .pdf-frame{display:none!important}
+  .pdf-canvas-viewer{display:block!important}
+  .pdf-mobile-tools{display:flex!important}
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- SPEAKHUB SAME-ORIGIN MOBILE PDF VIEWER 2026-08-09 -->
 </head>
 <body>
 
@@ -1155,19 +1241,183 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 </div>
 
 
-<div class="pdf-modal" id="pdfModal" onclick="if(event.target===this)closeTopicPdf()">
+<div class="pdf-modal" id="pdfModal" onclick="if(event.target===this)closePdf()">
   <div class="pdf-panel">
     <div class="pdf-head">
       <b id="pdfTitle">Topic SpeakHub</b>
-      <button onclick="closeTopicPdf()" aria-label="Đóng">×</button>
+      <div class="pdf-mobile-tools">
+        <button onclick="pdfZoomOut()">−</button>
+        <button onclick="pdfFitWidth()">Vừa màn hình</button>
+        <button onclick="pdfZoomIn()">＋</button>
+        <span id="pdfPageCount" class="pdf-page-count">1/1</span>
+      </div>
+      <button onclick="closePdf()">×</button>
     </div>
+
     <iframe id="pdfFrame" class="pdf-frame" src=""></iframe>
+
+    <div id="pdfCanvasViewer" class="pdf-canvas-viewer">
+      <div id="pdfViewerLoading" class="pdf-viewer-loading">Đang tải tài liệu...</div>
+      <div id="pdfCanvasPages" class="pdf-canvas-pages"></div>
+    </div>
   </div>
 </div>
 
 <script>
 /* Remove legacy prototype/example booking data. Real history comes from DB only. */
 localStorage.removeItem('speakhub_paid_lessons');
+
+let speakHubPdfDoc=null;
+let speakHubPdfScale=1;
+let speakHubPdfFitScale=1;
+let speakHubPdfRenderSeq=0;
+
+function pdfJsReady(){
+  if(!window.pdfjsLib) throw new Error('PDFJS_NOT_LOADED');
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc=
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  return window.pdfjsLib;
+}
+
+async function loadPdfIntoPopup(fileUrl){
+  const viewer=document.getElementById('pdfCanvasViewer');
+  const pages=document.getElementById('pdfCanvasPages');
+  const loading=document.getElementById('pdfViewerLoading');
+  const count=document.getElementById('pdfPageCount');
+
+  if(!viewer||!pages||!loading)return;
+
+  const seq=++speakHubPdfRenderSeq;
+  pages.innerHTML='';
+  loading.style.display='block';
+  loading.innerText='Đang tải tài liệu...';
+  if(count)count.innerText='…';
+
+  try{
+    const lib=pdfJsReady();
+    const task=lib.getDocument({url:fileUrl,withCredentials:false});
+    speakHubPdfDoc=await task.promise;
+    if(seq!==speakHubPdfRenderSeq)return;
+
+    const first=await speakHubPdfDoc.getPage(1);
+    const natural=first.getViewport({scale:1});
+    const available=Math.max(280,(viewer.clientWidth||window.innerWidth)-16);
+
+    speakHubPdfFitScale=available/natural.width;
+    speakHubPdfScale=speakHubPdfFitScale;
+
+    loading.style.display='none';
+    await renderPdfPages(seq);
+  }catch(err){
+    console.error('SpeakHub PDF viewer error',err);
+    loading.style.display='block';
+    loading.innerHTML='Không tải được tài liệu. Vui lòng đóng và thử lại.';
+  }
+}
+
+async function renderPdfPages(seq=speakHubPdfRenderSeq){
+  if(!speakHubPdfDoc)return;
+
+  const pages=document.getElementById('pdfCanvasPages');
+  const count=document.getElementById('pdfPageCount');
+  if(!pages)return;
+
+  pages.innerHTML='';
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+
+  for(let pageNo=1;pageNo<=speakHubPdfDoc.numPages;pageNo++){
+    if(seq!==speakHubPdfRenderSeq)return;
+
+    const page=await speakHubPdfDoc.getPage(pageNo);
+    const viewport=page.getViewport({scale:speakHubPdfScale});
+
+    const canvas=document.createElement('canvas');
+    canvas.className='pdf-canvas-page';
+    canvas.dataset.page=String(pageNo);
+
+    canvas.width=Math.floor(viewport.width*dpr);
+    canvas.height=Math.floor(viewport.height*dpr);
+    canvas.style.width=`${Math.floor(viewport.width)}px`;
+    canvas.style.height=`${Math.floor(viewport.height)}px`;
+
+    pages.appendChild(canvas);
+
+    const ctx=canvas.getContext('2d',{alpha:false});
+    await page.render({
+      canvasContext:ctx,
+      viewport,
+      transform:dpr!==1?[dpr,0,0,dpr,0,0]:null
+    }).promise;
+  }
+
+  if(count)count.innerText=`1/${speakHubPdfDoc.numPages}`;
+  updatePdfPageCount();
+}
+
+function updatePdfPageCount(){
+  const viewer=document.getElementById('pdfCanvasViewer');
+  const count=document.getElementById('pdfPageCount');
+  if(!viewer||!count||!speakHubPdfDoc)return;
+
+  const canvases=[...document.querySelectorAll('#pdfCanvasPages .pdf-canvas-page')];
+  if(!canvases.length)return;
+
+  const markerY=viewer.getBoundingClientRect().top + Math.min(120,viewer.clientHeight*.28);
+  let current=1;
+  let best=Infinity;
+
+  canvases.forEach(c=>{
+    const r=c.getBoundingClientRect();
+    const dist=Math.abs(r.top-markerY);
+    if(dist<best){
+      best=dist;
+      current=Number(c.dataset.page||1);
+    }
+  });
+
+  count.innerText=`${current}/${speakHubPdfDoc.numPages}`;
+}
+
+async function rerenderPdfAtScale(){
+  const viewer=document.getElementById('pdfCanvasViewer');
+  if(!viewer||!speakHubPdfDoc)return;
+
+  const maxBefore=Math.max(1,viewer.scrollHeight-viewer.clientHeight);
+  const ratio=viewer.scrollTop/maxBefore;
+  const seq=++speakHubPdfRenderSeq;
+
+  await renderPdfPages(seq);
+
+  requestAnimationFrame(()=>{
+    const maxAfter=Math.max(0,viewer.scrollHeight-viewer.clientHeight);
+    viewer.scrollTop=maxAfter*ratio;
+  });
+}
+
+function pdfZoomIn(){
+  if(!speakHubPdfDoc)return;
+  speakHubPdfScale=Math.min(speakHubPdfFitScale*2.2,speakHubPdfScale*1.2);
+  rerenderPdfAtScale();
+}
+
+function pdfZoomOut(){
+  if(!speakHubPdfDoc)return;
+  speakHubPdfScale=Math.max(speakHubPdfFitScale*.65,speakHubPdfScale/1.2);
+  rerenderPdfAtScale();
+}
+
+function pdfFitWidth(){
+  if(!speakHubPdfDoc)return;
+  speakHubPdfScale=speakHubPdfFitScale;
+  rerenderPdfAtScale();
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('pdfCanvasViewer')?.addEventListener(
+    'scroll',updatePdfPageCount,{passive:true}
+  );
+});
+
 const state={
   route:'landing',
   logged:localStorage.getItem('speakhub_login')==='1',
@@ -2558,10 +2808,10 @@ async function openRealTopic(bookingId){
   if(!customerId||!token){alert('Thiếu thông tin học viên trên thiết bị.');return}
 
   try{
-    const res=await fetch(`/api/topics/open?customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}&booking_id=${encodeURIComponent(bookingId)}`,{cache:'no-store'});
-    const data=await res.json();
+    const metaRes=await fetch(`/api/topics/open?customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}&booking_id=${encodeURIComponent(bookingId)}`,{cache:'no-store'});
+    const data=await metaRes.json();
 
-    if(!res.ok){
+    if(!metaRes.ok){
       const map={
         TOPIC_NOT_READY:'Topic của buổi này chưa được upload.',
         BOOKING_NOT_ELIGIBLE:'Bạn chưa có booking đã thanh toán cho buổi này.'
@@ -2573,18 +2823,21 @@ async function openRealTopic(bookingId){
     const frame=document.getElementById('pdfFrame');
     const title=document.getElementById('pdfTitle');
 
-    if(title) title.innerText=data.title||'Topic SpeakHub';
+    if(title)title.innerText=data.title||'Topic SpeakHub';
+    if(modal)modal.classList.add('show');
 
-    // Keep the PDF inside SpeakHub's popup on both desktop and mobile.
-    // The fragment asks the browser PDF viewer to fit the page to the phone.
-    const pdfUrl=data.signed_url + (data.signed_url.includes('#')?'&':'#') + 'view=FitH&zoom=page-width';
+    const isMobile=window.matchMedia('(max-width:760px)').matches;
 
-    if(frame) frame.src=pdfUrl;
-    if(modal) modal.classList.add('show');
-
-    if(window.matchMedia('(max-width:760px)').matches){
+    if(isMobile){
       document.body.style.overflow='hidden';
+
+      const fileUrl=`/api/topics/file?customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}&booking_id=${encodeURIComponent(bookingId)}`;
+
+      requestAnimationFrame(()=>loadPdfIntoPopup(fileUrl));
+      return;
     }
+
+    if(frame)frame.src=data.signed_url;
   }catch(err){
     console.error(err);
     alert(String(err.message||err));
