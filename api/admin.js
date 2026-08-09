@@ -139,16 +139,30 @@ async function handleSessions(request){
     if(!roomId){
       const {data:firstRoom,error:roomErr}=await supabase
         .from('rooms')
-        .select('id')
+        .select('id,location_id')
         .order('id')
         .limit(1)
         .maybeSingle();
       if(roomErr) throw roomErr;
       roomId=firstRoom?.id||null;
+      var fallbackLocationId=firstRoom?.location_id||null;
+    }
+
+    let locationId=b.location_id||fallbackLocationId||null;
+
+    if(!locationId && roomId){
+      const {data:roomWithLocation,error:roomLocationErr}=await supabase
+        .from('rooms')
+        .select('location_id')
+        .eq('id',roomId)
+        .maybeSingle();
+      if(roomLocationErr) throw roomLocationErr;
+      locationId=roomWithLocation?.location_id||null;
     }
 
     const common={
       program_id:b.program_id,
+      location_id:locationId,
       session_date:b.session_date,
       session_period:b.session_period,
       starts_at:b.starts_at,

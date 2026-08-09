@@ -33,7 +33,7 @@ async function materializeRecurringSessions(supabaseUrl,secretKey){
   const seeds=await supabaseRest(
     supabaseUrl,
     secretKey,
-    'class_sessions?select=id,program_id,session_date,session_period,starts_at,ends_at,room_id,teacher_name,teacher_country,capacity,status,is_recurring,recurrence_source_id&is_recurring=eq.true&recurrence_source_id=is.null',
+    'class_sessions?select=id,program_id,location_id,session_date,session_period,starts_at,ends_at,room_id,teacher_name,teacher_country,capacity,status,is_recurring,recurrence_source_id&is_recurring=eq.true&recurrence_source_id=is.null',
     {method:'GET'}
   );
 
@@ -73,6 +73,7 @@ async function materializeRecurringSessions(supabaseUrl,secretKey){
       .filter(date=>!keys.has(`${date}|${String(seed.starts_at).slice(0,5)}|${String(seed.ends_at).slice(0,5)}`))
       .map(date=>({
         program_id:seed.program_id,
+        location_id:seed.location_id,
         session_date:date,
         session_period:seed.session_period,
         starts_at:seed.starts_at,
