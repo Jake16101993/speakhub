@@ -1266,6 +1266,32 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   }
 }
 
+
+/* ===== V4.1: keep long class names inside sticky first column ===== */
+.schedule-class-cell{
+  overflow:hidden !important;
+}
+.schedule-class-name{
+  display:block !important;
+  width:100% !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+  white-space:normal !important;
+  overflow:hidden !important;
+  overflow-wrap:anywhere !important;
+  word-break:break-word !important;
+  text-align:center !important;
+  font-size:9.5px !important;
+  line-height:1.02 !important;
+}
+@media(max-width:760px){
+  .schedule-class-name{
+    font-size:8.5px !important;
+    line-height:1 !important;
+    letter-spacing:-0.15px !important;
+  }
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
@@ -1280,6 +1306,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB TIMETABLE REFINED V2 2026-08-09 -->
 <!-- SPEAKHUB TIMETABLE V3 2026-08-09 -->
 <!-- SPEAKHUB TIMETABLE STICKY COMPACT V4 2026-08-09 -->
+<!-- SPEAKHUB TIMETABLE FIRST-COLUMN FIT V4.1 -->
 </head>
 <body>
 
