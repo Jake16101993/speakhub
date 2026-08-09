@@ -410,7 +410,7 @@ async function placementUsage(customerId){
 
   if(error) throw error;
   const used=Number(count||0);
-  return {used,remaining:Math.max(0,2-used),week_start:weekStart};
+  return {used,remaining:999,unlimited:true,week_start:weekStart};
 }
 
 async function handlePlacementStatus(request){
@@ -454,11 +454,7 @@ async function handlePlacementTranscribe(request){
   const auth=await requireActiveCustomer(customerId,token);
   if(auth.error) return Response.json({error:auth.error},{status:auth.status});
 
-  const usage=await placementUsage(customerId);
-  if(usage.remaining<=0){
-    return Response.json({error:'PLACEMENT_LIMIT_REACHED',...usage},{status:429});
-  }
-
+  // TEST MODE: weekly placement limit temporarily disabled.
   if(!audio || typeof audio.arrayBuffer!=='function'){
     return Response.json({error:'AUDIO_REQUIRED'},{status:400});
   }
@@ -571,11 +567,7 @@ async function handlePlacementScore(request){
   const auth=await requireActiveCustomer(customerId,token);
   if(auth.error) return Response.json({error:auth.error},{status:auth.status});
 
-  const usage=await placementUsage(customerId);
-  if(usage.remaining<=0){
-    return Response.json({error:'PLACEMENT_LIMIT_REACHED',...usage},{status:429});
-  }
-
+  // TEST MODE: weekly placement limit temporarily disabled.
   const birthYear=Number(b.birth_year||0);
   const nowYear=new Date().getFullYear();
   const age=nowYear-birthYear;
