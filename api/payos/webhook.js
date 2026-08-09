@@ -22,35 +22,45 @@ export default {
     try {
       const body = await request.json();
 
-      // IMPORTANT:
-      // payOS sends a signed TEST webhook when the Webhook URL is registered.
-      // We must verify the signature, but a test orderCode will not exist in our DB.
-      const verified = payOS.webhooks.verify(body);
+      // @payos/node v2 returns a Promise here.
+      const verified = await payOS.webhooks.verify(body);
 
-      const orderCode = String(verified.orderCode ?? '');
-      const amount = Number(verified.amount ?? 0);
-      const paymentLinkId = verified.paymentLinkId || null;
+      // In a valid webhook, verified contains the transaction data.
+      // Keep body.data as a safe fallback for compatibility/debugging.
+      const data = verified && typeof verified === 'object'
+        ? verified
+        : (body?.data || {});
 
-      // Only successful payment notifications should confirm a SpeakHub booking.
-      const success =
-        body?.success === true &&
-        String(body?.code ?? '') === '00' &&
-        String(verified?.code ?? '00') === '00';
+      const orderCode = String(
+        data?.orderCode ??
+        body?.data?.orderCode ??
+        ''
+      );
 
-      if (!success) {
-        // Valid signed webhook, but not a successful payment event.
-        // Acknowledge it so payOS does not retry / reject the URL.
-        return Response.json(
-          { success: true, acknowledged: true, payment_confirmed: false },
-          { status: 200 }
-        );
-      }
+      const amount = Number(
+        data?.amount ??
+        body?.data?.amount ??
+        0
+      );
 
-      // Find our payment first. This is also what makes payOS's webhook test pass:
-      // the signed test payload has no matching provider_order_code in SpeakHub.
+      const paymentLinkId =
+        data?.paymentLinkId ??
+        body?.data?.paymentLinkId ??
+        null;
+
+      console.log('payOS webhook verified', {
+        orderCode,
+        amount,
+        paymentLinkId,
+        bodyCode: body?.code,
+        bodySuccess: body?.success
+      });
+
+      // payOS sends a signed sample webhook while registering the URL.
+      // If no matching SpeakHub payment exists, acknowledge with 200.
       const { data: payment, error: lookupError } = await supabase
         .from('payments')
-        .select('id,order_id,status')
+        .select('id,order_id,status,amount,provider_order_code')
         .eq('provider', 'PAYOS')
         .eq('provider_order_code', orderCode)
         .maybeSingle();
@@ -74,7 +84,30 @@ export default {
         );
       }
 
-      const { data, error } = await supabase.rpc('confirm_payos_payment', {
+      const isSuccessfulPayment =
+        body?.success === true &&
+        String(body?.code ?? '') === '00' &&
+        String(data?.code ?? body?.data?.code ?? '') === '00';
+
+      if (!isSuccessfulPayment) {
+        console.log('payOS webhook acknowledged; not a successful payment event', {
+          orderCode,
+          code: body?.code,
+          dataCode: data?.code ?? body?.data?.code
+        });
+
+        return Response.json(
+          {
+            success: true,
+            acknowledged: true,
+            payment_confirmed: false,
+            reason: 'NOT_SUCCESS_EVENT'
+          },
+          { status: 200 }
+        );
+      }
+
+      const { data: result, error } = await supabase.rpc('confirm_payos_payment', {
         p_provider_order_code: orderCode,
         p_amount: amount,
         p_provider_payment_link_id: paymentLinkId,
@@ -83,19 +116,29 @@ export default {
 
       if (error) throw error;
 
+      console.log('SpeakHub payment confirmed', {
+        orderCode,
+        amount,
+        paymentLinkId,
+        result
+      });
+
       return Response.json(
         {
           success: true,
           acknowledged: true,
           payment_confirmed: true,
-          result: data
+          result
         },
         { status: 200 }
       );
     } catch (err) {
-      console.error('payOS webhook rejected', err);
+      console.error('payOS webhook rejected', {
+        message: String(err?.message || err),
+        code: err?.code || null,
+        details: err?.details || null
+      });
 
-      // 400 only for an actually invalid/unverifiable webhook.
       return Response.json(
         {
           success: false,
