@@ -1147,6 +1147,11 @@ const state={
   realUpcoming:[],
   realCompleted:[],
   realPaidLessons:[],
+  rescheduleBooking:null,
+  rescheduleSessions:[],
+  rescheduleYear:null,
+  rescheduleMonth:null,
+  reschedulePickSession:null,
   placementDone:false,
   currentCheckoutStep:0,
   loginReturn:'history'
@@ -1879,93 +1884,56 @@ function stopPaymentPolling(){
 }
 
 function startPaymentPolling(orderId,token){
-  let pollCount=0;
-
   const check=async()=>{
     try{
-      pollCount++;
-
-      const statusUrl=`/api/orders/status?order_id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(token)}`;
-      const res=await fetch(statusUrl,{cache:'no-store'});
+      const res=await fetch(`/api/orders/status?order_id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(token)}`);
       const data=await res.json();
+      if(!res.ok)return;
 
-      if(!res.ok){
-        console.warn('order status failed',data);
-        return;
-      }
-
-      let order=data.order||{};
+      const order=data.order;
       const box=document.getElementById('paymentStatusBox');
-      const paymentStatus=String(order.payment_status||'').toUpperCase();
-      const orderStatus=String(order.order_status||'').toUpperCase();
 
-      if(paymentStatus==='PAID' && orderStatus==='CONFIRMED'){
+      if(order.payment_status==='PAID' && order.order_status==='CONFIRMED'){
         stopPaymentPolling();
         showRealPaymentSuccess(order);
         return;
       }
 
-      if(paymentStatus==='EXPIRED' || orderStatus==='CANCELLED'){
-        stopPaymentPolling();
-        if(box) box.innerHTML=`<b>⌛ Đơn đã hết hạn</b><div class="tiny">Chỗ giữ tạm đã được giải phóng. Vui lòng tạo booking mới.</div>`;
-        return;
-      }
-
-      // While the order is not confirmed, ask the server to reconcile with PayOS.
-      // Run immediately on the first poll, then every ~5 seconds.
-      if(pollCount===1 || pollCount%2===0){
+      if(order.payment_status==='PENDING' && order.order_status==='PENDING'){
         try{
-          console.log('SpeakHub: reconciling PayOS order',orderId);
-
           const reconcileRes=await fetch('/api/payos/reconcile',{
             method:'POST',
-            headers:{
-              'Content-Type':'application/json',
-              'Accept':'application/json'
-            },
-            cache:'no-store',
+            headers:{'Content-Type':'application/json'},
             body:JSON.stringify({
               order_id:orderId,
               checkout_token:token
             })
           });
+          const reconcileData=await reconcileRes.json();
 
-          const reconcileData=await reconcileRes.json().catch(()=>({}));
-          console.log('SpeakHub: reconcile response',reconcileRes.status,reconcileData);
+          if(reconcileRes.ok && reconcileData?.payment_confirmed){
+            const statusRes=await fetch(`/api/orders/status?order_id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(token)}`);
+            const statusData=await statusRes.json();
 
-          // Always reload SpeakHub order after a successful reconcile request.
-          // The backend remains the source of truth.
-          if(reconcileRes.ok){
-            const statusRes=await fetch(statusUrl,{cache:'no-store'});
-            const statusData=await statusRes.json().catch(()=>({}));
-
-            if(statusRes.ok && statusData?.order){
-              order=statusData.order;
-              const newPaymentStatus=String(order.payment_status||'').toUpperCase();
-              const newOrderStatus=String(order.order_status||'').toUpperCase();
-
-              if(newPaymentStatus==='PAID' && newOrderStatus==='CONFIRMED'){
-                stopPaymentPolling();
-                showRealPaymentSuccess(order);
-                return;
-              }
+            if(statusRes.ok && statusData?.order?.payment_status==='PAID'){
+              stopPaymentPolling();
+              showRealPaymentSuccess(statusData.order);
+              return;
             }
-          }else{
-            console.warn('reconcile failed',reconcileData);
           }
         }catch(reconcileErr){
           console.warn('reconcile polling',reconcileErr);
         }
       }
 
-      if(box){
-        box.innerHTML=`<b>⌛ Đang chờ thanh toán...</b><div class="tiny">Sau khi ngân hàng ghi nhận giao dịch, hệ thống sẽ tự xác nhận booking.</div>`;
+      if(order.payment_status==='EXPIRED' || order.order_status==='CANCELLED'){
+        stopPaymentPolling();
+        if(box) box.innerHTML=`<b>⌛ Đơn đã hết hạn</b><div class="tiny">Chỗ giữ tạm đã được giải phóng. Vui lòng tạo booking mới.</div>`;
       }
     }catch(e){
       console.warn('payment polling',e);
     }
   };
-
   check();
   state.paymentPollTimer=setInterval(check,2500);
 }
@@ -2217,12 +2185,12 @@ function confirmedBookingCard(x,i,showReschedule=true){
     <div class="lesson-actionline">
       <span class="room room-clean">${room.name==='Garden'?'🌿':'🚪'} ${room.name||'Đang cập nhật phòng'}</span>
       ${showReschedule && remaining>0
-        ? `<button class="btn secondary small" onclick="alert('Module đổi ca thật sẽ nối DB ở bước tiếp theo.')">Đổi ca</button><span class="tiny">Còn ${remaining} lượt đổi</span>`
+        ? `<button class="btn secondary small" onclick="openRealReschedule('${x.id}')">Đổi ca</button><span class="tiny">Còn ${remaining} lượt đổi</span>`
         : ''}
     </div>
 
     ${s.topic_storage_path
-      ? `<button class="topic ready topic-clean" onclick="alert('Topic đã có trên hệ thống. Bước kế tiếp sẽ nối signed URL từ Supabase Storage.')">📄 Xem topic</button>`
+      ? `<button class="topic ready topic-clean" onclick="openRealTopic('${x.id}')">📄 Xem topic</button>`
       : `<div class="topic pending topic-clean">⏳ Topic đang chuẩn bị</div>`}
   </div>`;
 }
@@ -2330,213 +2298,246 @@ function completedLessonsHTML(){
 
 function rescheduleAllowance(n){return n<4?1:(n<=7?2:3)}
 
-function openReschedule(i){
-  const arr=ensurePaidLessons();
-  const x=arr[i];
-  const allowance=rescheduleAllowance(arr.length);
-  const used=state.rescheduleUsedTotal||0;
 
-  if(used>=allowance){
-    alert(`Bạn đã sử dụng hết ${allowance} lượt đổi của toàn bộ booking hiện tại.`);
-    return;
+function currentCustomerCredentials(){
+  return {
+    customerId:localStorage.getItem('speakhub_customer_id')||'',
+    token:localStorage.getItem('speakhub_customer_token')||''
+  };
+}
+
+function findRealBookingById(bookingId){
+  return [...(state.realUpcoming||[]),...(state.realCompleted||[])]
+    .find(x=>String(x.id)===String(bookingId)) || null;
+}
+
+function monthRange(year,month){
+  const from=`${year}-${String(month).padStart(2,'0')}-01`;
+  const last=new Date(year,month,0).getDate();
+  const to=`${year}-${String(month).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
+  return {from,to};
+}
+
+async function loadRescheduleMonth(){
+  const booking=state.rescheduleBooking;
+  if(!booking)return;
+
+  const programCode=booking.class_sessions?.programs?.code||'';
+  const {from,to}=monthRange(state.rescheduleYear,state.rescheduleMonth);
+
+  const res=await fetch(`/api/sessions?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&program_code=${encodeURIComponent(programCode)}`,{cache:'no-store'});
+  const data=await res.json();
+  if(!res.ok) throw new Error(data?.error||'Không tải được lịch đổi ca');
+
+  state.rescheduleSessions=(data.sessions||[])
+    .filter(s=>String(s.session_id)!==String(booking.class_sessions?.id))
+    .filter(s=>Number(s.available_seats)>0);
+}
+
+function rescheduleSessionsForDay(day){
+  const d=`${state.rescheduleYear}-${String(state.rescheduleMonth).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  return (state.rescheduleSessions||[]).filter(s=>s.session_date===d);
+}
+
+async function openRealReschedule(bookingId){
+  const booking=findRealBookingById(bookingId);
+  if(!booking){alert('Không tìm thấy booking.');return}
+
+  state.rescheduleBooking=booking;
+  state.reschedulePickSession=null;
+
+  const now=new Date();
+  state.rescheduleYear=now.getFullYear();
+  state.rescheduleMonth=now.getMonth()+1;
+
+  try{
+    await loadRescheduleMonth();
+    renderRealReschedule();
+  }catch(err){
+    console.error(err);
+    alert('Không tải được lịch đổi ca.');
   }
+}
 
-  state.rescheduleIndex=i;
-  state.reschedulePick=null;
-  let weekdays=['T2','T3','T4','T5','T6','T7','CN'];
-  let days=weekdays.map(w=>`<div class="dow">${w}</div>`).join('');
-  for(let j=0;j<5;j++) days+=`<div class="day mutedday"></div>`;
-  dates.forEach(d=>{
-    const isPast=d<8;
-    const lines=isPast?'':(sampleSlots[d]||[]).map(t=>{
-      const cls=t.startsWith('09:')?'S':(t.startsWith('15:')||t.startsWith('14:')?'C':'T');
-      return `<span class="slotline" data-slot-short="${cls}">${t}</span>`;
-    }).join('');
-    const current=!isPast && d===x.day ? 'selected' : '';
-    days+=`<div class="day ${isPast?'past':''} ${current}" ${isPast?'':`onclick="openRescheduleDay(${d})"`}><div class="daynum">${d}</div>${lines}</div>`;
-  });
+async function changeRescheduleMonth(delta){
+  let m=state.rescheduleMonth+delta;
+  let y=state.rescheduleYear;
+  while(m>12){m-=12;y++}
+  while(m<1){m+=12;y--}
+
+  const now=new Date();
+  const currentKey=now.getFullYear()*12+(now.getMonth()+1);
+  const nextKey=y*12+m;
+  if(nextKey<currentKey)return;
+
+  state.rescheduleYear=y;
+  state.rescheduleMonth=m;
+  state.reschedulePickSession=null;
+
+  const rv=document.getElementById('routeView');
+  rv.innerHTML=`<section class="card" style="padding:30px;text-align:center"><b>Đang tải lịch đổi ca...</b></section>`;
+  await loadRescheduleMonth();
+  renderRealReschedule();
+}
+
+function renderRealReschedule(){
+  const booking=state.rescheduleBooking;
+  const s=booking.class_sessions||{};
+  const order=booking.orders||{};
+  const remaining=Number(booking.remaining_reschedules||0);
+
+  setTitle('Đổi ca học','Chọn một session khác cùng chương trình');
+
+  const weekdays=['T2','T3','T4','T5','T6','T7','CN'];
+  let grid=weekdays.map(w=>`<div class="dow">${w}</div>`).join('');
+
+  const first=new Date(state.rescheduleYear,state.rescheduleMonth-1,1);
+  const mondayIndex=(first.getDay()+6)%7;
+  for(let i=0;i<mondayIndex;i++) grid+=`<div class="day mutedday"></div>`;
+
+  const total=new Date(state.rescheduleYear,state.rescheduleMonth,0).getDate();
+  for(let d=1;d<=total;d++){
+    const sessions=rescheduleSessionsForDay(d);
+    const clickable=sessions.length>0;
+    const lines=sessions.map(x=>`<span class="slotline" data-slot-short="${slotShortFromPeriod(x.session_period)}">${shortTime(x.starts_at)}</span>`).join('');
+    grid+=`<div class="day ${clickable?'':'mutedday'}" ${clickable?`onclick="openRealRescheduleDay(${d})"`:''}>
+      <div class="daynum">${d}</div>${lines}
+    </div>`;
+  }
 
   document.getElementById('routeView').innerHTML=`<div class="checkout">
     <section class="card">
-      <div class="badge purple">Đổi ca học</div>
-      <h2 style="margin-bottom:6px">${x.className}</h2>
-      <div class="muted">Ca hiện tại: ${String(x.day).padStart(2,'0')}/08 · ${x.slot} · ${slotTime(x.slot)}</div>
+      <div class="badge purple">Đổi ca thật</div>
+      <h2 style="margin-bottom:6px">${s.programs?.name||''}</h2>
+      <div class="muted">Ca hiện tại: ${s.session_date||''} · ${shortTime(s.starts_at)}–${shortTime(s.ends_at)} · ${s.rooms?.name||''}</div>
       <div class="reschedule-box">
-        <b>Quy định đổi lịch</b><br>
-        <span class="tiny">• Dưới 4 buổi: 1 lần đổi cho toàn bộ booking</span><br>
-        <span class="tiny">• 4–7 buổi: 2 lần đổi cho toàn bộ booking</span><br>
-        <span class="tiny">• Từ 8 buổi trở lên: 3 lần đổi cho toàn bộ booking</span><br>
-        <span class="tiny">• Chỉ đổi trước ít nhất 24 giờ so với thời gian học</span><br>
-        <span class="tiny">• Đã dùng ${used}/${allowance} lượt · còn ${allowance-used} lượt</span>
+        <b>Còn ${remaining} lượt đổi</b>
+        <div class="tiny" style="margin-top:4px">Chỉ đổi trước ít nhất 24 giờ · cùng chương trình · ca mới phải còn chỗ.</div>
       </div>
+      <button class="btn secondary" style="margin-top:12px" onclick="go('history')">← Quay lại lịch học</button>
     </section>
+
     <section class="card calendar-card">
-      <div class="calendar-top"><div><h2>Chọn ngày mới</h2><div class="tiny">Tháng 8/2026</div></div></div>
-      <div class="calendar-grid">${days}</div>
+      <div class="calendar-top">
+        <button class="filter" onclick="changeRescheduleMonth(-1)">‹</button>
+        <div style="text-align:center">
+          <h2>Tháng ${state.rescheduleMonth}/${state.rescheduleYear}</h2>
+          <div class="tiny">${s.programs?.name||''} · chỉ hiện ca còn chỗ</div>
+        </div>
+        <button class="filter" onclick="changeRescheduleMonth(1)">›</button>
+      </div>
+      <div class="calendar-grid">${grid}</div>
     </section>
-    <section class="card" id="rescheduleChoice" style="display:none"></section>
-  </div>`
+
+    <section class="card" id="realRescheduleChoice" style="display:none"></section>
+  </div>`;
 }
 
-
-function openRescheduleDay(day){
-  if(day<8)return;
-  state.rescheduleDay=day;
-  const box=document.getElementById('rescheduleChoice');
+function openRealRescheduleDay(day){
+  const sessions=rescheduleSessionsForDay(day);
+  const box=document.getElementById('realRescheduleChoice');
   box.style.display='block';
-  box.innerHTML=`<h3>Ngày ${String(day).padStart(2,'0')}/08/2026</h3>
+
+  box.innerHTML=`<h3>Ngày ${String(day).padStart(2,'0')}/${String(state.rescheduleMonth).padStart(2,'0')}/${state.rescheduleYear}</h3>
     <p class="tiny">Chọn ca mới</p>
-    <div class="slotchoice" onclick="pickReschedule(this,'Sáng')"><div><b>☀️ Sáng</b><div class="tiny">09:00 – 10:30</div></div><b style="color:var(--gd)">Còn 6 chỗ</b></div>
-    <div class="slotchoice" onclick="pickReschedule(this,'Chiều')"><div><b>🌤️ Chiều</b><div class="tiny">15:00 – 16:30</div></div><b style="color:var(--gd)">Còn 4 chỗ</b></div>
-    <div class="slotchoice" onclick="pickReschedule(this,'Tối')"><div><b>🌙 Tối</b><div class="tiny">19:30 – 21:00</div></div><b style="color:var(--gd)">Còn 3 chỗ</b></div>
-    <button class="btn primary" style="width:100%;margin-top:10px" onclick="confirmReschedule()">Xác nhận đổi ca</button>`;
+    ${sessions.map(s=>{
+      const teacher=s.teacher_name?`${s.teacher_name}${s.teacher_country?` (${s.teacher_country})`:''}`:'Đang cập nhật GV';
+      return `<div class="slotchoice" onclick="pickRealReschedule(this,'${s.session_id}')">
+        <div>
+          <b>${slotIconFromPeriod(s.session_period)} ${slotLabelFromPeriod(s.session_period)}</b>
+          <div class="tiny">${shortTime(s.starts_at)} – ${shortTime(s.ends_at)} · ${s.room_name||''}</div>
+          <div class="tiny">${teacher}</div>
+        </div>
+        <b style="color:var(--gd)">Còn ${s.available_seats} chỗ</b>
+      </div>`;
+    }).join('')}
+    <button class="btn primary" style="width:100%;margin-top:10px" onclick="confirmRealReschedule()">Xác nhận đổi ca</button>`;
+
   box.scrollIntoView({behavior:'smooth',block:'center'});
 }
-function pickReschedule(el,slot){
-  document.querySelectorAll('#rescheduleChoice .slotchoice').forEach(x=>x.classList.remove('on'));
+
+function pickRealReschedule(el,sessionId){
+  document.querySelectorAll('#realRescheduleChoice .slotchoice').forEach(x=>x.classList.remove('on'));
   el.classList.add('on');
-  state.reschedulePick=slot;
+  state.reschedulePickSession=sessionId;
 }
-function confirmReschedule(){
-  if(!state.reschedulePick){alert('Vui lòng chọn ca mới');return}
-  const arr=ensurePaidLessons();
-  const idx=state.rescheduleIndex;
-  const item=arr[idx];
-  const allowance=rescheduleAllowance(arr.length);
-  const used=state.rescheduleUsedTotal||0;
 
-  if(used>=allowance){
-    alert(`Bạn đã sử dụng hết ${allowance} lượt đổi của toàn bộ booking hiện tại.`);
-    return;
+async function confirmRealReschedule(){
+  if(!state.reschedulePickSession){alert('Vui lòng chọn ca mới');return}
+
+  const {customerId,token}=currentCustomerCredentials();
+  if(!customerId||!token){alert('Thiếu thông tin đăng nhập trên thiết bị.');return}
+
+  const btn=event?.target;
+  if(btn){btn.disabled=true;btn.innerText='Đang đổi ca...'}
+
+  try{
+    const res=await fetch('/api/bookings/reschedule',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        customer_id:customerId,
+        token,
+        booking_id:state.rescheduleBooking.id,
+        new_session_id:state.reschedulePickSession
+      })
+    });
+
+    const data=await res.json();
+    if(!res.ok) throw new Error(data?.error||'RESCHEDULE_FAILED');
+
+    alert('Đổi ca thành công.');
+    state.rescheduleBooking=null;
+    state.reschedulePickSession=null;
+    await loadRealHistory();
+    go('history');
+  }catch(err){
+    console.error(err);
+    const map={
+      RESCHEDULE_LIMIT_REACHED:'Bạn đã dùng hết lượt đổi.',
+      RESCHEDULE_TOO_LATE:'Chỉ được đổi trước ít nhất 24 giờ.',
+      NEW_SESSION_FULL:'Ca mới vừa hết chỗ.',
+      NEW_SESSION_NOT_OPEN:'Ca mới không còn mở.',
+      PROGRAM_MISMATCH:'Chỉ được đổi sang ca cùng chương trình.',
+      DUPLICATE_BOOKING:'Bạn đã có booking ở ca mới.',
+      BOOKING_NOT_FOUND:'Không tìm thấy booking.'
+    };
+    alert(map[String(err.message)]||'Không đổi được ca. Vui lòng thử lại.');
+  }finally{
+    if(btn){btn.disabled=false;btn.innerText='Xác nhận đổi ca'}
   }
-  if(item.day===state.rescheduleDay && item.slot===state.reschedulePick){
-    alert('Bạn đang chọn đúng ca hiện tại. Vui lòng chọn ngày hoặc ca khác.');
-    return;
+}
+
+async function openRealTopic(bookingId){
+  const {customerId,token}=currentCustomerCredentials();
+  if(!customerId||!token){alert('Thiếu thông tin học viên trên thiết bị.');return}
+
+  try{
+    const res=await fetch(`/api/topics/open?customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}&booking_id=${encodeURIComponent(bookingId)}`,{cache:'no-store'});
+    const data=await res.json();
+
+    if(!res.ok){
+      const map={
+        TOPIC_NOT_READY:'Topic của buổi này chưa được upload.',
+        BOOKING_NOT_ELIGIBLE:'Bạn chưa có booking đã thanh toán cho buổi này.'
+      };
+      throw new Error(map[data?.error]||'Không mở được topic.');
+    }
+
+    const modal=document.getElementById('pdfModal');
+    const frame=document.getElementById('pdfFrame');
+    const title=document.getElementById('pdfTitle');
+
+    if(title) title.innerText=data.title||'Topic SpeakHub';
+    if(frame) frame.src=data.signed_url;
+    if(modal) modal.classList.add('show');
+  }catch(err){
+    console.error(err);
+    alert(String(err.message||err));
   }
-
-  item.day=state.rescheduleDay;
-  item.slot=state.reschedulePick;
-  state.rescheduleUsedTotal=used+1;
-
-  localStorage.setItem('speakhub_paid_lessons', JSON.stringify(arr));
-  localStorage.setItem('speakhub_reschedule_used_total', String(state.rescheduleUsedTotal));
-
-  alert(`Đổi ca thành công sang ${String(item.day).padStart(2,'0')}/08 · ${item.slot} · ${slotTime(item.slot)}. Bạn còn ${allowance-state.rescheduleUsedTotal} lượt đổi.`);
-  go('history');
 }
 
 
-
-function getTodayKey(){
-  const d=new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-function getCommunityPostQuota(){
-  const key='speakhub_community_posts_'+getTodayKey();
-  return parseInt(localStorage.getItem(key)||'0',10);
-}
-function incrementCommunityPostQuota(){
-  const key='speakhub_community_posts_'+getTodayKey();
-  const n=getCommunityPostQuota()+1;
-  localStorage.setItem(key,String(n));
-  return n;
-}
-
-function supportFooterHTML(){
-  return `<section class="card support-footer"><div><b>Cần hỗ trợ nhanh?</b><div class="tiny">Liên hệ SpeakHub qua Zalo · 0377 125 247</div></div><a class="btn zalo" href="https://zalo.me/0377125247" target="_blank" rel="noopener">Mở Zalo</a></section>
-  <section class="card support-footer" style="margin-top:10px"><div><b>Tham gia cộng đồng Zalo của CLB</b><div class="tiny">Nhận thông báo, trao đổi và kết nối cùng học viên SpeakHub.</div></div><a class="btn zalo" href="https://zalo.me/g/gueiri581" target="_blank" rel="noopener">Tham gia nhóm</a></section>`;
-}
-function sendChat(){
-  const input=document.getElementById('chatText');
-  if(!input || !input.value.trim()) return;
-  state.chatMessages=state.chatMessages||[];
-  state.chatMessages.push({me:true,text:input.value.trim()});
-  input.value='';
-  renderChat(document.getElementById('routeView'));
-  setTimeout(()=>{
-    state.chatMessages.push({me:false,text:'SpeakHub đã nhận được tin nhắn. Nhân viên hỗ trợ sẽ phản hồi bạn tại đây.'});
-    if(state.route==='chat') renderChat(document.getElementById('routeView'));
-  },400);
-}
-function toggleCommunityForm(){
-  const f=document.getElementById('communityForm'); if(f) f.classList.toggle('hidden');
-}
-function normalizeCommunity(){
-  if(!state.communityPosts) state.communityPosts=[
-    {tag:'Thảo luận',title:'Làm sao để tự tin hơn khi nói tiếng Anh với người lạ?',author:'Minh Anh',likes:96,liked:false,comments:[
-      {author:'Khánh Linh',time:'18:42',text:'Mình hay bắt đầu bằng câu hỏi đơn giản để đỡ áp lực.'},
-      {author:'Hoàng Nam',time:'18:50',text:'Mình thấy luyện theo topic trước cũng đỡ bí hơn.'},
-      {author:'Thuỳ Anh',time:'19:02',text:'Đi club đều giúp phản xạ nhanh lên rõ.'},
-      {author:'Long',time:'19:08',text:'Quan trọng là đừng cố nói hoàn hảo quá.'}
-    ]},
-    {tag:'Hỏi đáp',title:'Phân biệt cách dùng “in”, “on”, “at” trong thời gian?',author:'Hoàng Nam',likes:42,liked:false,comments:[
-      {author:'Minh',time:'17:15',text:'Có thể làm một topic riêng về cái này á.'}
-    ]},
-    {tag:'Chia sẻ kinh nghiệm',title:'Có cách nào luyện speaking mỗi ngày mà không bị chán?',author:'Khánh Linh',likes:88,liked:false,comments:[
-      {author:'An',time:'16:40',text:'Mình đổi topic mỗi ngày, khá hiệu quả.'},
-      {author:'Huy',time:'17:03',text:'Shadowing 10 phút rồi free talk 10 phút.'}
-    ]}
-  ];
-  state.communityPosts.forEach(p=>{
-    if(typeof p.liked!=='boolean') p.liked=false;
-    p.comments=(p.comments||[]).map(c=>typeof c==='string'?{author:'Học viên',time:'vừa xong',text:c}:c);
-  });
-}
-function communityPostsHTML(){
-  normalizeCommunity();
-  return state.communityPosts.map((p,i)=>{
-    const recent=[...(p.comments||[])].slice(-3).reverse();
-    return `<div class="post">
-      <span class="tag">${p.tag}</span><h3 style="cursor:pointer" onclick="openCommunityPost(${i})">${p.title}</h3>
-      <div class="tiny">${p.author} · 👍 ${p.likes} · 💬 ${p.comments.length}</div>
-      <div style="margin-top:10px"><button class="btn ${p.liked?'primary':'ghost'} small" onclick="likePost(${i})">${p.liked?'👍 Đã thích':'👍 Hữu ích'}</button> <button class="btn ghost small" onclick="openCommunityPost(${i})">Xem bài viết</button></div>
-      ${recent.map(c=>`<div class="comment"><div class="comment-head"><b>${c.author}</b><span>${c.time}</span></div><div>${c.text}</div></div>`).join('')}
-      ${p.comments.length>3?`<div class="tiny" style="margin-top:7px">Chỉ hiển thị 3 bình luận gần nhất · <b onclick="openCommunityPost(${i})" style="color:var(--g);cursor:pointer">Xem tất cả ${p.comments.length} bình luận</b></div>`:''}
-      <div class="commentbox"><input id="comment${i}" placeholder="Viết bình luận..."><button class="btn secondary small" onclick="addComment(${i})">Gửi</button></div>
-    </div>`
-  }).join('');
-}
-function submitCommunityPost(){
-  const t=document.getElementById('postTitle'), tag=document.getElementById('postTag');
-  if(getCommunityPostQuota()>=3){
-    alert('Bạn đã đạt giới hạn 3 bài viết hôm nay.');
-    renderCommunity(document.getElementById('routeView'));
-    return;
-  }
-  if(!t.value.trim()) return;
-  normalizeCommunity();
-  state.communityPosts.unshift({tag:tag.value,title:t.value.trim(),author:state.firstTimeName||'Bạn',likes:0,liked:false,comments:[]});
-  incrementCommunityPostQuota();
-  renderCommunity(document.getElementById('routeView'));
-}
-function likePost(i){
-  normalizeCommunity();
-  const p=state.communityPosts[i];
-  p.liked=!p.liked;
-  p.likes=Math.max(0,p.likes+(p.liked?1:-1));
-  if(state.route==='postDetail') openCommunityPost(i); else renderCommunity(document.getElementById('routeView'));
-}
-function addComment(i){
-  normalizeCommunity();
-  const el=document.getElementById('comment'+i); if(!el||!el.value.trim())return;
-  const time=new Date().toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});
-  state.communityPosts[i].comments.push({author:state.firstTimeName||'Bạn',time,text:el.value.trim()});
-  if(state.route==='postDetail') openCommunityPost(i); else renderCommunity(document.getElementById('routeView'));
-}
-function openCommunityPost(i){
-  normalizeCommunity();
-  state.route='postDetail';
-  const p=state.communityPosts[i];
-  setTitle('Bài viết cộng đồng',p.tag);
-  document.getElementById('routeView').innerHTML=`<div class="checkout"><section class="card dash-card">
-    <button class="btn ghost small" onclick="go('community')">← Quay lại cộng đồng</button>
-    <h2>${p.title}</h2><div class="tiny">${p.author} · 👍 ${p.likes} · 💬 ${p.comments.length}</div>
-    <div style="margin:12px 0"><button class="btn ${p.liked?'primary':'ghost'} small" onclick="likePost(${i})">${p.liked?'👍 Đã thích':'👍 Hữu ích'}</button></div>
-    <h3>Bình luận</h3>
-    ${(p.comments||[]).map(c=>`<div class="comment"><div class="comment-head"><b>${c.author}</b><span>${c.time}</span></div><div>${c.text}</div></div>`).join('')||'<p class="tiny">Chưa có bình luận.</p>'}
-    <div class="commentbox"><input id="comment${i}" placeholder="Viết bình luận..."><button class="btn secondary small" onclick="addComment(${i})">Gửi</button></div>
-  </section></div>`
-}
 function renderCommunity(rv){
   setTitle('Cộng đồng SpeakHub','Thảo luận · Hỏi đáp · Chia sẻ kinh nghiệm');
   normalizeCommunity();
