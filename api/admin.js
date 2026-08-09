@@ -89,7 +89,7 @@ async function handleSessions(request){
       supabase.from('programs').select('id,code,name').order('name'),
       supabase.from('rooms').select('id,name').order('name'),
       supabase.from('class_sessions').select(`
-        id,session_date,session_period,starts_at,ends_at,capacity,status,
+        id,session_date,session_period,starts_at,ends_at,capacity,status,is_recurring,
         teacher_name,teacher_country,topic_title,topic_storage_path,
         programs(name),rooms(name)
       `).order('session_date',{ascending:false}).limit(200)
@@ -177,7 +177,8 @@ async function handleSessions(request){
       teacher_name:b.teacher_name||null,
       teacher_country:b.teacher_country||null,
       capacity:Number(b.capacity||10),
-      status:'OPEN'
+      status:'OPEN',
+      is_recurring:sessionType==='RECURRING'
     }));
 
     // Avoid accidental duplicates when admin clicks twice.
