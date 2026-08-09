@@ -1414,6 +1414,150 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   vertical-align:top;
 }
 
+
+/* ===== V6 sidebar badges + richer test UI ===== */
+.side-nav button{
+  display:flex !important;
+  align-items:center !important;
+  gap:7px !important;
+  white-space:nowrap !important;
+  min-width:0;
+}
+.side-nav button .badge,
+.side-nav button .count{
+  margin-left:auto !important;
+  flex:0 0 auto !important;
+  position:static !important;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:20px;
+  height:20px;
+  padding:0 6px;
+  border-radius:999px;
+  line-height:1;
+}
+.status-zero{
+  background:#dfe6e3 !important;
+  color:#65736e !important;
+}
+.test-skill-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin-top:14px;
+}
+.test-skill{
+  border:1px solid var(--line);
+  background:#fbfdfc;
+  border-radius:13px;
+  padding:12px;
+}
+.test-skill-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  font-size:12px;
+  font-weight:900;
+}
+.test-bar{
+  height:8px;
+  background:#e8efec;
+  border-radius:999px;
+  overflow:hidden;
+  margin-top:8px;
+}
+.test-bar>span{
+  display:block;
+  height:100%;
+  background:var(--g);
+  border-radius:999px;
+}
+.test-feedback{
+  margin-top:12px;
+  display:grid;
+  gap:8px;
+}
+.test-feedback-row{
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:10px 11px;
+  background:#fff;
+}
+.test-feedback-row .bad{
+  color:#b8473a;
+  text-decoration:line-through;
+}
+.test-feedback-row .good{
+  color:var(--gd);
+  font-weight:900;
+}
+.test-trend{
+  display:flex;
+  align-items:flex-end;
+  gap:8px;
+  height:110px;
+  padding:10px 4px 0;
+}
+.test-trend-col{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
+  align-items:center;
+  gap:5px;
+  height:100%;
+}
+.test-trend-bar{
+  width:72%;
+  max-width:36px;
+  min-height:8px;
+  background:linear-gradient(180deg,#2f9a76,#0d7a59);
+  border-radius:8px 8px 3px 3px;
+}
+.test-trend-col small{
+  font-size:9px;
+  color:var(--muted);
+}
+.landing-trust{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:12px;
+}
+.landing-trust .card{
+  text-align:center;
+  padding:18px 14px;
+}
+.landing-trust .big{
+  font-size:24px;
+  margin-bottom:7px;
+}
+.landing-how{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:12px;
+}
+.landing-how .card{
+  padding:18px;
+}
+.landing-step-no{
+  width:30px;
+  height:30px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  background:var(--gs);
+  color:var(--gd);
+  font-weight:900;
+  margin-bottom:9px;
+}
+@media(max-width:760px){
+  .test-skill-grid{grid-template-columns:1fr 1fr}
+  .landing-trust,.landing-how{grid-template-columns:1fr}
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
@@ -1432,6 +1576,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB NAV + MY UPCOMING CLASSES FIX V5 2026-08-09 -->
 <!-- SPEAKHUB MENU POLISH + SCHEDULE COUNT V5.1 -->
 <!-- SPEAKHUB AUTO STATUS BADGES + WEB OVERALL SCHEDULE V5.2 -->
+<!-- SPEAKHUB V6 UX + TEST + DUPLICATE BOOKING -->
 </head>
 <body>
 
@@ -1453,7 +1598,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
         <p class="lead">Môi trường nói 100% tiếng Anh cùng giáo viên quốc tế để bạn tự tin giao tiếp tự nhiên mỗi ngày.</p>
         <div class="hero-actions">
           <button class="btn primary" onclick="startBooking()">📅 Đặt chỗ học ngay</button>
-          <button class="btn secondary2" onclick="startPlacement()">🧪 Kiểm tra xếp lớp ›</button>
+          <button class="btn secondary2" onclick="startPlacement()">📝 Kiểm tra xếp lớp ›</button>
           <button class="btn tertiary schedule-cta" onclick="viewScheduleEntry()">Lịch học tổng thể</button>
         </div>
         <div class="tiny">👥 Hơn 700 học viên đã và đang học cùng SpeakHub</div>
@@ -1568,6 +1713,31 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
     <button class="btn secondary" onclick="openCommunityFromLanding()">Tham gia ngay ›</button>
   </div></section>
 
+
+  <section class="section"><div class="container">
+    <div style="text-align:center;margin-bottom:18px">
+      <h2>Học đơn giản hơn. Nói nhiều hơn.</h2>
+      <p class="muted">SpeakHub tập trung vào trải nghiệm thực tế: chọn lịch, gặp giáo viên quốc tế và luyện nói ngay.</p>
+    </div>
+
+    <div class="landing-trust">
+      <div class="card"><div class="big">📅</div><b>Lịch học linh hoạt</b><p class="tiny">Tự chọn buổi phù hợp, xem chỗ trống và đặt trực tiếp trên SpeakHub.</p></div>
+      <div class="card"><div class="big">🌍</div><b>Giáo viên quốc tế</b><p class="tiny">Luyện phản xạ trong môi trường nói tiếng Anh thật, thân thiện và tự nhiên.</p></div>
+      <div class="card"><div class="big">📈</div><b>Theo dõi tiến bộ</b><p class="tiny">Sau mỗi buổi học, Progress Test giúp bạn thấy rõ điểm mạnh và điểm cần cải thiện.</p></div>
+    </div>
+  </div></section>
+
+  <section class="section"><div class="container">
+    <div style="text-align:center;margin-bottom:18px">
+      <h2>Bắt đầu chỉ trong 3 bước</h2>
+    </div>
+    <div class="landing-how">
+      <div class="card"><span class="landing-step-no">1</span><b>Chọn lớp & lịch</b><p class="tiny">Xem lịch tổng thể hoặc chọn trực tiếp session phù hợp.</p></div>
+      <div class="card"><span class="landing-step-no">2</span><b>Đặt chỗ</b><p class="tiny">Quét QR thanh toán và giữ chỗ ngay trên hệ thống.</p></div>
+      <div class="card"><span class="landing-step-no">3</span><b>Meet & Speak</b><p class="tiny">Đến lớp, nói tiếng Anh và nhận feedback để cải thiện qua từng buổi.</p></div>
+    </div>
+  </div></section>
+
   <div class="container footercta"><h2>Sẵn sàng nói tiếng Anh tự tin hơn?</h2><p>Chọn lịch phù hợp và bắt đầu ngay.</p><button class="btn" style="background:#fff;color:var(--gd)" onclick="startBooking()">Đặt chỗ học ngay →</button></div>
 </main>
 </div>
@@ -1579,7 +1749,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
     <div class="logo side-logo">Speak<span>Hub</span>💬</div>
     <div class="side-nav">
       <button data-route="dashboard" onclick="go('dashboard')">🏠 Trang chủ</button>
-      <button data-route="placement" onclick="go('placement')">🧪 Kiểm tra phân lớp</button>
+      <button data-route="placement" onclick="go('placement')">📝 Kiểm tra xếp lớp</button>
       <button data-route="weekly" onclick="go('weekly')">📈 Test <span id="testPendingBadge" class="badge" style="display:none">0</span></button>
       <button data-route="booking" onclick="go('booking')">📅 Đặt chỗ</button>
       <button data-route="history" onclick="go('history')">🕘 Lịch học của tôi <span id="myScheduleBadge" class="badge" style="display:none">0</span></button>
@@ -1988,15 +2158,44 @@ function go(route){
 
 function progressEvaluationHTML(){
   return `<div class="card" style="margin-top:14px;padding:14px;box-shadow:none">
-    <b>AI đánh giá gần nhất</b>
-    <div style="display:grid;gap:10px;margin-top:12px">
-      <div><span class="badge green">↑ Speaking</span> <span class="tiny">Phản xạ tốt hơn, câu trả lời dài và tự nhiên hơn tuần trước.</span></div>
-      <div><span class="badge blue">↑ Fluency</span> <span class="tiny">Ít ngập ngừng hơn khi nói về chủ đề quen thuộc.</span></div>
-      <div><span class="badge orange">Cần cải thiện Pronunciation</span> <span class="tiny">Một số âm cuối và cụm âm vẫn chưa rõ.</span></div>
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+      <b>Phân tích chi tiết</b>
+      <span class="badge blue">Demo giao diện AI feedback</span>
     </div>
-    <div style="margin-top:13px;padding:12px;border-radius:12px;background:#fff8ef;border:1px solid #f3d0a4">
-      <b>🎯 Gợi ý luyện tuần này</b>
-      <p class="tiny" style="margin:7px 0 0">Tập trung âm <b>TH</b> trong “think / three” và âm <b>SH</b> trong “she / shopping”. Luyện chậm → rõ → sau đó tăng tốc độ.</p>
+
+    <div class="test-skill-grid">
+      ${[
+        ['Grammar',68],
+        ['Vocabulary',76],
+        ['Fluency',73],
+        ['Pronunciation',78]
+      ].map(([name,score])=>`<div class="test-skill">
+        <div class="test-skill-top"><span>${name}</span><span>${score}/100</span></div>
+        <div class="test-bar"><span style="width:${score}%"></span></div>
+      </div>`).join('')}
+    </div>
+
+    <div class="test-feedback">
+      <div class="test-feedback-row">
+        <b>Grammar</b>
+        <div class="tiny" style="margin-top:6px"><span class="bad">I am agree with this idea.</span> → <span class="good">I agree with this idea.</span></div>
+        <div class="tiny" style="margin-top:4px">“Agree” là động từ nên không dùng “am” phía trước.</div>
+      </div>
+
+      <div class="test-feedback-row">
+        <b>Sentence structure</b>
+        <div class="tiny" style="margin-top:6px"><span class="bad">He go to work every day.</span> → <span class="good">He goes to work every day.</span></div>
+        <div class="tiny" style="margin-top:4px">Chú ý chia động từ ngôi thứ ba số ít.</div>
+      </div>
+
+      <div class="test-feedback-row">
+        <b>Speaking focus</b>
+        <div class="tiny" style="margin-top:6px">Cố gắng nối ý bằng <b>because / however / for example</b> để câu trả lời dài và tự nhiên hơn.</div>
+      </div>
+    </div>
+
+    <div class="tiny" style="margin-top:10px;color:var(--muted)">
+      Khi nối chấm AI thật, các lỗi phía trên sẽ được thay bằng câu thực tế từ bài nói/bài test của học viên.
     </div>
   </div>`;
 }
@@ -2004,24 +2203,19 @@ function progressEvaluationHTML(){
 function progressChartHTML(){
   const scores=[54,60,66,71,72,75];
   const labels=['05/07','12/07','19/07','26/07','02/08','09/08'];
-  const min=45,max=80,w=600,h=150,padX=30,padY=18;
-  const pts=scores.map((s,i)=>{
-    const x=padX+i*((w-padX*2)/(scores.length-1));
-    const y=padY+(max-s)*((h-padY*2)/(max-min));
-    return {x,y,s};
-  });
-  const poly=pts.map(p=>`${p.x},${p.y}`).join(' ');
-  return `<div class="progress-chart">
-    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Biểu đồ tiến bộ">
-      <defs><linearGradient id="areaG" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#3b9a78" stop-opacity=".22"/><stop offset="100%" stop-color="#3b9a78" stop-opacity=".02"/></linearGradient></defs>
-      <line x1="${padX}" y1="${h-25}" x2="${w-padX}" y2="${h-25}" stroke="#dfe7e3" stroke-width="1"/>
-      <polygon points="${padX},${h-25} ${poly} ${w-padX},${h-25}" fill="url(#areaG)"/>
-      <polyline points="${poly}" fill="none" stroke="#0d7a59" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-      ${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="5" fill="#0d7a59"/><text x="${p.x}" y="${p.y-10}" text-anchor="middle" font-size="12" font-weight="800" fill="#183229">${p.s}</text>`).join('')}
-    </svg>
-    <div class="progress-axis">${labels.map((x,i)=>`<span>Tuần ${i+1}<br>${x}</span>`).join('')}</div>
-  </div>
-  <div class="progress-note"><span class="progress-pill">↑ +18 điểm từ tuần đầu</span><span class="tiny">Cập nhật sau mỗi Weekly Test</span></div>`;
+  return `<div style="margin-top:12px">
+    <div class="test-trend">
+      ${scores.map((score,i)=>`<div class="test-trend-col">
+        <b style="font-size:10px">${score}</b>
+        <div class="test-trend-bar" style="height:${Math.max(12,score)}%"></div>
+        <small>${labels[i]}</small>
+      </div>`).join('')}
+    </div>
+    <div class="progress-note">
+      <span class="progress-pill">↑ +21 điểm</span>
+      <span class="tiny">Xu hướng tiến bộ qua 6 bài test</span>
+    </div>
+  </div>`;
 }
 
 
@@ -2043,23 +2237,25 @@ function updateAccountStatusBadges(){
   const scheduleSide=document.getElementById('myScheduleBadge');
   if(scheduleSide){
     scheduleSide.textContent=String(upcomingCount);
-    scheduleSide.style.display=upcomingCount>0?'inline-flex':'none';
+    scheduleSide.style.display='inline-flex';
+    scheduleSide.classList.toggle('status-zero',upcomingCount===0);
   }
 
   const scheduleMobile=document.getElementById('mobileMyScheduleTab');
   if(scheduleMobile){
-    scheduleMobile.innerHTML=`📅${upcomingCount>0?`<span class="mobile-status-count">${upcomingCount}</span>`:''}<br>Lịch học`;
+    scheduleMobile.innerHTML=`📅<span class="mobile-status-count ${upcomingCount===0?'status-zero':''}">${upcomingCount}</span><br>Lịch học`;
   }
 
   const testSide=document.getElementById('testPendingBadge');
   if(testSide){
     testSide.textContent=String(testCount);
-    testSide.style.display=testCount>0?'inline-flex':'none';
+    testSide.style.display='inline-flex';
+    testSide.classList.toggle('status-zero',testCount===0);
   }
 
   const testMobile=document.getElementById('mobileTestTab');
   if(testMobile){
-    testMobile.innerHTML=`📈${testCount>0?`<span class="mobile-status-count">${testCount}</span>`:''}<br>Theo dõi`;
+    testMobile.innerHTML=`📈<span class="mobile-status-count ${testCount===0?'status-zero':''}">${testCount}</span><br>Theo dõi`;
   }
 }
 
@@ -2086,7 +2282,7 @@ function renderDashboard(rv){
           <div class="quick primary" onclick="go('booking')"><b>📅 Đặt chỗ học ngay</b><p class="tiny">Chọn thời gian phù hợp</p></div>
           <div class="quick" onclick="go('history')"><b>🗓️ Lịch học của tôi</b><p class="tiny">Các buổi đã book · sắp tới</p></div>
           <div class="quick" onclick="go('publicSchedule')"><b>📋 Lịch học tổng thể</b><p class="tiny">Xem tổng quan toàn bộ lớp</p></div>
-          <div class="quick" onclick="go('placement')"><b>🧪 Kiểm tra xếp lớp</b><p class="tiny">Tối đa 2 lần / tuần</p></div>
+          <div class="quick" onclick="go('placement')"><b>📝 Kiểm tra xếp lớp</b><p class="tiny">Tối đa 2 lần / tuần</p></div>
           <div class="quick" onclick="go('community')"><b>👥 Cộng đồng</b><p class="tiny">Kết nối · Chia sẻ · Học hỏi</p></div>
           <div class="quick" onclick="go('chat')"><b>💬 Chat SpeakHub</b><p class="tiny">Hỗ trợ trực tiếp</p></div>
         </div>
@@ -2425,6 +2621,7 @@ async function renderPublicSchedule(rv){
 }
 
 async function renderBooking(rv){
+  if(state.logged && !accountStatusLoaded) preloadAccountStatus(false);
   setTitle('Đặt chỗ','Chọn nhiều ca trong cùng một lần đặt');
 
   const key=`${state.bookingYear}-${String(state.bookingMonth).padStart(2,'0')}`;
@@ -2513,6 +2710,13 @@ async function nextBookingMonth(delta){
   state.sessionsLoadedKey='';
   await renderBooking(document.getElementById('routeView'));
 }
+
+function alreadyBookedSession(sessionId){
+  return (state.realUpcoming||[]).some(x=>
+    String(x.class_sessions?.id||x.session_id||'')===String(sessionId)
+  );
+}
+
 function openSlotModal(day){
   if(isPastCalendarDate(state.bookingYear,state.bookingMonth,day)) return;
 
@@ -2528,8 +2732,10 @@ function openSlotModal(day){
     const slot=slotLabelFromPeriod(s.session_period);
     const selected=state.selected.some(x=>x.sessionId===s.session_id);
     const full=Number(s.available_seats)<=0;
+    const booked=alreadyBookedSession(s.session_id);
+    const disabled=full||booked;
     const teacher=s.teacher_name?`${s.teacher_name}${s.teacher_country?` (${s.teacher_country})`:''}`:'Đang cập nhật GV';
-    return `<div class="slotchoice ${selected?'on':''} ${full?'disabled':''}"
+    return `<div class="slotchoice ${selected?'on':''} ${disabled?'disabled':''}"
       data-session-id="${s.session_id}"
       data-slot="${slot}"
       data-start="${shortTime(s.starts_at)}"
@@ -2537,13 +2743,13 @@ function openSlotModal(day){
       data-room="${String(s.room_name||'').replace(/"/g,'&quot;')}"
       data-teacher="${String(teacher).replace(/"/g,'&quot;')}"
       data-available="${s.available_seats}"
-      ${full?'':`onclick="toggleSlotChoice(this)"`}>
+      ${disabled?'':`onclick="toggleSlotChoice(this)"`}>
       <div>
         <b>${slotIconFromPeriod(s.session_period)} ${slot}</b>
         <div class="tiny">${shortTime(s.starts_at)} – ${shortTime(s.ends_at)} · ${s.room_name||''}</div>
         <div class="tiny">${teacher}</div>
       </div>
-      <div><b style="color:${full?'#888':'var(--gd)'}">${full?'Đã đầy':`Còn ${s.available_seats} chỗ`}</b></div>
+      <div><b style="color:${disabled?'#888':'var(--gd)'}">${booked?'Đã đăng ký':(full?'Đã đầy':`Còn ${s.available_seats} chỗ`)}</b></div>
     </div>`;
   }).join('');
 
@@ -2980,7 +3186,7 @@ function showRealPaymentSuccess(order){
 }
 
 function renderPlacement(rv){
-  setTitle('Kiểm tra phân lớp','3 phút · Tối đa 2 lần mỗi tuần');
+  setTitle('Kiểm tra xếp lớp','3 phút · Tối đa 2 lần mỗi tuần');
   const used=state.placementCount||0;
   const remain=Math.max(0,2-used);
 
@@ -3092,18 +3298,74 @@ function setPlacementClassAndBook(c){
 }
 
 function renderWeekly(rv){
-  setTitle('Test tiến độ','Mỗi buổi học hoàn thành → 1 bài test 3 phút');
+  setTitle('Test tiến độ','Sau mỗi buổi đã học → 1 bài test ngắn để theo dõi tiến bộ');
+
   if(!state.logged){
-    rv.innerHTML=`<div class="testbox"><section class="card success"><h2>Đăng nhập để lưu tiến bộ</h2><button class="btn primary" onclick="state.loginReturn='weekly';go('login')">Đăng nhập bằng SĐT</button></section></div>`;return
+    rv.innerHTML=`<div class="testbox"><section class="card success">
+      <h2>Đăng nhập để lưu tiến bộ</h2>
+      <button class="btn primary" onclick="state.loginReturn='weekly';go('login')">Đăng nhập bằng SĐT</button>
+    </section></div>`;
+    return;
   }
+
   const pending=pendingProgressTestIds();
   const nextId=pending[0];
-  rv.innerHTML=`<div class="dashboard-grid"><div>
-    <section class="card dash-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap"><div><h2 style="margin:0">Progress Test · 3 phút</h2><p class="muted">Mỗi session đã học sẽ mở 1 bài test riêng.</p></div><span class="badge ${pending.length?'green':'blue'}">${pending.length} bài đang chờ</span></div>
-      ${pending.length?`<p class="tiny">Bài tiếp theo gắn với session gần nhất bạn vừa hoàn thành.</p><button class="btn primary" onclick="weeklyRun('${nextId}')">Làm bài test sau session</button>`:`<div class="reschedule-box"><b>✓ Bạn đã hoàn thành tất cả bài test của các session đã học.</b></div>`}
-    </section>
-    <section class="card dash-card" style="margin-top:18px"><h3>Tiến bộ của bạn</h3><div style="font-size:44px;font-weight:900;color:var(--gd)">72<span style="font-size:18px;color:var(--muted)">/100</span></div>${progressChartHTML()}${progressEvaluationHTML()}</section>
-  </div><div><section class="card dash-card"><h3>Bài test gần nhất</h3><p><b>B1 Intermediate</b></p><p class="tiny">Reading 74/100 · Speaking 70/100</p><p class="tiny">Mỗi kết quả được nối vào biểu đồ theo thời gian.</p></section></div></div>`
+
+  rv.innerHTML=`<div class="dashboard-grid">
+    <div>
+      <section class="card dash-card">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+          <div>
+            <h2 style="margin:0">Progress Test</h2>
+            <p class="muted" style="margin:5px 0 0">Reading + Speaking · khoảng 3 phút</p>
+          </div>
+          <span class="badge ${pending.length?'orange':'green'}">${pending.length} bài đang chờ</span>
+        </div>
+
+        ${pending.length
+          ? `<div class="reschedule-box" style="margin-top:14px">
+              <b>Bạn còn ${pending.length} bài test cần hoàn thành</b>
+              <div class="tiny" style="margin-top:4px">Mỗi bài tương ứng với một buổi học đã hoàn thành.</div>
+            </div>
+            <button class="btn primary" style="width:100%;margin-top:12px" onclick="weeklyRun('${nextId}')">Làm bài test tiếp theo</button>`
+          : `<div class="reschedule-box" style="margin-top:14px"><b>✓ Đã hoàn thành tất cả bài test hiện có.</b></div>`
+        }
+      </section>
+
+      <section class="card dash-card" style="margin-top:18px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px">
+          <div>
+            <h3 style="margin:0">Điểm tổng quan</h3>
+            <div class="tiny" style="margin-top:4px">Kết quả demo gần nhất</div>
+          </div>
+          <div style="font-size:38px;font-weight:900;color:var(--gd)">75<span style="font-size:15px;color:var(--muted)">/100</span></div>
+        </div>
+        ${progressChartHTML()}
+      </section>
+
+      ${progressEvaluationHTML()}
+    </div>
+
+    <div>
+      <section class="card dash-card">
+        <h3 style="margin-top:0">Bài test gần nhất</h3>
+        <div class="reschedule-box">
+          <b>Adult Intermediate</b>
+          <div class="tiny" style="margin-top:4px">Overall 75 · Grammar 68 · Vocabulary 76 · Fluency 73 · Pronunciation 78</div>
+        </div>
+        <p class="tiny" style="margin-top:12px">Mục tiêu của Progress Test là cho bạn thấy mình đang tiến bộ ở đâu và cần sửa điểm nào sau từng buổi học.</p>
+      </section>
+
+      <section class="card dash-card" style="margin-top:18px">
+        <h3 style="margin-top:0">Cách tính</h3>
+        <div class="tiny" style="display:grid;gap:8px">
+          <div>📖 <b>Reading:</b> hiểu ý và dùng từ trong ngữ cảnh.</div>
+          <div>🗣️ <b>Speaking:</b> fluency, grammar, vocabulary, pronunciation.</div>
+          <div>📈 <b>Trend:</b> so sánh kết quả qua từng buổi.</div>
+        </div>
+      </section>
+    </div>
+  </div>`;
 }
 function weeklyRun(sessionId){
   state.currentProgressSession=sessionId;
@@ -3128,13 +3390,34 @@ function weeklyResult(){
     localStorage.setItem('speakhub_progress_tests_done',JSON.stringify(state.progressTestsDone));
     updateAccountStatusBadges();
   }
-  document.getElementById('routeView').innerHTML=`<div class="testbox"><section class="card success">
-    <div class="check">74</div><h2>Kết quả sau session: 74/100</h2>
-    <p class="muted">Reading 76/100 · Speaking 72/100</p>
-    <div class="save" style="display:inline-block">+2 điểm so với tuần trước</div>
-    <p class="tiny" style="margin-top:14px">Kết quả đã được lưu vào biểu đồ tiến bộ. Progress Test chỉ dùng để theo dõi lộ trình, không thay đổi lớp học của bạn.</p>
-    <button class="btn primary" onclick="go('weekly')">Xem tiến bộ</button>
-  </section></div>`
+
+  document.getElementById('routeView').innerHTML=`<div class="testbox">
+    <section class="card success">
+      <div class="check">75</div>
+      <h2>Kết quả Progress Test</h2>
+      <p class="muted">Overall 75/100 · tăng 3 điểm so với bài trước</p>
+
+      <div class="test-skill-grid" style="text-align:left">
+        ${[
+          ['Grammar',68],
+          ['Vocabulary',76],
+          ['Fluency',73],
+          ['Pronunciation',78]
+        ].map(([name,score])=>`<div class="test-skill">
+          <div class="test-skill-top"><span>${name}</span><span>${score}</span></div>
+          <div class="test-bar"><span style="width:${score}%"></span></div>
+        </div>`).join('')}
+      </div>
+
+      <div class="test-feedback" style="text-align:left">
+        <div class="test-feedback-row"><b>Grammar cần chú ý</b><div class="tiny" style="margin-top:5px"><span class="bad">I am agree...</span> → <span class="good">I agree...</span></div></div>
+        <div class="test-feedback-row"><b>Gợi ý Speaking</b><div class="tiny" style="margin-top:5px">Dùng thêm “because / however / for example” để nối ý tự nhiên hơn.</div></div>
+      </div>
+
+      <div class="tiny" style="margin-top:12px">Đây là giao diện demo feedback. Khi nối chấm AI thật, SpeakHub sẽ dùng chính câu trả lời của học viên.</div>
+      <button class="btn primary" style="margin-top:14px" onclick="go('weekly')">Xem tiến bộ</button>
+    </section>
+  </div>`;
 }
 
 
