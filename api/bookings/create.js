@@ -126,6 +126,7 @@ export default {
         let code = 'BOOKING_FAILED';
 
         if (msg.includes('ALREADY_BOOKED')) code = 'ALREADY_BOOKED';
+        else if (msg.includes('uq_user_active_session') || msg.includes('duplicate key value')) code = 'ALREADY_BOOKED';
         else if (msg.includes('SESSION_FULL')) code = 'SESSION_FULL';
         else if (msg.includes('SESSION_NOT_OPEN')) code = 'SESSION_NOT_OPEN';
         else if (msg.includes('SESSION_ALREADY_STARTED')) code = 'SESSION_ALREADY_STARTED';
