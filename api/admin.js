@@ -514,8 +514,12 @@ function placementSchema(){
       },
       confidence:{type:'number',minimum:0,maximum:1},
       summary_vi:{type:'string'},
-      strengths_vi:{type:'array',items:{type:'string'},minItems:1,maxItems:3},
-      improvements_vi:{type:'array',items:{type:'string'},minItems:1,maxItems:3},
+      strengths_vi:{type:'array',items:{type:'string'},minItems:2,maxItems:5},
+      improvements_vi:{type:'array',items:{type:'string'},minItems:2,maxItems:5},
+      reading_feedback_vi:{type:'array',items:{type:'string'},minItems:2,maxItems:5},
+      speaking_feedback_vi:{type:'array',items:{type:'string'},minItems:3,maxItems:6},
+      recommended_study_focus_vi:{type:'array',items:{type:'string'},minItems:3,maxItems:6},
+      level_reason_vi:{type:'string'},
       grammar_examples:{
         type:'array',
         minItems:0,
@@ -536,7 +540,9 @@ function placementSchema(){
       'overall_score','grammar_score','vocabulary_score','fluency_score',
       'pronunciation_score','comprehension_score','cefr_estimate',
       'recommended_program_name','confidence','summary_vi',
-      'strengths_vi','improvements_vi','grammar_examples'
+      'strengths_vi','improvements_vi','reading_feedback_vi',
+      'speaking_feedback_vi','recommended_study_focus_vi',
+      'level_reason_vi','grammar_examples'
     ]
   };
 }
@@ -581,6 +587,7 @@ async function handlePlacementScore(request){
   const t2=String(b.transcript_2||'').trim();
   const readingAnswers=Array.isArray(b.reading_answers)?b.reading_answers:[];
   const readingCorrect=Array.isArray(b.reading_correct)?b.reading_correct:[];
+  const readingItems=Array.isArray(b.reading_items)?b.reading_items:[];
   const readingScore=readingCorrect.length
     ? Math.round(100*readingCorrect.filter((x,i)=>String(readingAnswers[i])===String(x)).length/readingCorrect.length)
     : 0;
@@ -604,7 +611,8 @@ async function handlePlacementScore(request){
 
   const prompt=`You are the SpeakHub English Placement Assessor.
 
-Evaluate a learner for an OFFLINE English speaking club. Be conservative and consistent.
+Evaluate a learner for an OFFLINE English speaking club. Be consistent, practical, and supportive.
+This is NOT an IELTS/academic English exam. The goal is to place learners into a speaking club where they can participate comfortably and improve.
 
 AGE: ${age}
 ALLOWED PROGRAMS FOR THIS AGE: ${allowedByAge.join(', ')}
@@ -613,6 +621,7 @@ READING:
 Score: ${readingScore}/100
 Learner answers: ${JSON.stringify(readingAnswers)}
 Correct answers: ${JSON.stringify(readingCorrect)}
+Question-level reading data: ${JSON.stringify(readingItems)}
 
 SPEAKING QUESTION 1:
 ${q1}
@@ -636,17 +645,46 @@ SCORING RUBRIC:
 - Comprehension 0-100: reading performance + whether speaking answers directly understand the questions.
 - Overall: weighted speaking-first score. Speaking should dominate.
 
-PROGRAM GUIDANCE:
-Kid Starter: young learner, very short/basic answers, needs strong support.
-Kid Communicator: young learner can answer simple questions with connected sentences and basic reasons.
-Adult Beginner: adult/older teen can communicate basic meaning but answers are short/hesitant with limited grammar/vocabulary.
-Adult Intermediate: can sustain answers, explain reasons/examples, link ideas, and communicate naturally enough for discussion/debate practice.
+PROGRAM GUIDANCE — SPEAKHUB PRACTICAL THRESHOLD:
+Kid Starter:
+- very short/basic answers or needs substantial prompting
+- limited comprehension of simple questions
+- mainly words, phrases, or very short sentences
+
+Kid Communicator:
+- understands everyday questions
+- can answer with simple connected sentences
+- can give a basic reason, example, or short story even with mistakes
+
+Adult Beginner:
+- understands basic everyday questions but often answers briefly
+- may translate mentally, pause often, or rely on simple grammar/vocabulary
+- can communicate meaning, but sustaining a conversation is still difficult
+
+Adult Intermediate:
+- IMPORTANT: this is NOT a high academic threshold
+- roughly practical A2+ to B1 speaking is enough
+- if the learner understands the question, can keep talking for several sentences, express the main idea, and give a simple reason/example, Intermediate is appropriate
+- grammar mistakes, accent, pauses, limited vocabulary, or imperfect pronunciation do NOT block Intermediate when communication is clear
+- do NOT require sophisticated debate language, advanced grammar, or native-like fluency
+
+PLACEMENT PRIORITY:
+1. Can the learner understand the question?
+2. Can they communicate the intended meaning?
+3. Can they sustain a response beyond isolated short sentences?
+4. Can they give at least a simple reason/example?
+Speaking communication matters more than grammatical perfection.
 
 IMPORTANT:
 - Choose ONLY from ALLOWED PROGRAMS FOR THIS AGE.
-- Do not inflate scores because the learner is young.
-- A fluent but error-prone learner may still be Intermediate if ideas are sustained and comprehensible.
-- Write feedback in friendly Vietnamese.
+- Avoid being overly strict. SpeakHub Intermediate is a conversational club level, not an IELTS benchmark.
+- A reasonably fluent and understandable adult should normally be Adult Intermediate even with frequent grammar errors.
+- Reading supports the decision but should not downgrade a learner who clearly communicates well in speaking.
+- Write detailed, friendly Vietnamese feedback.
+- reading_feedback_vi: comment on comprehension, wrong/correct choices, and what the learner should review. Mention specific concepts when possible.
+- speaking_feedback_vi: give 3–6 concrete observations across fluency, grammar, vocabulary, comprehension, and clarity.
+- recommended_study_focus_vi: give 3–6 actionable study recommendations tailored to this learner, not generic advice.
+- level_reason_vi: clearly explain why this program fits, and what would indicate readiness for the next level.
 - grammar_examples must only contain genuine errors visible in transcripts. If there is no clear error, return [].
 `;
 
@@ -766,6 +804,47 @@ IMPORTANT:
   });
 }
 
+
+async function handlePlacementHistory(request){
+  if(request.method!=='GET'){
+    return Response.json({error:'Method not allowed'},{status:405});
+  }
+
+  const url=new URL(request.url);
+  const customerId=url.searchParams.get('customer_id');
+  const token=url.searchParams.get('token');
+
+  const auth=await requireActiveCustomer(customerId,token);
+  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+
+  const {data,error}=await supabase
+    .from('placement_tests')
+    .select(`
+      id,created_at,birth_year,age_at_test,reading_score,
+      grammar_score,vocabulary_score,fluency_score,pronunciation_score,
+      comprehension_score,overall_score,cefr_estimate,
+      recommended_program_id,recommended_program_name,ai_confidence,
+      summary_vi,strengths_vi,improvements_vi,grammar_examples,raw_result,status
+    `)
+    .eq('customer_id',customerId)
+    .eq('status','COMPLETED')
+    .order('created_at',{ascending:false})
+    .limit(30);
+
+  if(error) throw error;
+
+  return Response.json({
+    success:true,
+    tests:(data||[]).map(x=>({
+      ...x,
+      reading_feedback_vi:x.raw_result?.reading_feedback_vi||[],
+      speaking_feedback_vi:x.raw_result?.speaking_feedback_vi||[],
+      recommended_study_focus_vi:x.raw_result?.recommended_study_focus_vi||[],
+      level_reason_vi:x.raw_result?.level_reason_vi||''
+    }))
+  });
+}
+
 export default {
   async fetch(request){
     try{
@@ -782,6 +861,7 @@ export default {
       if(action==='placement-status') return await handlePlacementStatus(request);
       if(action==='placement-transcribe') return await handlePlacementTranscribe(request);
       if(action==='placement-score') return await handlePlacementScore(request);
+      if(action==='placement-history') return await handlePlacementHistory(request);
 
       if(!requireAdmin(request)){
         return Response.json({error:'UNAUTHORIZED'},{status:401});
