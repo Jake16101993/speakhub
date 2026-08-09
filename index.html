@@ -1070,6 +1070,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB SAME-ORIGIN MOBILE PDF VIEWER 2026-08-09 -->
 <!-- SPEAKHUB PDF CLOSE HOTFIX 2026-08-09 -->
 <!-- SPEAKHUB RESCHEDULE SAME-PROGRAM FILTER FIX 2026-08-09 -->
+<!-- SPEAKHUB TOPICS ROUTER DIRECT FIX 2026-08-09 -->
 </head>
 <body>
 
@@ -2853,7 +2854,7 @@ async function openRealTopic(bookingId){
   if(!customerId||!token){alert('Thiếu thông tin học viên trên thiết bị.');return}
 
   try{
-    const metaRes=await fetch(`/api/topics/open?customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}&booking_id=${encodeURIComponent(bookingId)}`,{cache:'no-store'});
+    const metaRes=await fetch(`/api/topics?action=open&customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}&booking_id=${encodeURIComponent(bookingId)}`,{cache:'no-store'});
     const data=await metaRes.json();
 
     if(!metaRes.ok){
@@ -2876,7 +2877,7 @@ async function openRealTopic(bookingId){
     if(isMobile){
       document.body.style.overflow='hidden';
 
-      const fileUrl=`/api/topics/file?customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}&booking_id=${encodeURIComponent(bookingId)}`;
+      const fileUrl=`/api/topics?action=file&customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}&booking_id=${encodeURIComponent(bookingId)}`;
 
       requestAnimationFrame(()=>loadPdfIntoPopup(fileUrl));
       return;
