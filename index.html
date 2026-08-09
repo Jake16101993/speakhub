@@ -1095,6 +1095,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB RESCHEDULE SAME-PROGRAM FILTER FIX 2026-08-09 -->
 <!-- SPEAKHUB TOPICS ROUTER DIRECT FIX 2026-08-09 -->
 <!-- SPEAKHUB PUBLIC SCHEDULE SUMMARY 2026-08-09 -->
+<!-- SPEAKHUB PUBLIC SCHEDULE NO ROOM 2026-08-09 -->
 </head>
 <body>
 
@@ -1814,7 +1815,7 @@ async function renderPublicSchedule(rv){
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
         <div>
           <h2 style="margin:0 0 5px">Các lớp sắp tới</h2>
-          <div class="tiny">Hiển thị lịch trong 3 tuần tới</div>
+          <div class="tiny">Lịch học trong 3 tuần tới</div>
         </div>
         <button class="btn primary small" onclick="go('booking')">Đặt chỗ</button>
       </div>
@@ -1872,7 +1873,6 @@ async function renderPublicSchedule(rv){
         <div class="schedule-summary-meta">
           <span class="schedule-meta-chip">🕘 ${shortTime(s.starts_at)}–${shortTime(s.ends_at)}</span>
           <span class="schedule-meta-chip teacher">👤 ${teacher}</span>
-          ${s.room_name?`<span class="schedule-meta-chip">📍 ${s.room_name}</span>`:''}
         </div>
       </div>`;
     }).join('');
