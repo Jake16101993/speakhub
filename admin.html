@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpeakHub Admin</title>
+<style>
+:root{--g:#0d7a59;--gd:#075b43;--gs:#eaf6f1;--ink:#172126;--muted:#6d7880;--line:#e5ebe9;--bg:#f7f9f8;--red:#d94a4a;--r:16px}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+button,input,select{font:inherit}.wrap{width:min(1180px,calc(100% - 28px));margin:auto;padding:24px 0 60px}
+.top{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:18px}.logo{font-size:28px;font-weight:900;color:var(--gd)}.muted{color:var(--muted)}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:14px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat b{display:block;font-size:28px;color:var(--gd)}
+.btn{border:0;border-radius:11px;padding:11px 14px;font-weight:800;cursor:pointer}.primary{background:var(--g);color:#fff}.secondary{background:#fff;border:1px solid #bddfd3;color:var(--gd)}
+input,select{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;background:#fff}
+.row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.tab{background:#fff;border:1px solid var(--line);padding:10px 12px;border-radius:10px}.tab.on{background:var(--gs);border-color:#b8dccc;color:var(--gd);font-weight:800}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:#4b5a60}
+.badge{display:inline-block;padding:4px 7px;border-radius:999px;font-size:11px;font-weight:800;background:var(--gs);color:var(--gd)}
+.hidden{display:none!important}.error{color:#b63e2e;background:#fff3f0;border:1px solid #f1b6aa;padding:10px 12px;border-radius:10px;margin-top:10px}
+.ok{color:#075b43;background:#eef9f4;border:1px solid #b9e1d1;padding:10px 12px;border-radius:10px;margin-top:10px}
+@media(max-width:760px){.grid4,.row,.row2{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.card{overflow:auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div><div class="logo">SpeakHub Admin</div><div class="muted">Quản lý session · booking · customer · topic</div></div>
+    <button id="logoutBtn" class="btn secondary hidden" onclick="logout()">Đăng xuất</button>
+  </div>
+
+  <section id="loginBox" class="card">
+    <h2>Đăng nhập Admin</h2>
+    <div class="row2">
+      <div><label>Mật khẩu Admin</label><input id="adminPassword" type="password" placeholder="Nhập mật khẩu"></div>
+      <div style="display:flex;align-items:end"><button class="btn primary" style="width:100%" onclick="login()">Đăng nhập</button></div>
+    </div>
+    <div id="loginMsg"></div>
+  </section>
+
+  <main id="adminApp" class="hidden">
+    <div class="tabs">
+      <button class="tab on" onclick="showTab('overview',this)">Tổng quan</button>
+      <button class="tab" onclick="showTab('sessions',this)">Sessions</button>
+      <button class="tab" onclick="showTab('customers',this)">Customers</button>
+      <button class="tab" onclick="showTab('bookings',this)">Bookings</button>
+      <button class="tab" onclick="showTab('topics',this)">Topics</button>
+    </div>
+
+    <section id="tab-overview"></section>
+
+    <section id="tab-sessions" class="hidden">
+      <div class="card">
+        <h3>Tạo session mới</h3>
+        <div class="row">
+          <select id="sProgram"></select>
+          <input id="sDate" type="date">
+          <select id="sPeriod"><option value="MORNING">Sáng</option><option value="AFTERNOON">Chiều</option><option value="EVENING">Tối</option></select>
+          <input id="sStart" type="time" value="19:30">
+        </div>
+        <div class="row" style="margin-top:10px">
+          <input id="sEnd" type="time" value="21:00">
+          <select id="sRoom"></select>
+          <input id="sTeacher" placeholder="Tên giáo viên">
+          <input id="sCountry" placeholder="Quốc gia GV">
+        </div>
+        <div class="row2" style="margin-top:10px">
+          <input id="sCapacity" type="number" min="1" value="10" placeholder="Sức chứa">
+          <button class="btn primary" onclick="createSession()">Tạo session</button>
+        </div>
+        <div id="sessionMsg"></div>
+      </div>
+      <div class="card"><h3>Danh sách session</h3><div id="sessionsTable"></div></div>
+    </section>
+
+    <section id="tab-customers" class="hidden"><div class="card"><h3>Customers</h3><div id="customersTable"></div></div></section>
+    <section id="tab-bookings" class="hidden"><div class="card"><h3>Bookings đã thanh toán</h3><div id="bookingsTable"></div></div></section>
+
+    <section id="tab-topics" class="hidden">
+      <div class="card">
+        <h3>Upload topic PDF</h3>
+        <div class="row2">
+          <select id="topicSession"></select>
+          <input id="topicTitle" placeholder="Topic title">
+        </div>
+        <div class="row2" style="margin-top:10px">
+          <input id="topicFile" type="file" accept="application/pdf">
+          <button class="btn primary" onclick="uploadTopic()">Upload & gắn vào session</button>
+        </div>
+        <div id="topicMsg"></div>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+let token=localStorage.getItem('speakhub_admin_token')||'';
+let cache={sessions:[],programs:[],rooms:[]};
+
+async function api(url,opt={}){
+  const headers={...(opt.headers||{})};
+  if(token) headers.Authorization=`Bearer ${token}`;
+  const res=await fetch(url,{...opt,headers,cache:'no-store'});
+  const data=await res.json().catch(()=>({}));
+  if(res.status===401){logout();throw new Error('UNAUTHORIZED')}
+  if(!res.ok) throw new Error(data?.error||data?.details||'REQUEST_FAILED');
+  return data;
+}
+async function login(){
+  const msg=document.getElementById('loginMsg');msg.innerHTML='';
+  try{
+    const data=await api('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('adminPassword').value})});
+    token=data.token;localStorage.setItem('speakhub_admin_token',token);boot();
+  }catch(e){msg.innerHTML='<div class="error">Sai mật khẩu hoặc chưa cấu hình admin.</div>'}
+}
+function logout(){token='';localStorage.removeItem('speakhub_admin_token');document.getElementById('adminApp').classList.add('hidden');document.getElementById('loginBox').classList.remove('hidden');document.getElementById('logoutBtn').classList.add('hidden')}
+async function boot(){
+  if(!token)return;
+  document.getElementById('loginBox').classList.add('hidden');document.getElementById('adminApp').classList.remove('hidden');document.getElementById('logoutBtn').classList.remove('hidden');
+  try{
+    await Promise.all([loadOverview(),loadSessions(),loadCustomers(),loadBookings()]);
+  }catch(e){console.error(e)}
+}
+function showTab(name,btn){
+  document.querySelectorAll('[id^="tab-"]').forEach(x=>x.classList.add('hidden'));
+  document.getElementById('tab-'+name).classList.remove('hidden');
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));btn.classList.add('on');
+}
+async function loadOverview(){
+  const d=await api('/api/admin/overview');
+  document.getElementById('tab-overview').innerHTML=`<div class="grid4">
+    <div class="card stat"><span class="muted">Customers</span><b>${d.counts.customers}</b></div>
+    <div class="card stat"><span class="muted">Paid orders</span><b>${d.counts.paid_orders}</b></div>
+    <div class="card stat"><span class="muted">Confirmed bookings</span><b>${d.counts.confirmed_bookings}</b></div>
+    <div class="card stat"><span class="muted">Open sessions</span><b>${d.counts.open_sessions}</b></div>
+  </div>`;
+}
+async function loadSessions(){
+  const d=await api('/api/admin/sessions');
+  cache=d;
+  document.getElementById('sProgram').innerHTML=d.programs.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+  document.getElementById('sRoom').innerHTML=d.rooms.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+  document.getElementById('topicSession').innerHTML=d.sessions.map(x=>`<option value="${x.id}">${x.session_date} · ${x.starts_at.slice(0,5)} · ${x.program_name}</option>`).join('');
+  document.getElementById('sessionsTable').innerHTML=table(['Ngày','Giờ','Lớp','Phòng','GV','Chỗ','Status'],d.sessions.map(x=>[
+    x.session_date,`${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,x.program_name,x.room_name,x.teacher_name||'',`${x.booked_count}/${x.capacity}`,`<span class="badge">${x.status}</span>`
+  ]));
+}
+async function createSession(){
+  const msg=document.getElementById('sessionMsg');msg.innerHTML='';
+  try{
+    await api('/api/admin/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      program_id:sProgram.value,session_date:sDate.value,session_period:sPeriod.value,starts_at:sStart.value,ends_at:sEnd.value,room_id:sRoom.value,
+      teacher_name:sTeacher.value.trim(),teacher_country:sCountry.value.trim(),capacity:Number(sCapacity.value)
+    })});
+    msg.innerHTML='<div class="ok">Đã tạo session.</div>';await loadSessions();await loadOverview();
+  }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
+}
+async function loadCustomers(){
+  const d=await api('/api/admin/customers');
+  document.getElementById('customersTable').innerHTML=table(['Tên','SĐT','Status','Ngày tạo'],d.customers.map(x=>[x.full_name||'',x.phone,`<span class="badge">${x.status}</span>`,fmt(x.created_at)]));
+}
+async function loadBookings(){
+  const d=await api('/api/admin/bookings');
+  document.getElementById('bookingsTable').innerHTML=table(['Học viên','SĐT','Ngày','Giờ','Lớp','Thanh toán'],d.bookings.map(x=>[
+    x.full_name||'',x.phone,x.session_date,`${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,x.program_name,`<span class="badge">${x.payment_status}</span>`
+  ]));
+}
+async function uploadTopic(){
+  const msg=document.getElementById('topicMsg');msg.innerHTML='';
+  const file=document.getElementById('topicFile').files[0];
+  if(!file){msg.innerHTML='<div class="error">Chọn PDF trước.</div>';return}
+  const fd=new FormData();fd.append('session_id',topicSession.value);fd.append('title',topicTitle.value.trim());fd.append('file',file);
+  try{
+    await api('/api/admin/topics/upload',{method:'POST',body:fd});
+    msg.innerHTML='<div class="ok">Upload topic thành công.</div>';document.getElementById('topicFile').value='';await loadSessions();
+  }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
+}
+function table(headers,rows){return `<table><thead><tr>${headers.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(x=>`<td>${x??''}</td>`).join('')}</tr>`).join('')}</tbody></table>`}
+function fmt(x){return x?new Date(x).toLocaleString('vi-VN'):''}
+boot();
+</script>
+</body></html>
