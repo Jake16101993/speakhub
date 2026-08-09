@@ -84,18 +84,20 @@ async function handleSessions(request){
     const [
       {data:programs,error:pErr},
       {data:rooms,error:rErr},
+      {data:teachers,error:tErr},
       {data:sessions,error:sErr}
     ]=await Promise.all([
       supabase.from('programs').select('id,code,name').order('name'),
-      supabase.from('rooms').select('id,name').order('name'),
+      supabase.from('rooms').select('id,name,location_id').order('name'),
+      supabase.from('teachers').select('id,full_name,country,is_active').eq('is_active',true).order('full_name'),
       supabase.from('class_sessions').select(`
         id,session_date,session_period,starts_at,ends_at,capacity,status,is_recurring,recurrence_source_id,
-        teacher_name,teacher_country,topic_title,topic_storage_path,
-        programs(name),rooms(name)
+        teacher_id,topic_title,topic_storage_path,
+        programs(name),rooms(name),teachers(full_name,country)
       `).order('session_date',{ascending:false}).limit(200)
     ]);
 
-    if(pErr||rErr||sErr) throw (pErr||rErr||sErr);
+    if(pErr||rErr||tErr||sErr) throw (pErr||rErr||tErr||sErr);
 
     const ids=(sessions||[]).map(x=>x.id);
     const counts={};
@@ -112,12 +114,15 @@ async function handleSessions(request){
     }
 
     return Response.json({
-      programs,
-      rooms,
+      programs:programs||[],
+      rooms:rooms||[],
+      teachers:teachers||[],
       sessions:(sessions||[]).map(x=>({
         ...x,
         program_name:x.programs?.name||'',
         room_name:x.rooms?.name||'',
+        teacher_name:x.teachers?.full_name||'',
+        teacher_country:x.teachers?.country||'',
         booked_count:counts[x.id]||0
       }))
     });
@@ -168,8 +173,7 @@ async function handleSessions(request){
       starts_at:b.starts_at,
       ends_at:b.ends_at,
       room_id:roomId,
-      teacher_name:b.teacher_name||null,
-      teacher_country:b.teacher_country||null,
+      teacher_id:b.teacher_id||null,
       capacity:Number(b.capacity||10),
       status:'OPEN'
     };
