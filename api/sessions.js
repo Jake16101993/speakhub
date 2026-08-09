@@ -5,12 +5,31 @@ export default {
 
       const from = url.searchParams.get('from');
       const to = url.searchParams.get('to');
-      const program = url.searchParams.get('program');
+      const program = url.searchParams.get('program') || url.searchParams.get('program_code');
 
       if (!from || !to) {
         return Response.json(
           { error: 'Missing required query params: from, to' },
           { status: 400 }
+        );
+      }
+
+      // Hard limit: public/session clients cannot query beyond 3 calendar months from today.
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const maxDate = new Date(today);
+      maxDate.setMonth(maxDate.getMonth()+3);
+
+      const requestedFrom = new Date(`${from}T00:00:00`);
+      const requestedTo = new Date(`${to}T00:00:00`);
+
+      if(Number.isNaN(requestedFrom.getTime()) || Number.isNaN(requestedTo.getTime())){
+        return Response.json({error:'Invalid date range'},{status:400});
+      }
+      if(requestedTo > maxDate){
+        return Response.json(
+          {error:'MAX_3_MONTHS',details:'Sessions can only be viewed up to 3 months ahead.'},
+          {status:400}
         );
       }
 

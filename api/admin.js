@@ -126,28 +126,92 @@ async function handleSessions(request){
   if(request.method==='POST'){
     const b=await request.json();
 
+    if(!b.program_id||!b.session_date||!b.starts_at||!b.ends_at){
+      return Response.json({error:'MISSING_FIELDS'},{status:400});
+    }
+
+    const sessionType=String(b.session_type||'ONE_OFF').toUpperCase();
+    if(!['RECURRING','ONE_OFF'].includes(sessionType)){
+      return Response.json({error:'INVALID_SESSION_TYPE'},{status:400});
+    }
+
+    // Keep compatibility with the existing schema: use the first room if room_id is required,
+    // but room is no longer exposed in the admin/public timetable UI.
+    let roomId=b.room_id||null;
+    if(!roomId){
+      const {data:firstRoom,error:roomErr}=await supabase
+        .from('rooms')
+        .select('id')
+        .order('id')
+        .limit(1)
+        .maybeSingle();
+      if(roomErr) throw roomErr;
+      roomId=firstRoom?.id||null;
+    }
+
+    const start=new Date(`${b.session_date}T00:00:00`);
+    if(Number.isNaN(start.getTime())){
+      return Response.json({error:'INVALID_DATE'},{status:400});
+    }
+
+    const dates=[];
+    if(sessionType==='RECURRING'){
+      // Materialize the weekly class now, up to exactly 3 calendar months ahead.
+      // No cron/background job is required.
+      const limit=new Date(start);
+      limit.setMonth(limit.getMonth()+3);
+      for(let d=new Date(start); d<=limit; d.setDate(d.getDate()+7)){
+        dates.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+      }
+    }else{
+      dates.push(b.session_date);
+    }
+
+    const rows=dates.map(sessionDate=>({
+      program_id:b.program_id,
+      session_date:sessionDate,
+      session_period:b.session_period,
+      starts_at:b.starts_at,
+      ends_at:b.ends_at,
+      room_id:roomId,
+      teacher_name:b.teacher_name||null,
+      teacher_country:b.teacher_country||null,
+      capacity:Number(b.capacity||10),
+      status:'OPEN'
+    }));
+
+    // Avoid accidental duplicates when admin clicks twice.
+    const {data:existing,error:existingErr}=await supabase
+      .from('class_sessions')
+      .select('session_date,starts_at,ends_at')
+      .eq('program_id',b.program_id)
+      .in('session_date',dates);
+
+    if(existingErr) throw existingErr;
+
+    const existingKeys=new Set((existing||[]).map(x=>`${x.session_date}|${String(x.starts_at).slice(0,5)}|${String(x.ends_at).slice(0,5)}`));
+    const toInsert=rows.filter(x=>!existingKeys.has(`${x.session_date}|${String(x.starts_at).slice(0,5)}|${String(x.ends_at).slice(0,5)}`));
+
+    if(!toInsert.length){
+      return Response.json({error:'SESSION_ALREADY_EXISTS'},{status:409});
+    }
+
     const {data,error}=await supabase
       .from('class_sessions')
-      .insert({
-        program_id:b.program_id,
-        session_date:b.session_date,
-        session_period:b.session_period,
-        starts_at:b.starts_at,
-        ends_at:b.ends_at,
-        room_id:b.room_id,
-        teacher_name:b.teacher_name||null,
-        teacher_country:b.teacher_country||null,
-        capacity:Number(b.capacity||10),
-        status:'OPEN'
-      })
-      .select('id')
-      .single();
+      .insert(toInsert)
+      .select('id,session_date');
 
     if(error){
       return Response.json({error:error.message},{status:400});
     }
 
-    return Response.json({success:true,id:data.id},{status:201});
+    return Response.json({
+      success:true,
+      session_type:sessionType,
+      created_count:data?.length||0,
+      skipped_count:rows.length-(data?.length||0),
+      sessions:data||[]
+    },{status:201});
   }
 
   return Response.json({error:'Method not allowed'},{status:405});
