@@ -1885,6 +1885,33 @@ function startPaymentPolling(orderId,token){
         return;
       }
 
+      if(order.payment_status==='PENDING' && order.order_status==='PENDING'){
+        try{
+          const reconcileRes=await fetch('/api/payos/reconcile',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+              order_id:orderId,
+              checkout_token:token
+            })
+          });
+          const reconcileData=await reconcileRes.json();
+
+          if(reconcileRes.ok && reconcileData?.payment_confirmed){
+            const statusRes=await fetch(`/api/orders/status?order_id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(token)}`);
+            const statusData=await statusRes.json();
+
+            if(statusRes.ok && statusData?.order?.payment_status==='PAID'){
+              stopPaymentPolling();
+              showRealPaymentSuccess(statusData.order);
+              return;
+            }
+          }
+        }catch(reconcileErr){
+          console.warn('reconcile polling',reconcileErr);
+        }
+      }
+
       if(order.payment_status==='EXPIRED' || order.order_status==='CANCELLED'){
         stopPaymentPolling();
         if(box) box.innerHTML=`<b>⌛ Đơn đã hết hạn</b><div class="tiny">Chỗ giữ tạm đã được giải phóng. Vui lòng tạo booking mới.</div>`;
