@@ -141,6 +141,8 @@ async function handleSessions(request){
     }
 
     let roomId=b.room_id||null;
+    let fallbackLocationId=null;
+
     if(!roomId){
       const {data:firstRoom,error:roomErr}=await supabase
         .from('rooms')
@@ -148,9 +150,10 @@ async function handleSessions(request){
         .order('id')
         .limit(1)
         .maybeSingle();
+
       if(roomErr) throw roomErr;
       roomId=firstRoom?.id||null;
-      var fallbackLocationId=firstRoom?.location_id||null;
+      fallbackLocationId=firstRoom?.location_id||null;
     }
 
     let locationId=b.location_id||fallbackLocationId||null;
@@ -161,6 +164,7 @@ async function handleSessions(request){
         .select('location_id')
         .eq('id',roomId)
         .maybeSingle();
+
       if(roomLocationErr) throw roomLocationErr;
       locationId=roomWithLocation?.location_id||null;
     }
@@ -178,6 +182,58 @@ async function handleSessions(request){
       status:'OPEN'
     };
 
+    // Check the exact unique key before trying to insert.
+    const {data:existing,error:existingErr}=await supabase
+      .from('class_sessions')
+      .select('id,is_recurring,recurrence_source_id')
+      .eq('program_id',b.program_id)
+      .eq('room_id',roomId)
+      .eq('session_date',b.session_date)
+      .eq('starts_at',b.starts_at)
+      .maybeSingle();
+
+    if(existingErr) throw existingErr;
+
+    // If the slot already exists and admin chooses "recurring",
+    // upgrade the existing session into the recurring seed instead of failing.
+    if(existing){
+      if(sessionType==='RECURRING'){
+        const {data:updated,error:updateErr}=await supabase
+          .from('class_sessions')
+          .update({
+            location_id:locationId,
+            session_period:b.session_period,
+            ends_at:b.ends_at,
+            teacher_id:b.teacher_id||null,
+            capacity:Number(b.capacity||10),
+            status:'OPEN',
+            is_recurring:true,
+            recurrence_source_id:null
+          })
+          .eq('id',existing.id)
+          .select('id,session_date,is_recurring')
+          .single();
+
+        if(updateErr){
+          return Response.json({error:updateErr.message},{status:400});
+        }
+
+        return Response.json({
+          success:true,
+          reused_existing:true,
+          session_type:'RECURRING',
+          created_count:0,
+          updated_count:1,
+          sessions:[updated]
+        },{status:200});
+      }
+
+      return Response.json({
+        error:'SESSION_ALREADY_EXISTS',
+        details:'Đã có lớp này vào đúng ngày và giờ đã chọn.'
+      },{status:409});
+    }
+
     if(sessionType==='ONE_OFF'){
       const {data,error}=await supabase
         .from('class_sessions')
@@ -185,7 +241,12 @@ async function handleSessions(request){
         .select('id,session_date')
         .single();
 
-      if(error)return Response.json({error:error.message},{status:400});
+      if(error){
+        if(String(error.message||'').includes('class_sessions_program_id_room_id_session_date_starts_at_key')){
+          return Response.json({error:'SESSION_ALREADY_EXISTS'},{status:409});
+        }
+        return Response.json({error:error.message},{status:400});
+      }
 
       return Response.json({
         success:true,
@@ -201,42 +262,19 @@ async function handleSessions(request){
       .select('id,session_date')
       .single();
 
-    if(seedErr)return Response.json({error:seedErr.message},{status:400});
-
-    const start=new Date(`${b.session_date}T00:00:00`);
-    const limit=new Date(start);
-    limit.setMonth(limit.getMonth()+3);
-
-    const children=[];
-    const d=new Date(start);
-    d.setDate(d.getDate()+7);
-
-    while(d<=limit){
-      children.push({
-        ...common,
-        session_date:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,
-        is_recurring:true,
-        recurrence_source_id:seed.id
-      });
-      d.setDate(d.getDate()+7);
+    if(seedErr){
+      if(String(seedErr.message||'').includes('class_sessions_program_id_room_id_session_date_starts_at_key')){
+        return Response.json({error:'SESSION_ALREADY_EXISTS'},{status:409});
+      }
+      return Response.json({error:seedErr.message},{status:400});
     }
 
-    let inserted=[];
-    if(children.length){
-      const {data,error}=await supabase
-        .from('class_sessions')
-        .insert(children)
-        .select('id,session_date');
-
-      if(error)return Response.json({error:error.message},{status:400});
-      inserted=data||[];
-    }
-
+    // DB trigger now handles weekly duplication.
     return Response.json({
       success:true,
       session_type:'RECURRING',
-      created_count:1+inserted.length,
-      sessions:[seed,...inserted]
+      created_count:1,
+      sessions:[seed]
     },{status:201});
   }
 
