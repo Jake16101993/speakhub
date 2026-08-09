@@ -1374,6 +1374,46 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   vertical-align:top;
 }
 
+
+/* ===== Account status badges V5.2 ===== */
+.side-nav button{
+  min-width:0;
+}
+.side-nav button .badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:20px;
+  height:20px;
+  padding:0 6px;
+  border:0;
+  border-radius:999px;
+  background:#ef3d3d;
+  color:#fff;
+  font-size:10px;
+  font-weight:900;
+  line-height:1;
+  margin-left:auto;
+  white-space:nowrap;
+  flex:0 0 auto;
+}
+.mobile-status-count{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:17px;
+  height:17px;
+  padding:0 4px;
+  border-radius:999px;
+  background:#ef3d3d;
+  color:#fff;
+  font-size:9px;
+  line-height:1;
+  font-weight:900;
+  margin-left:2px;
+  vertical-align:top;
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
@@ -1391,6 +1431,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB TIMETABLE FIRST-COLUMN FIT V4.1 -->
 <!-- SPEAKHUB NAV + MY UPCOMING CLASSES FIX V5 2026-08-09 -->
 <!-- SPEAKHUB MENU POLISH + SCHEDULE COUNT V5.1 -->
+<!-- SPEAKHUB AUTO STATUS BADGES + WEB OVERALL SCHEDULE V5.2 -->
 </head>
 <body>
 
@@ -1539,11 +1580,12 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
     <div class="side-nav">
       <button data-route="dashboard" onclick="go('dashboard')">🏠 Trang chủ</button>
       <button data-route="placement" onclick="go('placement')">🧪 Kiểm tra phân lớp</button>
-      <button data-route="weekly" onclick="go('weekly')">📈 Test</button>
+      <button data-route="weekly" onclick="go('weekly')">📈 Test <span id="testPendingBadge" class="badge" style="display:none">0</span></button>
       <button data-route="booking" onclick="go('booking')">📅 Đặt chỗ</button>
       <button data-route="history" onclick="go('history')">🕘 Lịch học của tôi <span id="myScheduleBadge" class="badge" style="display:none">0</span></button>
+      <button data-route="publicSchedule" onclick="go('publicSchedule')">📋 Lịch học tổng thể</button>
       <button data-route="community" onclick="go('community')">👥 Cộng đồng <span class="count">5</span></button>
-      <button data-route="chat" onclick="go('chat')">💬 Chat với SpeakHub <span class="count">3</span></button>
+      <button data-route="chat" onclick="go('chat')">💬 Chat SpeakHub <span class="count">3</span></button>
       <button data-route="notifications" onclick="go('notifications')">🔔 Thông báo <span class="count">2</span></button>
     </div>
   </aside>
@@ -1560,7 +1602,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   <button id="mobileMyScheduleTab" onclick="go('history')">📅<br>Lịch học</button>
   <button class="book-wrap" onclick="go('booking')"><span class="book">＋</span><span class="book-label">Đặt chỗ</span></button>
   <button onclick="go('community')">👥<br>Cộng đồng</button>
-  <button onclick="go('weekly')">📈<br>Theo dõi</button>
+  <button id="mobileTestTab" onclick="go('weekly')">📈<br>Theo dõi</button>
 </nav>
 </div>
 
@@ -1866,9 +1908,44 @@ function pricing(n){
 }
 function originalTotal(n){return n*119000}
 
+let accountStatusLoading=false;
+let accountStatusLoaded=false;
+
+async function preloadAccountStatus(force=false){
+  if(!state.logged)return;
+  if(accountStatusLoading)return;
+  if(accountStatusLoaded && !force){
+    updateAccountStatusBadges();
+    return;
+  }
+
+  accountStatusLoading=true;
+  try{
+    await loadRealHistory();
+    accountStatusLoaded=true;
+    updateAccountStatusBadges();
+
+    // If dashboard is already visible, refresh the upcoming lesson cards as well.
+    if(state.route==='dashboard'){
+      const rv=document.getElementById('routeView');
+      if(rv) renderDashboard(rv);
+    }
+  }catch(err){
+    console.warn('preload account status',err);
+  }finally{
+    accountStatusLoading=false;
+  }
+}
+
 function showApp(){
   document.getElementById('landingView').classList.add('hidden');
   document.getElementById('appView').classList.remove('hidden');
+
+  // Load upcoming lessons + pending tests immediately after entering the app.
+  // User does not need to open "Lịch học của tôi" first.
+  if(state.logged){
+    setTimeout(()=>preloadAccountStatus(false),0);
+  }
 }
 function showLanding(){
   document.getElementById('appView').classList.add('hidden');
@@ -1949,19 +2026,45 @@ function progressChartHTML(){
 
 
 
+function pendingProgressTestIds(){
+  const completed=Array.isArray(state.realCompleted)?state.realCompleted:[];
+  const done=new Set((state.progressTestsDone||[]).map(String));
+
+  return completed
+    .map(x=>String(x.id||x.booking_id||''))
+    .filter(Boolean)
+    .filter(id=>!done.has(id));
+}
+
+function updateAccountStatusBadges(){
+  const upcomingCount=Array.isArray(state.realUpcoming)?state.realUpcoming.length:0;
+  const testCount=pendingProgressTestIds().length;
+
+  const scheduleSide=document.getElementById('myScheduleBadge');
+  if(scheduleSide){
+    scheduleSide.textContent=String(upcomingCount);
+    scheduleSide.style.display=upcomingCount>0?'inline-flex':'none';
+  }
+
+  const scheduleMobile=document.getElementById('mobileMyScheduleTab');
+  if(scheduleMobile){
+    scheduleMobile.innerHTML=`📅${upcomingCount>0?`<span class="mobile-status-count">${upcomingCount}</span>`:''}<br>Lịch học`;
+  }
+
+  const testSide=document.getElementById('testPendingBadge');
+  if(testSide){
+    testSide.textContent=String(testCount);
+    testSide.style.display=testCount>0?'inline-flex':'none';
+  }
+
+  const testMobile=document.getElementById('mobileTestTab');
+  if(testMobile){
+    testMobile.innerHTML=`📈${testCount>0?`<span class="mobile-status-count">${testCount}</span>`:''}<br>Theo dõi`;
+  }
+}
+
 function updateMyScheduleBadges(){
-  const count=Array.isArray(state.realUpcoming)?state.realUpcoming.length:0;
-
-  const side=document.getElementById('myScheduleBadge');
-  if(side){
-    side.textContent=String(count);
-    side.style.display=count>0?'inline-flex':'none';
-  }
-
-  const mobile=document.getElementById('mobileMyScheduleTab');
-  if(mobile){
-    mobile.innerHTML=`📅${count>0?`<span class="mobile-schedule-count">${count}</span>`:''}<br>Lịch học`;
-  }
+  updateAccountStatusBadges();
 }
 
 function upcomingLessonsHTML(){
@@ -1973,7 +2076,7 @@ function upcomingLessonsHTML(){
 }
 
 function renderDashboard(rv){
-  updateMyScheduleBadges();
+  updateAccountStatusBadges();
   setTitle(state.firstTimeName?('Chào buổi tối, '+state.firstTimeName+'! 👋'):'Chào buổi tối! 👋','Sẵn sàng nói tiếng Anh hôm nay chưa?');
   rv.innerHTML=`
   <div class="dashboard-grid">
@@ -1985,7 +2088,7 @@ function renderDashboard(rv){
           <div class="quick" onclick="go('publicSchedule')"><b>📋 Lịch học tổng thể</b><p class="tiny">Xem tổng quan toàn bộ lớp</p></div>
           <div class="quick" onclick="go('placement')"><b>🧪 Kiểm tra xếp lớp</b><p class="tiny">Tối đa 2 lần / tuần</p></div>
           <div class="quick" onclick="go('community')"><b>👥 Cộng đồng</b><p class="tiny">Kết nối · Chia sẻ · Học hỏi</p></div>
-          <div class="quick" onclick="go('chat')"><b>💬 Chat với SpeakHub</b><p class="tiny">Hỗ trợ trực tiếp</p></div>
+          <div class="quick" onclick="go('chat')"><b>💬 Chat SpeakHub</b><p class="tiny">Hỗ trợ trực tiếp</p></div>
         </div>
       </section>
       <section class="card dash-card" style="margin-top:18px">
@@ -2000,7 +2103,7 @@ function renderDashboard(rv){
         ${progressChartHTML()}${progressEvaluationHTML()}
       </section>
       <section class="card dash-card" style="margin-top:18px"><h3>Test tiến độ</h3><p class="muted">1 phút Reading + 2 phút Speaking với AI.</p><button class="btn primary" style="width:100%" onclick="go('weekly')">Bắt đầu test 3 phút</button></section>
-      <section class="card dash-card" style="margin-top:18px"><h3>Cần hỗ trợ?</h3><p class="muted">Nhân viên SpeakHub đang online.</p><button class="btn secondary" style="width:100%" onclick="go('chat')">💬 Chat với SpeakHub</button></section>
+      <section class="card dash-card" style="margin-top:18px"><h3>Cần hỗ trợ?</h3><p class="muted">Nhân viên SpeakHub đang online.</p><button class="btn secondary" style="width:100%" onclick="go('chat')">💬 Chat SpeakHub</button></section>
     </div>
   </div>${supportFooterHTML()}`
 }
@@ -2993,9 +3096,7 @@ function renderWeekly(rv){
   if(!state.logged){
     rv.innerHTML=`<div class="testbox"><section class="card success"><h2>Đăng nhập để lưu tiến bộ</h2><button class="btn primary" onclick="state.loginReturn='weekly';go('login')">Đăng nhập bằng SĐT</button></section></div>`;return
   }
-  const completedIds=['SESSION-0308','SESSION-3107','SESSION-2707'];
-  const done=state.progressTestsDone||[];
-  const pending=completedIds.filter(id=>!done.includes(id));
+  const pending=pendingProgressTestIds();
   const nextId=pending[0];
   rv.innerHTML=`<div class="dashboard-grid"><div>
     <section class="card dash-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap"><div><h2 style="margin:0">Progress Test · 3 phút</h2><p class="muted">Mỗi session đã học sẽ mở 1 bài test riêng.</p></div><span class="badge ${pending.length?'green':'blue'}">${pending.length} bài đang chờ</span></div>
@@ -3025,6 +3126,7 @@ function weeklyResult(){
   if(sid && !state.progressTestsDone.includes(sid)){
     state.progressTestsDone.push(sid);
     localStorage.setItem('speakhub_progress_tests_done',JSON.stringify(state.progressTestsDone));
+    updateAccountStatusBadges();
   }
   document.getElementById('routeView').innerHTML=`<div class="testbox"><section class="card success">
     <div class="check">74</div><h2>Kết quả sau session: 74/100</h2>
@@ -3101,6 +3203,7 @@ async function loadRealHistory(){
     state.realUpcoming=[];
     state.realCompleted=[];
     state.realPaidLessons=[];
+    updateAccountStatusBadges();
     return;
   }
 
@@ -3131,6 +3234,8 @@ async function loadRealHistory(){
       status:x.status
     };
   });
+
+  updateAccountStatusBadges();
 }
 
 async function renderHistory(rv){
@@ -3601,7 +3706,7 @@ function renderCommunity(rv){
   ${supportFooterHTML()}`
 }
 function renderChat(rv){
-  setTitle('Chat với SpeakHub','Nhân viên hỗ trợ trực tiếp');
+  setTitle('Chat SpeakHub','Nhân viên hỗ trợ trực tiếp');
   if(!state.chatMessages) state.chatMessages=[
     {me:false,text:'Xin chào! SpeakHub có thể hỗ trợ gì cho bạn?'},
     {me:true,text:'Mình muốn đổi ca học ngày 10/08.'},
@@ -3711,6 +3816,8 @@ async function loginByPhone(){
     state.logged=true;
     state.firstTimeName=data.customer.full_name||'';
     state.tempPhone=data.customer.phone||phone;
+    accountStatusLoaded=false;
+    preloadAccountStatus(true);
 
     // Force history to reload from DB for the account that just logged in.
     state.realUpcoming=[];
