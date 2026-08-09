@@ -232,7 +232,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
  .shell{display:block}.sidebar{display:none}.appmain{padding:16px 13px 88px}.dashboard-grid,.community-grid{grid-template-columns:1fr}.quick-grid{grid-template-columns:repeat(2,1fr)}
  .calendar-grid{gap:5px}.day{min-height:88px;padding:6px}.slotline{font-size:10px;padding:4px 5px}
  .lesson{grid-template-columns:70px 1fr}.lesson .topic{grid-column:1/-1}
- .mobile-nav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:8px 6px calc(10px + env(safe-area-inset-bottom));z-index:60}
+ .mobile-nav{display:grid;grid-template-columns:repeat(6,1fr);position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:8px 6px calc(10px + env(safe-area-inset-bottom));z-index:60}
  .cartbar{bottom:82px;margin-bottom:6px;grid-template-columns:1fr auto;gap:10px}
  .cartbar>div:first-child{grid-column:1/-1}
  .cartbar .deal{grid-column:1/2}
@@ -1292,6 +1292,31 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   }
 }
 
+
+/* ===== Mobile 6-tab navigation ===== */
+@media(max-width:760px){
+  .mobile-nav{
+    grid-template-columns:repeat(6,minmax(0,1fr)) !important;
+    padding-left:2px !important;
+    padding-right:2px !important;
+  }
+  .mobile-nav button,
+  .mobile-nav .book-wrap{
+    font-size:9.5px !important;
+    padding-left:1px !important;
+    padding-right:1px !important;
+    white-space:nowrap;
+  }
+  .mobile-nav .book-label{
+    font-size:9.5px !important;
+  }
+  .mobile-nav .book{
+    width:50px !important;
+    height:50px !important;
+    font-size:23px !important;
+  }
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
@@ -1307,6 +1332,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB TIMETABLE V3 2026-08-09 -->
 <!-- SPEAKHUB TIMETABLE STICKY COMPACT V4 2026-08-09 -->
 <!-- SPEAKHUB TIMETABLE FIRST-COLUMN FIT V4.1 -->
+<!-- SPEAKHUB NAV + MY UPCOMING CLASSES FIX V5 2026-08-09 -->
 </head>
 <body>
 
@@ -1329,7 +1355,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
         <div class="hero-actions">
           <button class="btn primary" onclick="startBooking()">📅 Đặt chỗ học ngay</button>
           <button class="btn secondary2" onclick="startPlacement()">🧪 Kiểm tra xếp lớp ›</button>
-          <button class="btn tertiary schedule-cta" onclick="viewScheduleEntry()">Xem lịch học</button>
+          <button class="btn tertiary schedule-cta" onclick="viewScheduleEntry()">Lịch học tổng thể</button>
         </div>
         <div class="tiny">👥 Hơn 700 học viên đã và đang học cùng SpeakHub</div>
       </div>
@@ -1457,8 +1483,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
       <button data-route="placement" onclick="go('placement')">🧪 Kiểm tra phân lớp</button>
       <button data-route="weekly" onclick="go('weekly')">📈 Test</button>
       <button data-route="booking" onclick="go('booking')">📅 Đặt chỗ</button>
-      <button data-route="publicSchedule" onclick="go('publicSchedule')">🗓️ Xem lịch học</button>
-      <button data-route="history" onclick="go('history')">🕘 Lịch sử đặt chỗ</button>
+      <button data-route="history" onclick="go('history')">🕘 Lịch học của tôi</button>
       <button data-route="community" onclick="go('community')">👥 Cộng đồng <span class="count">5</span></button>
       <button data-route="chat" onclick="go('chat')">💬 Chat với SpeakHub <span class="count">3</span></button>
       <button data-route="notifications" onclick="go('notifications')">🔔 Thông báo <span class="count">2</span></button>
@@ -1474,9 +1499,10 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 </div>
 <nav class="mobile-nav">
   <button onclick="go('dashboard')">🏠<br>Trang chủ</button>
-  <button onclick="go('publicSchedule')">📅<br>Lịch học</button>
+  <button onclick="go('history')">📅<br>Lịch học</button>
   <button class="book-wrap" onclick="go('booking')"><span class="book">＋</span><span class="book-label">Đặt chỗ</span></button>
   <button onclick="go('community')">👥<br>Cộng đồng</button>
+  <button onclick="go('chat')">💬<br>Chat</button>
   <button onclick="go('weekly')">📈<br>Theo dõi</button>
 </nav>
 </div>
@@ -1881,13 +1907,15 @@ function renderDashboard(rv){
       <section class="card dash-card">
         <div class="quick-grid">
           <div class="quick primary" onclick="go('booking')"><b>📅 Đặt chỗ học ngay</b><p class="tiny">Chọn thời gian phù hợp</p></div>
+          <div class="quick" onclick="go('history')"><b>🗓️ Lịch học của tôi</b><p class="tiny">Các buổi đã book · sắp tới</p></div>
+          <div class="quick" onclick="go('publicSchedule')"><b>📋 Lịch học tổng thể</b><p class="tiny">Xem tổng quan toàn bộ lớp</p></div>
           <div class="quick" onclick="go('placement')"><b>🧪 Kiểm tra xếp lớp</b><p class="tiny">Tối đa 2 lần / tuần</p></div>
-          <div class="quick" onclick="go('weekly')"><b>📈 Theo dõi tiến bộ</b><p class="tiny">Test 3 phút sau mỗi buổi</p></div>
           <div class="quick" onclick="go('community')"><b>👥 Cộng đồng</b><p class="tiny">Kết nối · Chia sẻ · Học hỏi</p></div>
+          <div class="quick" onclick="go('chat')"><b>💬 Chat với SpeakHub</b><p class="tiny">Hỗ trợ trực tiếp</p></div>
         </div>
       </section>
       <section class="card dash-card" style="margin-top:18px">
-        <div style="display:flex;justify-content:space-between;align-items:center"><h3>Lịch học sắp tới</h3><button class="btn ghost small" onclick="go('history')">Xem tất cả ›</button></div>
+        <div style="display:flex;justify-content:space-between;align-items:center"><h3>Lịch học đã đặt · sắp tới</h3><button class="btn ghost small" onclick="go('history')">Xem tất cả ›</button></div>
         ${upcomingLessonsHTML()}
       </section>
     </div>
@@ -3032,7 +3060,7 @@ async function loadRealHistory(){
 }
 
 async function renderHistory(rv){
-  setTitle('Lịch sử đặt chỗ','Chỉ hiển thị booking đã thanh toán thành công');
+  setTitle('Lịch học của tôi','Chỉ hiển thị các booking đã thanh toán thành công');
 
   rv.innerHTML=`<section class="card dash-card">
     <div style="padding:28px;text-align:center">
