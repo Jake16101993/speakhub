@@ -1,0 +1,18 @@
+SpeakHub Complete Prototype
+- Landing page with 3 CTAs: booking, placement test, view schedule
+- Booking calendar with class filters, multi-slot selection, bundle pricing
+- Checkout: Name + phone -> OTP -> PayOS mock -> success -> persistent localStorage login
+- Placement test: 1 min Reading + 2 min AI Speaking -> result -> booking
+- Returning-device login: phone -> OTP -> schedule/history
+- Dashboard after login
+- Weekly 3-minute progress test
+- Upcoming paid classes only
+- Topic PDF ready/pending states
+- Rooms: Speaking Room 1, Speaking Room 2, Garden
+- Address: Khói Coffee - 404 Thống Nhất, phường An Hội Đông, TP. HCM
+- Reschedule from booked session only, no cancel
+- Reschedule allowances: <4=1, 4-7=2, 8+=3, before 24h
+- Community forum
+- Human support chat
+
+Updates: reschedule now uses calendar + slot picker; Weekly Test score-only; slot modal shows remaining seats only; action label changed to 'Thêm vào lịch học'.
