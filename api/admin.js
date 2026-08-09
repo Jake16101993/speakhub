@@ -373,6 +373,407 @@ async function handleTopicUpload(request){
   return Response.json({success:true,path});
 }
 
+
+async function requireActiveCustomer(customerId,token){
+  if(!customerId||!token) return {error:'CUSTOMER_TOKEN_REQUIRED',status:401};
+
+  const {data,error}=await supabase
+    .from('customers')
+    .select('id,status,full_name,phone')
+    .eq('id',customerId)
+    .eq('device_token',token)
+    .maybeSingle();
+
+  if(error) throw error;
+  if(!data) return {error:'INVALID_CUSTOMER_TOKEN',status:401};
+  if(data.status!=='ACTIVE') return {error:'CUSTOMER_NOT_ACTIVE',status:403};
+  return {customer:data};
+}
+
+function startOfCurrentWeekISO(){
+  const now=new Date();
+  const vn=new Date(now.toLocaleString('en-US',{timeZone:'Asia/Ho_Chi_Minh'}));
+  const day=vn.getDay()===0?7:vn.getDay();
+  vn.setDate(vn.getDate()-(day-1));
+  vn.setHours(0,0,0,0);
+  return vn.toISOString();
+}
+
+async function placementUsage(customerId){
+  const weekStart=startOfCurrentWeekISO();
+  const {count,error}=await supabase
+    .from('placement_tests')
+    .select('*',{count:'exact',head:true})
+    .eq('customer_id',customerId)
+    .gte('created_at',weekStart)
+    .eq('status','COMPLETED');
+
+  if(error) throw error;
+  const used=Number(count||0);
+  return {used,remaining:Math.max(0,2-used),week_start:weekStart};
+}
+
+async function handlePlacementStatus(request){
+  if(request.method!=='GET'){
+    return Response.json({error:'Method not allowed'},{status:405});
+  }
+
+  const url=new URL(request.url);
+  const customerId=url.searchParams.get('customer_id');
+  const token=url.searchParams.get('token');
+
+  const auth=await requireActiveCustomer(customerId,token);
+  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+
+  return Response.json(await placementUsage(customerId));
+}
+
+function averageTranscriptionConfidence(logprobs){
+  if(!Array.isArray(logprobs)||!logprobs.length) return null;
+  const vals=logprobs
+    .map(x=>Number(x?.logprob))
+    .filter(Number.isFinite)
+    .map(lp=>Math.exp(lp));
+  if(!vals.length) return null;
+  return vals.reduce((a,b)=>a+b,0)/vals.length;
+}
+
+async function handlePlacementTranscribe(request){
+  if(request.method!=='POST'){
+    return Response.json({error:'Method not allowed'},{status:405});
+  }
+  if(!process.env.OPENAI_API_KEY){
+    return Response.json({error:'OPENAI_API_KEY_MISSING'},{status:500});
+  }
+
+  const fd=await request.formData();
+  const customerId=String(fd.get('customer_id')||'');
+  const token=String(fd.get('token')||'');
+  const audio=fd.get('audio');
+
+  const auth=await requireActiveCustomer(customerId,token);
+  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+
+  const usage=await placementUsage(customerId);
+  if(usage.remaining<=0){
+    return Response.json({error:'PLACEMENT_LIMIT_REACHED',...usage},{status:429});
+  }
+
+  if(!audio || typeof audio.arrayBuffer!=='function'){
+    return Response.json({error:'AUDIO_REQUIRED'},{status:400});
+  }
+
+  if(Number(audio.size||0)>12*1024*1024){
+    return Response.json({error:'AUDIO_TOO_LARGE'},{status:413});
+  }
+
+  const openaiForm=new FormData();
+  openaiForm.append('file',audio,audio.name||'placement.webm');
+  openaiForm.append('model',process.env.OPENAI_TRANSCRIBE_MODEL||'gpt-4o-mini-transcribe');
+  openaiForm.append('language','en');
+  openaiForm.append('response_format','json');
+  openaiForm.append('include[]','logprobs');
+  openaiForm.append(
+    'prompt',
+    'This is an English placement speaking test. Preserve the learner wording, grammar mistakes, repetitions, fillers, and incomplete sentences as faithfully as possible.'
+  );
+
+  const resp=await fetch('https://api.openai.com/v1/audio/transcriptions',{
+    method:'POST',
+    headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`},
+    body:openaiForm
+  });
+
+  const data=await resp.json().catch(()=>({}));
+  if(!resp.ok){
+    console.error('OpenAI transcription error',data);
+    return Response.json({
+      error:'TRANSCRIPTION_FAILED',
+      details:data?.error?.message||'OpenAI transcription failed'
+    },{status:502});
+  }
+
+  return Response.json({
+    text:String(data.text||'').trim(),
+    confidence:averageTranscriptionConfidence(data.logprobs),
+    usage:data.usage||null
+  });
+}
+
+function placementSchema(){
+  return {
+    type:'object',
+    additionalProperties:false,
+    properties:{
+      overall_score:{type:'integer',minimum:0,maximum:100},
+      grammar_score:{type:'integer',minimum:0,maximum:100},
+      vocabulary_score:{type:'integer',minimum:0,maximum:100},
+      fluency_score:{type:'integer',minimum:0,maximum:100},
+      pronunciation_score:{type:'integer',minimum:0,maximum:100},
+      comprehension_score:{type:'integer',minimum:0,maximum:100},
+      cefr_estimate:{type:'string',enum:['Pre-A1','A1','A2','B1','B2+']},
+      recommended_program_name:{
+        type:'string',
+        enum:['Kid Starter','Kid Communicator','Adult Beginner','Adult Intermediate']
+      },
+      confidence:{type:'number',minimum:0,maximum:1},
+      summary_vi:{type:'string'},
+      strengths_vi:{type:'array',items:{type:'string'},minItems:1,maxItems:3},
+      improvements_vi:{type:'array',items:{type:'string'},minItems:1,maxItems:3},
+      grammar_examples:{
+        type:'array',
+        minItems:0,
+        maxItems:3,
+        items:{
+          type:'object',
+          additionalProperties:false,
+          properties:{
+            original:{type:'string'},
+            corrected:{type:'string'},
+            explanation_vi:{type:'string'}
+          },
+          required:['original','corrected','explanation_vi']
+        }
+      }
+    },
+    required:[
+      'overall_score','grammar_score','vocabulary_score','fluency_score',
+      'pronunciation_score','comprehension_score','cefr_estimate',
+      'recommended_program_name','confidence','summary_vi',
+      'strengths_vi','improvements_vi','grammar_examples'
+    ]
+  };
+}
+
+function extractResponseText(data){
+  if(typeof data?.output_text==='string') return data.output_text;
+  const out=Array.isArray(data?.output)?data.output:[];
+  for(const item of out){
+    for(const c of (item?.content||[])){
+      if(c?.type==='output_text' && typeof c.text==='string') return c.text;
+    }
+  }
+  return '';
+}
+
+async function handlePlacementScore(request){
+  if(request.method!=='POST'){
+    return Response.json({error:'Method not allowed'},{status:405});
+  }
+  if(!process.env.OPENAI_API_KEY){
+    return Response.json({error:'OPENAI_API_KEY_MISSING'},{status:500});
+  }
+
+  const b=await request.json().catch(()=>({}));
+  const customerId=String(b.customer_id||'');
+  const token=String(b.token||'');
+
+  const auth=await requireActiveCustomer(customerId,token);
+  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+
+  const usage=await placementUsage(customerId);
+  if(usage.remaining<=0){
+    return Response.json({error:'PLACEMENT_LIMIT_REACHED',...usage},{status:429});
+  }
+
+  const birthYear=Number(b.birth_year||0);
+  const nowYear=new Date().getFullYear();
+  const age=nowYear-birthYear;
+  if(!birthYear || age<5 || age>90){
+    return Response.json({error:'INVALID_BIRTH_YEAR'},{status:400});
+  }
+
+  const q1=String(b.question_1||'').trim();
+  const q2=String(b.question_2||'').trim();
+  const t1=String(b.transcript_1||'').trim();
+  const t2=String(b.transcript_2||'').trim();
+  const readingAnswers=Array.isArray(b.reading_answers)?b.reading_answers:[];
+  const readingCorrect=Array.isArray(b.reading_correct)?b.reading_correct:[];
+  const readingScore=readingCorrect.length
+    ? Math.round(100*readingCorrect.filter((x,i)=>String(readingAnswers[i])===String(x)).length/readingCorrect.length)
+    : 0;
+
+  if(!t1 && !t2){
+    return Response.json({error:'SPEAKING_REQUIRED'},{status:400});
+  }
+
+  const clarity1=Number.isFinite(Number(b.transcription_confidence_1))
+    ? Math.round(Number(b.transcription_confidence_1)*100)
+    : null;
+  const clarity2=Number.isFinite(Number(b.transcription_confidence_2))
+    ? Math.round(Number(b.transcription_confidence_2)*100)
+    : null;
+
+  const allowedByAge=age<=9
+    ? ['Kid Starter','Kid Communicator']
+    : age<=14
+      ? ['Kid Starter','Kid Communicator','Adult Beginner']
+      : ['Adult Beginner','Adult Intermediate'];
+
+  const prompt=`You are the SpeakHub English Placement Assessor.
+
+Evaluate a learner for an OFFLINE English speaking club. Be conservative and consistent.
+
+AGE: ${age}
+ALLOWED PROGRAMS FOR THIS AGE: ${allowedByAge.join(', ')}
+
+READING:
+Score: ${readingScore}/100
+Learner answers: ${JSON.stringify(readingAnswers)}
+Correct answers: ${JSON.stringify(readingCorrect)}
+
+SPEAKING QUESTION 1:
+${q1}
+TRANSCRIPT 1:
+${t1 || '(no usable speech)'}
+
+SPEAKING QUESTION 2:
+${q2}
+TRANSCRIPT 2:
+${t2 || '(no usable speech)'}
+
+TRANSCRIPTION CONFIDENCE PROXIES:
+Q1: ${clarity1===null?'unknown':clarity1+'/100'}
+Q2: ${clarity2===null?'unknown':clarity2+'/100'}
+
+SCORING RUBRIC:
+- Grammar 0-100: control of basic structures, tense, agreement, sentence construction.
+- Vocabulary 0-100: range, appropriateness, ability to express meaning.
+- Fluency 0-100: continuity, answer length, linking ideas, ability to sustain speech. Do not punish normal fillers heavily.
+- Pronunciation 0-100: this is only a SPEECH CLARITY PROXY because you mainly have transcript + transcription confidence. Never claim phoneme-level precision. Use confidence proxies cautiously.
+- Comprehension 0-100: reading performance + whether speaking answers directly understand the questions.
+- Overall: weighted speaking-first score. Speaking should dominate.
+
+PROGRAM GUIDANCE:
+Kid Starter: young learner, very short/basic answers, needs strong support.
+Kid Communicator: young learner can answer simple questions with connected sentences and basic reasons.
+Adult Beginner: adult/older teen can communicate basic meaning but answers are short/hesitant with limited grammar/vocabulary.
+Adult Intermediate: can sustain answers, explain reasons/examples, link ideas, and communicate naturally enough for discussion/debate practice.
+
+IMPORTANT:
+- Choose ONLY from ALLOWED PROGRAMS FOR THIS AGE.
+- Do not inflate scores because the learner is young.
+- A fluent but error-prone learner may still be Intermediate if ideas are sustained and comprehensible.
+- Write feedback in friendly Vietnamese.
+- grammar_examples must only contain genuine errors visible in transcripts. If there is no clear error, return [].
+`;
+
+  const openaiResp=await fetch('https://api.openai.com/v1/responses',{
+    method:'POST',
+    headers:{
+      Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type':'application/json'
+    },
+    body:JSON.stringify({
+      model:process.env.OPENAI_PLACEMENT_MODEL||'gpt-5-mini',
+      store:false,
+      input:[
+        {
+          role:'developer',
+          content:[{type:'input_text',text:'Return only the requested structured placement assessment. Do not add prose outside the schema.'}]
+        },
+        {
+          role:'user',
+          content:[{type:'input_text',text:prompt}]
+        }
+      ],
+      text:{
+        format:{
+          type:'json_schema',
+          name:'speakhub_placement_result',
+          strict:true,
+          schema:placementSchema()
+        }
+      }
+    })
+  });
+
+  const openaiData=await openaiResp.json().catch(()=>({}));
+  if(!openaiResp.ok){
+    console.error('OpenAI placement scoring error',openaiData);
+    return Response.json({
+      error:'PLACEMENT_AI_FAILED',
+      details:openaiData?.error?.message||'OpenAI placement scoring failed'
+    },{status:502});
+  }
+
+  let result;
+  try{
+    result=JSON.parse(extractResponseText(openaiData));
+  }catch(err){
+    console.error('placement result parse error',openaiData);
+    return Response.json({error:'PLACEMENT_RESULT_INVALID'},{status:502});
+  }
+
+  if(!allowedByAge.includes(result.recommended_program_name)){
+    result.recommended_program_name=age<=14?'Kid Communicator':'Adult Beginner';
+    result.confidence=Math.min(Number(result.confidence||0),0.5);
+  }
+
+  // Blend the limited speech-clarity proxy into pronunciation conservatively.
+  const clarityVals=[clarity1,clarity2].filter(Number.isFinite);
+  if(clarityVals.length){
+    const avg=Math.round(clarityVals.reduce((a,b)=>a+b,0)/clarityVals.length);
+    result.pronunciation_score=Math.round(
+      0.65*Number(result.pronunciation_score||0)+0.35*avg
+    );
+  }
+
+  const {data:program,error:programErr}=await supabase
+    .from('programs')
+    .select('id,name,code')
+    .eq('name',result.recommended_program_name)
+    .maybeSingle();
+  if(programErr) throw programErr;
+
+  const insertRow={
+    customer_id:customerId,
+    birth_year:birthYear,
+    age_at_test:age,
+    reading_score:readingScore,
+    question_1:q1,
+    question_2:q2,
+    transcript_1:t1||null,
+    transcript_2:t2||null,
+    transcription_confidence_1:Number.isFinite(Number(b.transcription_confidence_1))?Number(b.transcription_confidence_1):null,
+    transcription_confidence_2:Number.isFinite(Number(b.transcription_confidence_2))?Number(b.transcription_confidence_2):null,
+    grammar_score:result.grammar_score,
+    vocabulary_score:result.vocabulary_score,
+    fluency_score:result.fluency_score,
+    pronunciation_score:result.pronunciation_score,
+    comprehension_score:result.comprehension_score,
+    overall_score:result.overall_score,
+    cefr_estimate:result.cefr_estimate,
+    recommended_program_id:program?.id||null,
+    recommended_program_name:result.recommended_program_name,
+    ai_confidence:result.confidence,
+    summary_vi:result.summary_vi,
+    strengths_vi:result.strengths_vi,
+    improvements_vi:result.improvements_vi,
+    grammar_examples:result.grammar_examples,
+    raw_result:result,
+    model_used:process.env.OPENAI_PLACEMENT_MODEL||'gpt-5-mini',
+    status:'COMPLETED'
+  };
+
+  const {data:saved,error:saveErr}=await supabase
+    .from('placement_tests')
+    .insert(insertRow)
+    .select('id,created_at')
+    .single();
+
+  if(saveErr) throw saveErr;
+
+  return Response.json({
+    success:true,
+    placement_test_id:saved.id,
+    created_at:saved.created_at,
+    program_id:program?.id||null,
+    ...result,
+    usage:await placementUsage(customerId)
+  });
+}
+
 export default {
   async fetch(request){
     try{
@@ -382,6 +783,13 @@ export default {
       if(action==='login'){
         return await handleLogin(request);
       }
+
+      // Customer-authenticated public AI placement actions.
+      // Kept inside existing /api/admin.js so SpeakHub does not add another
+      // Vercel Serverless Function on the Hobby plan.
+      if(action==='placement-status') return await handlePlacementStatus(request);
+      if(action==='placement-transcribe') return await handlePlacementTranscribe(request);
+      if(action==='placement-score') return await handlePlacementScore(request);
 
       if(!requireAdmin(request)){
         return Response.json({error:'UNAUTHORIZED'},{status:401});
