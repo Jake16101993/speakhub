@@ -102,7 +102,7 @@ linear-gradient(135deg,#f6fbf8,#eef6f2);overflow:visible}
 .cartbar .btn{white-space:nowrap}
 .cartchip{padding:8px 10px;border-radius:10px;background:#f7f9f8;border:1px solid var(--line);font-size:12px}.deal{background:var(--os);color:#ad6118;padding:9px 11px;border-radius:10px;font-size:12px;font-weight:700}
 .booking-warning{background:#fff3f0;color:#b63e2e;border:1px solid #f1b6aa;padding:10px 12px;border-radius:11px;font-size:12px;font-weight:800;margin-top:10px}
-.modal{display:none;position:fixed;inset:0;background:rgba(9,32,24,.32);z-index:80;align-items:flex-end;justify-content:center;padding:14px}.modal.show{display:flex}.sheet{width:min(560px,100%);background:#fff;border-radius:24px 24px 14px 14px;padding:18px;box-shadow:var(--shadow)}.slotchoice{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);padding:13px;border-radius:13px;margin:9px 0}.slotchoice.on{border-color:var(--g);background:var(--gs)}
+.modal{display:none;position:fixed;inset:0;background:rgba(9,32,24,.32);z-index:80;align-items:flex-end;justify-content:center;padding:14px}.modal.show{display:flex}.sheet{width:min(560px,100%);background:#fff;border-radius:24px 24px 14px 14px;padding:18px;box-shadow:var(--shadow)}.slotchoice{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);padding:13px;border-radius:13px;margin:9px 0}.slotchoice.on{border-color:var(--g);background:var(--gs)}.slotchoice.disabled{opacity:.55;background:#f4f5f5;cursor:not-allowed}
 .checkout{width:min(760px,100%);margin:0 auto}.checkout .card{padding:22px;margin-bottom:15px}.formrow{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field label{display:block;font-size:13px;font-weight:800;margin-bottom:6px}.field input{width:100%;border:1px solid #dbe4e1;border-radius:12px;padding:13px}.summary-row{display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid var(--line)}.summary-row:first-child{border-top:0}.old{text-decoration:line-through;color:#9a9a9a}.save{background:var(--gs);color:var(--gd);padding:8px 10px;border-radius:10px;font-weight:800}
 .otpboxes{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:18px 0}.otpboxes input{height:50px;text-align:center;border:1px solid var(--line);border-radius:11px;font-weight:900;font-size:20px;width:100%}
 .qr{width:220px;height:220px;margin:12px auto;background:
@@ -1104,9 +1104,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   <div class="sheet">
     <div style="display:flex;justify-content:space-between;align-items:center"><h3 id="slotDate" style="margin:0">Chọn ca học</h3><button style="border:0;background:none;font-size:24px" onclick="closeSlotModal()">×</button></div>
     <div class="tiny" style="margin:6px 0 12px" id="slotMeta">Adult Intermediate · Gò Vấp</div>
-    <div class="slotchoice" data-slot="Sáng" onclick="toggleSlotChoice(this)"><div><b>☀️ Sáng</b><div class="tiny">09:00 – 10:30</div></div><div><b style="color:var(--gd)">Còn 6 chỗ</b></div></div>
-    <div class="slotchoice" data-slot="Chiều" onclick="toggleSlotChoice(this)"><div><b>🌤️ Chiều</b><div class="tiny">15:00 – 16:30</div></div><div><b style="color:var(--gd)">Còn 4 chỗ</b></div></div>
-    <div class="slotchoice" data-slot="Tối" onclick="toggleSlotChoice(this)"><div><b>🌙 Tối</b><div class="tiny">19:30 – 21:00</div></div><div><b style="color:var(--gd)">Còn 3 chỗ</b></div></div>
+    <div id="slotChoices"></div>
     <button class="btn primary" style="width:100%;margin-top:10px" onclick="applySlotSelection()">Thêm vào lịch học</button>
   </div>
 </div>
@@ -1138,6 +1136,10 @@ const state={
   bookingYear:2026,
   selected:[],
   tempDate:null,
+  sessions:[],
+  sessionsLoading:false,
+  sessionsError:'',
+  sessionsLoadedKey:'',
   placementDone:false,
   currentCheckoutStep:0,
   loginReturn:'history'
@@ -1331,27 +1333,85 @@ function firstWeekdayMondayIndex(year,month){
   const js=new Date(year,month-1,1).getDay(); // Sun 0
   return (js+6)%7; // Mon 0
 }
-function nextBookingMonth(delta){
-  let m=state.bookingMonth+delta, y=state.bookingYear;
-  while(m>12){m-=12;y++}
-  while(m<1){m+=12;y--}
-  const todayY=2026,todayM=8;
-  if(y<todayY || (y===todayY && m<todayM)) return;
-  state.bookingMonth=m; state.bookingYear=y;
-  renderBooking(document.getElementById('routeView'));
+
+
+const PROGRAM_CODE_BY_NAME={
+  'Kid Starter':'KID_STARTER',
+  'Kid Communicator':'KID_COMMUNICATOR',
+  'Adult Beginner':'ADULT_BEGINNER',
+  'Adult Intermediate':'ADULT_INTERMEDIATE'
+};
+
+function slotLabelFromPeriod(period){
+  if(period==='MORNING') return 'Sáng';
+  if(period==='AFTERNOON') return 'Chiều';
+  return 'Tối';
 }
-function bookingSlotsForDay(day){
-  // Demo recurring availability pattern for future months.
-  const dow=new Date(state.bookingYear,state.bookingMonth-1,day).getDay();
-  if(dow===0) return ['09:00'];
-  if(dow===6) return ['09:00','15:00'];
-  if(dow===2 || dow===4) return ['19:30'];
-  if(dow===3 || dow===5) return ['09:00','19:30'];
-  return ['19:30'];
+function slotShortFromPeriod(period){
+  if(period==='MORNING') return 'S';
+  if(period==='AFTERNOON') return 'C';
+  return 'T';
+}
+function slotIconFromPeriod(period){
+  if(period==='MORNING') return '☀️';
+  if(period==='AFTERNOON') return '🌤️';
+  return '🌙';
+}
+function shortTime(t){
+  return String(t||'').slice(0,5);
+}
+function isPastCalendarDate(year,month,day){
+  const now=new Date();
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const target=new Date(year,month-1,day);
+  return target<today;
+}
+function monthDateRange(year,month){
+  const mm=String(month).padStart(2,'0');
+  const last=String(monthDays(year,month)).padStart(2,'0');
+  return {from:`${year}-${mm}-01`,to:`${year}-${mm}-${last}`};
+}
+async function loadBookingSessions(force=false){
+  const key=`${state.bookingYear}-${String(state.bookingMonth).padStart(2,'0')}`;
+  if(!force && state.sessionsLoadedKey===key) return;
+  state.sessionsLoading=true;
+  state.sessionsError='';
+  try{
+    const range=monthDateRange(state.bookingYear,state.bookingMonth);
+    const res=await fetch(`/api/sessions?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`);
+    const data=await res.json();
+    if(!res.ok) throw new Error(data?.error||'Không thể tải lịch học');
+    state.sessions=Array.isArray(data.sessions)?data.sessions:[];
+    state.sessionsLoadedKey=key;
+  }catch(err){
+    console.error(err);
+    state.sessions=[];
+    state.sessionsError=err.message||'Không thể tải lịch học';
+  }finally{
+    state.sessionsLoading=false;
+  }
+}
+function filteredMonthSessions(){
+  const programCode=PROGRAM_CODE_BY_NAME[state.classFilter];
+  return state.sessions.filter(s=>!programCode || s.program_code===programCode);
+}
+function sessionsForDay(day){
+  const y=state.bookingYear;
+  const m=String(state.bookingMonth).padStart(2,'0');
+  const d=String(day).padStart(2,'0');
+  const date=`${y}-${m}-${d}`;
+  return filteredMonthSessions().filter(s=>s.session_date===date);
 }
 
-function renderBooking(rv){
+async function renderBooking(rv){
   setTitle('Đặt chỗ','Chọn nhiều ca trong cùng một lần đặt');
+
+  const key=`${state.bookingYear}-${String(state.bookingMonth).padStart(2,'0')}`;
+  if(state.sessionsLoadedKey!==key && !state.sessionsLoading){
+    rv.innerHTML=`<section class="card calendar-card"><div style="padding:28px;text-align:center"><b>Đang tải lịch học...</b><div class="tiny" style="margin-top:6px">SpeakHub đang lấy lịch mới nhất.</div></div></section>`;
+    await loadBookingSessions();
+  }
+
   const weekdays=['T2','T3','T4','T5','T6','T7','CN'];
   let daysHtml=weekdays.map(x=>`<div class="dow">${x}</div>`).join('');
   const offset=firstWeekdayMondayIndex(state.bookingYear,state.bookingMonth);
@@ -1359,15 +1419,20 @@ function renderBooking(rv){
 
   const totalDays=monthDays(state.bookingYear,state.bookingMonth);
   for(let d=1;d<=totalDays;d++){
-    const isCurrentMonth=state.bookingYear===2026 && state.bookingMonth===8;
-    const isPast=isCurrentMonth && d<8;
+    const isPast=isPastCalendarDate(state.bookingYear,state.bookingMonth,d);
+    const daySessions=isPast?[]:sessionsForDay(d);
     const sel=!isPast && state.selected.some(x=>x.day===d && x.month===state.bookingMonth && x.year===state.bookingYear);
-    const slots=isPast?[]:bookingSlotsForDay(d);
-    const lines=slots.map(t=>{
-      const cls=t.startsWith('09:')?'S':(t.startsWith('15:')||t.startsWith('14:')?'C':'T');
-      return `<span class="slotline" data-slot-short="${cls}">${t}</span>`;
+
+    const lines=daySessions.map(s=>{
+      const cls=slotShortFromPeriod(s.session_period);
+      const full=Number(s.available_seats)<=0;
+      return `<span class="slotline ${full?'full':''}" data-slot-short="${cls}">${shortTime(s.starts_at)}</span>`;
     }).join('');
-    daysHtml+=`<div class="day ${isPast?'past':''} ${sel?'selected':''}" ${isPast?'':`onclick="openSlotModal(${d})"`}><div class="daynum">${d}</div>${lines}</div>`;
+
+    const clickable=!isPast && daySessions.some(s=>Number(s.available_seats)>0);
+    daysHtml+=`<div class="day ${isPast?'past':''} ${sel?'selected':''} ${!clickable&&!isPast?'mutedday':''}" ${clickable?`onclick="openSlotModal(${d})"`:''}>
+      <div class="daynum">${d}</div>${lines}
+    </div>`;
   }
 
   const p=pricing(state.selected.length);
@@ -1379,13 +1444,18 @@ function renderBooking(rv){
       <div class="filters">
         ${['Kid Starter','Kid Communicator','Adult Beginner','Adult Intermediate'].map(c=>`<button class="filter ${state.classFilter===c?'active':''}" onclick="setClassFilter('${c}')">${c}</button>`).join('')}
       </div>
-      <div class="filters"><button class="filter active">📍 Gò Vấp</button><button class="filter">Tất cả địa điểm</button></div>
+      <div class="filters"><button class="filter active">📍 Gò Vấp</button></div>
     </div>
+
+    ${state.sessionsError?`<div class="booking-warning">⚠️ ${state.sessionsError} <button class="btn ghost small" onclick="retrySessions()">Thử lại</button></div>`:''}
 
     <section class="card calendar-card">
       <div class="calendar-top">
-        <button class="filter" onclick="nextBookingMonth(-1)" ${state.bookingYear===2026&&state.bookingMonth===8?'disabled style="opacity:.35"':''}>‹</button>
-        <div style="text-align:center"><h2>Tháng ${state.bookingMonth}/${state.bookingYear}</h2><div class="tiny">Chọn ngày phù hợp để xem ca Sáng · Chiều · Tối</div></div>
+        <button class="filter" onclick="nextBookingMonth(-1)">‹</button>
+        <div style="text-align:center">
+          <h2>Tháng ${state.bookingMonth}/${state.bookingYear}</h2>
+          <div class="tiny">Lịch thật từ SpeakHub · S = Sáng · C = Chiều · T = Tối</div>
+        </div>
         <button class="filter" onclick="nextBookingMonth(1)">›</button>
       </div>
       <div class="calendar-grid">${daysHtml}</div>
@@ -1399,17 +1469,63 @@ function renderBooking(rv){
       ${deal}
       <div style="text-align:right"><div class="tiny">${money(p.unit)} / buổi</div><b style="font-size:20px;color:var(--gd)">${money(p.total)}</b></div>
       <button class="btn primary" ${state.selected.length===0?'disabled style="opacity:.4"':''} onclick="go('checkout')">Xác nhận đặt chỗ</button>
-    </div>`
+    </div>`;
 }
-function setClassFilter(c){state.classFilter=c;renderBooking(document.getElementById('routeView'))}
+async function retrySessions(){
+  state.sessionsLoadedKey='';
+  await loadBookingSessions(true);
+  renderBooking(document.getElementById('routeView'));
+}
+function setClassFilter(c){
+  state.classFilter=c;
+  renderBooking(document.getElementById('routeView'));
+}
+async function nextBookingMonth(delta){
+  let m=state.bookingMonth+delta, y=state.bookingYear;
+  while(m>12){m-=12;y++}
+  while(m<1){m+=12;y--}
+  const now=new Date();
+  const currentY=now.getFullYear(), currentM=now.getMonth()+1;
+  if(y<currentY || (y===currentY && m<currentM)) return;
+  state.bookingMonth=m;
+  state.bookingYear=y;
+  state.sessionsLoadedKey='';
+  await renderBooking(document.getElementById('routeView'));
+}
 function openSlotModal(day){
-  if(day<8)return;
+  if(isPastCalendarDate(state.bookingYear,state.bookingMonth,day)) return;
+
+  const sessions=sessionsForDay(day);
+  if(!sessions.length) return;
+
   state.tempDate=day;
   document.getElementById('slotDate').innerText=`Ngày ${String(day).padStart(2,'0')}/${String(state.bookingMonth).padStart(2,'0')}/${state.bookingYear}`;
   document.getElementById('slotMeta').innerText=`${state.classFilter} · ${state.location}`;
-  document.querySelectorAll('.slotchoice').forEach(el=>{
-    el.classList.toggle('on',state.selected.some(x=>x.day===day && x.month===state.bookingMonth && x.year===state.bookingYear && x.slot===el.dataset.slot))
-  });
+
+  const choices=document.getElementById('slotChoices');
+  choices.innerHTML=sessions.map(s=>{
+    const slot=slotLabelFromPeriod(s.session_period);
+    const selected=state.selected.some(x=>x.sessionId===s.session_id);
+    const full=Number(s.available_seats)<=0;
+    const teacher=s.teacher_name?`${s.teacher_name}${s.teacher_country?` (${s.teacher_country})`:''}`:'Đang cập nhật GV';
+    return `<div class="slotchoice ${selected?'on':''} ${full?'disabled':''}"
+      data-session-id="${s.session_id}"
+      data-slot="${slot}"
+      data-start="${shortTime(s.starts_at)}"
+      data-end="${shortTime(s.ends_at)}"
+      data-room="${String(s.room_name||'').replace(/"/g,'&quot;')}"
+      data-teacher="${String(teacher).replace(/"/g,'&quot;')}"
+      data-available="${s.available_seats}"
+      ${full?'':`onclick="toggleSlotChoice(this)"`}>
+      <div>
+        <b>${slotIconFromPeriod(s.session_period)} ${slot}</b>
+        <div class="tiny">${shortTime(s.starts_at)} – ${shortTime(s.ends_at)} · ${s.room_name||''}</div>
+        <div class="tiny">${teacher}</div>
+      </div>
+      <div><b style="color:${full?'#888':'var(--gd)'}">${full?'Đã đầy':`Còn ${s.available_seats} chỗ`}</b></div>
+    </div>`;
+  }).join('');
+
   document.getElementById('slotModal').classList.add('show');
 }
 function closeSlotModal(){document.getElementById('slotModal').classList.remove('show')}
@@ -1419,6 +1535,7 @@ function existingBookingsForConflict(){
   return ensurePaidLessons ? ensurePaidLessons() : (state.demoPaid||[]);
 }
 function isSameBookingSlot(a,b){
+  if(a.sessionId && b.sessionId) return a.sessionId===b.sessionId;
   return Number(a.day)===Number(b.day)
     && Number(a.month||8)===Number(b.month||8)
     && Number(a.year||2026)===Number(b.year||2026)
@@ -1433,26 +1550,33 @@ function applySlotSelection(){
   const newSelections=[];
   const conflicts=[];
 
-  document.querySelectorAll('.slotchoice.on').forEach(el=>{
+  document.querySelectorAll('#slotChoices .slotchoice.on').forEach(el=>{
     const candidate={
+      sessionId:el.dataset.sessionId,
       day,
       month:state.bookingMonth,
       year:state.bookingYear,
       slot:el.dataset.slot,
+      startsAt:el.dataset.start,
+      endsAt:el.dataset.end,
       className:state.classFilter,
-      location:state.location
+      location:state.location,
+      room:el.dataset.room,
+      teacher:el.dataset.teacher,
+      availableSeats:Number(el.dataset.available||0)
     };
     const conflict=findExistingConflict(candidate);
     if(conflict) conflicts.push(candidate);
     else newSelections.push(candidate);
   });
 
-  // Replace only temporary selections for this exact date/month while the user is editing.
-  // Existing paid bookings are never touched here.
+  // When editing one date, replace only the temporary cart selections for this date.
+  // Existing paid bookings remain untouched.
   state.selected=state.selected.filter(x=>!(
     x.day===day &&
     x.month===state.bookingMonth &&
-    x.year===state.bookingYear
+    x.year===state.bookingYear &&
+    x.className===state.classFilter
   ));
 
   newSelections.forEach(x=>{
@@ -2170,5 +2294,3 @@ showLanding();
 
 </body>
 </html>
-
-<!-- test vercel auto deploy -->
