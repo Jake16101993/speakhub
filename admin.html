@@ -143,8 +143,14 @@ async function loadSessions(){
   cache=d;
   document.getElementById('sProgram').innerHTML=d.programs.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
   document.getElementById('topicSession').innerHTML=d.sessions.map(x=>`<option value="${x.id}">${x.session_date} · ${x.starts_at.slice(0,5)} · ${x.program_name}</option>`).join('');
-  document.getElementById('sessionsTable').innerHTML=table(['Ngày','Giờ','Lớp','GV','Chỗ','Status'],d.sessions.map(x=>[
-    x.session_date,`${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,x.program_name,x.teacher_name||'',`${x.booked_count}/${x.capacity}`,`<span class="badge">${x.status}</span>`
+  document.getElementById('sessionsTable').innerHTML=table(['Ngày','Giờ','Lớp','Loại','GV','Chỗ','Status'],d.sessions.map(x=>[
+    x.session_date,
+    `${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,
+    x.program_name,
+    `<span class="badge">${x.is_recurring?'Cố định':'Lớp lẻ'}</span>`,
+    x.teacher_name||'',
+    `${x.booked_count}/${x.capacity}`,
+    `<span class="badge">${x.status}</span>`
   ]));
 }
 async function createSession(){

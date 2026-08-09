@@ -1112,6 +1112,65 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   .schedule-month-label{font-size:14px}
 }
 
+
+/* ===== Timetable refinements ===== */
+.schedule-grid th:first-child,
+.schedule-grid td:first-child{
+  position:sticky;
+  left:0;
+  z-index:4;
+}
+.schedule-grid th:first-child{
+  z-index:8;
+  background:var(--gd);
+}
+.schedule-grid td:first-child{
+  background:#f7faf8;
+  box-shadow:1px 0 0 var(--line);
+}
+.schedule-class-cell{
+  min-width:150px!important;
+  font-weight:900;
+  color:var(--ink);
+  vertical-align:middle!important;
+}
+.schedule-time-cell{
+  min-width:105px!important;
+  font-weight:800;
+  background:#fbfcfb;
+  white-space:nowrap;
+}
+.schedule-grid th:nth-child(2),
+.schedule-grid td:nth-child(2){
+  min-width:105px;
+}
+.schedule-limit-note{
+  display:none;
+  margin:8px 0 0;
+  padding:8px 10px;
+  border-radius:10px;
+  background:#fff8eb;
+  color:#9b611f;
+  border:1px solid #f0d2a8;
+  font-size:11px;
+  font-weight:800;
+}
+.schedule-limit-note.show{display:block}
+@media(max-width:760px){
+  .schedule-grid{
+    min-width:900px;
+  }
+  .schedule-grid th:first-child,
+  .schedule-grid td:first-child{
+    left:0;
+  }
+  .schedule-class-cell{
+    min-width:132px!important;
+    max-width:132px;
+    white-space:normal;
+  }
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
@@ -1123,6 +1182,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB PUBLIC SCHEDULE SUMMARY 2026-08-09 -->
 <!-- SPEAKHUB PUBLIC SCHEDULE NO ROOM 2026-08-09 -->
 <!-- SPEAKHUB TIMETABLE + 3 MONTH LIMIT 2026-08-09 -->
+<!-- SPEAKHUB TIMETABLE REFINED V2 2026-08-09 -->
 </head>
 <body>
 
@@ -1813,8 +1873,29 @@ function setPublicScheduleProgram(code){
   renderPublicSchedule(document.getElementById('routeView'));
 }
 
+function showScheduleLimitNote(){
+  const note=document.getElementById('scheduleLimitNote');
+  if(!note)return;
+  note.classList.add('show');
+  clearTimeout(window.__scheduleLimitTimer);
+  window.__scheduleLimitTimer=setTimeout(()=>note.classList.remove('show'),2600);
+}
+
 function movePublicScheduleMonth(delta){
-  publicScheduleMonthOffset=Math.max(0,Math.min(2,publicScheduleMonthOffset+delta));
+  const next=publicScheduleMonthOffset+delta;
+
+  if(next<0){
+    publicScheduleMonthOffset=0;
+    renderPublicSchedule(document.getElementById('routeView'));
+    return;
+  }
+
+  if(next>2){
+    showScheduleLimitNote();
+    return;
+  }
+
+  publicScheduleMonthOffset=next;
   renderPublicSchedule(document.getElementById('routeView'));
 }
 
@@ -1851,52 +1932,101 @@ function renderScheduleTable(sessions){
     [1,'T2'],[2,'T3'],[3,'T4'],[4,'T5'],[5,'T6'],[6,'T7'],[0,'CN']
   ];
 
-  const grouped=new Map();
+  const programOrder={
+    'KID_STARTER':1,
+    'KID_COMMUNICATOR':2,
+    'ADULT_BEGINNER':3,
+    'ADULT_INTERMEDIATE':4
+  };
+
+  // Group by program, then by time slot.
+  const programs=new Map();
+
   sessions.forEach(s=>{
-    const key=`${s.program_name||''}__${shortTime(s.starts_at)}__${shortTime(s.ends_at)}`;
-    if(!grouped.has(key)) grouped.set(key,{program:s.program_name||'',start:shortTime(s.starts_at),end:shortTime(s.ends_at),days:{}});
-    const g=grouped.get(key);
+    const code=String(s.program_code||'').toUpperCase();
+    const name=s.program_name||code||'Lớp học';
+
+    if(!programs.has(code)){
+      programs.set(code,{
+        code,
+        name,
+        order:programOrder[code]||99,
+        slots:new Map()
+      });
+    }
+
+    const slotKey=`${shortTime(s.starts_at)}__${shortTime(s.ends_at)}`;
+    const p=programs.get(code);
+
+    if(!p.slots.has(slotKey)){
+      p.slots.set(slotKey,{
+        start:shortTime(s.starts_at),
+        end:shortTime(s.ends_at),
+        days:{}
+      });
+    }
+
+    const slot=p.slots.get(slotKey);
     const wd=scheduleWeekdayIndex(s.session_date);
-    if(!g.days[wd]) g.days[wd]=[];
-    g.days[wd].push(s);
+    if(!slot.days[wd])slot.days[wd]=[];
+    slot.days[wd].push(s);
   });
 
-  const rows=[...grouped.values()].sort((a,b)=>
-    a.program.localeCompare(b.program,'vi') || a.start.localeCompare(b.start)
-  );
+  const orderedPrograms=[...programs.values()]
+    .sort((a,b)=>a.order-b.order || a.name.localeCompare(b.name,'vi'));
 
-  if(!rows.length) return `<div class="schedule-empty">Chưa có lớp phù hợp trong tháng này.</div>`;
+  if(!orderedPrograms.length){
+    return `<div class="schedule-empty">Chưa có lớp phù hợp trong tháng này.</div>`;
+  }
+
+  const bodyRows=[];
+
+  orderedPrograms.forEach(p=>{
+    const slots=[...p.slots.values()].sort((a,b)=>a.start.localeCompare(b.start));
+
+    slots.forEach((slot,slotIndex)=>{
+      bodyRows.push(`<tr>
+        ${slotIndex===0
+          ? `<td class="schedule-class-cell" rowspan="${slots.length}">${p.name}</td>`
+          : ''
+        }
+        <td class="schedule-time-cell">${slot.start}–${slot.end}</td>
+
+        ${weekdays.map(([wd])=>{
+          const items=(slot.days[wd]||[]).sort((a,b)=>a.session_date.localeCompare(b.session_date));
+          if(!items.length)return `<td class="schedule-empty-cell">—</td>`;
+
+          const teacherMap=new Map();
+          items.forEach(s=>{
+            const t=scheduleTeacher(s);
+            if(!teacherMap.has(t))teacherMap.set(t,[]);
+            teacherMap.get(t).push(s);
+          });
+
+          return `<td>${[...teacherMap.entries()].map(([teacher,arr])=>{
+            const minSeat=Math.min(...arr.map(x=>Number(x.available_seats||0)));
+            const recurring=arr.some(x=>x.is_recurring===true);
+            return `<div class="schedule-cell">
+              <b>${teacher}</b>
+              <span>${recurring?'Lịch cố định':(arr.length>1?`${arr.length} buổi trong tháng`:arr[0].session_date.split('-').reverse().slice(0,2).join('/'))}</span>
+              <span class="seat">Còn từ ${minSeat} chỗ</span>
+            </div>`;
+          }).join('')}</td>`;
+        }).join('')}
+      </tr>`);
+    });
+  });
 
   return `<div class="schedule-table-scroll">
     <table class="schedule-grid">
-      <thead><tr>
-        <th>Lớp / Giờ</th>
-        ${weekdays.map(x=>`<th>${x[1]}</th>`).join('')}
-      </tr></thead>
-      <tbody>
-        ${rows.map(r=>`<tr>
-          <td>${r.program}<div class="tiny" style="margin-top:4px">${r.start}–${r.end}</div></td>
-          ${weekdays.map(([wd])=>{
-            const items=(r.days[wd]||[]).sort((a,b)=>a.session_date.localeCompare(b.session_date));
-            if(!items.length) return `<td class="schedule-empty-cell">—</td>`;
-            // Sessions with the same weekly slot are summarized by teacher.
-            const teacherMap=new Map();
-            items.forEach(s=>{
-              const t=scheduleTeacher(s);
-              if(!teacherMap.has(t)) teacherMap.set(t,[]);
-              teacherMap.get(t).push(s);
-            });
-            return `<td>${[...teacherMap.entries()].map(([teacher,arr])=>{
-              const minSeat=Math.min(...arr.map(x=>Number(x.available_seats||0)));
-              return `<div class="schedule-cell">
-                <b>${teacher}</b>
-                <span>${arr.length>1?`${arr.length} buổi trong tháng`:arr[0].session_date.split('-').reverse().slice(0,2).join('/')}</span>
-                <span class="seat">Còn từ ${minSeat} chỗ</span>
-              </div>`;
-            }).join('')}</td>`;
-          }).join('')}
-        </tr>`).join('')}
-      </tbody>
+      <thead>
+        <tr>
+          <th>Lớp</th>
+          <th>Giờ</th>
+          ${weekdays.map(x=>`<th>${x[1]}</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>${bodyRows.join('')}</tbody>
     </table>
   </div>`;
 }
@@ -1923,9 +2053,10 @@ async function renderPublicSchedule(rv){
       <div class="schedule-month-nav">
         <button onclick="movePublicScheduleMonth(-1)" ${publicScheduleMonthOffset===0?'disabled':''}>← Tháng trước</button>
         <div class="schedule-month-label">${scheduleMonthLabel(first)}</div>
-        <button onclick="movePublicScheduleMonth(1)" ${publicScheduleMonthOffset===2?'disabled':''}>Tháng sau →</button>
+        <button onclick="movePublicScheduleMonth(1)">Tháng sau →</button>
       </div>
 
+      <div id="scheduleLimitNote" class="schedule-limit-note">Chỉ xem trước lịch tối đa 3 tháng.</div>
       <div id="publicScheduleList"><div class="schedule-empty">Đang tải lịch học...</div></div>
       <div class="schedule-legend">Mỗi ô tóm tắt lớp, giờ học, giáo viên và số chỗ còn lại. Không hiển thị phòng học.</div>
 
