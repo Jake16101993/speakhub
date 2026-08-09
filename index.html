@@ -926,91 +926,51 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 }
 
 
-/* ===== SpeakHub mobile PDF.js viewer ===== */
-.pdf-mobile-viewer{
-  display:none;
-  flex:1 1 auto;
-  min-height:0;
-  overflow:auto;
-  overscroll-behavior:contain;
-  -webkit-overflow-scrolling:touch;
-  background:#dfe5e2;
-  padding:12px 8px 28px;
-  touch-action:pan-x pan-y pinch-zoom;
-}
-.pdf-mobile-pages{
-  width:100%;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:12px;
-}
-.pdf-mobile-page{
-  display:block;
-  max-width:none;
-  height:auto;
-  background:#fff;
-  box-shadow:0 3px 14px rgba(0,0,0,.13);
-}
-.pdf-mobile-loading{
-  padding:28px 12px;
-  text-align:center;
-  color:#52615b;
-  font-size:13px;
-}
-.pdf-tools{
-  display:none;
-  align-items:center;
-  gap:6px;
-  flex-wrap:nowrap;
-}
-.pdf-tool-btn{
-  border:1px solid var(--line);
-  background:#fff;
-  color:var(--gd);
-  min-width:36px;
-  height:36px;
-  border-radius:9px;
-  padding:0 9px;
-  font-weight:900;
-}
-.pdf-page-indicator{
-  font-size:11px;
-  color:var(--muted);
-  white-space:nowrap;
-  min-width:42px;
-  text-align:center;
-}
+/* ===== SpeakHub mobile PDF popup fix ===== */
 @media(max-width:760px){
   .pdf-modal{
-    padding:0!important;
-    align-items:stretch!important;
-    justify-content:stretch!important;
+    padding:0 !important;
+    align-items:stretch !important;
+    justify-content:stretch !important;
+    overflow:hidden !important;
   }
   .pdf-panel{
-    width:100vw!important;
-    height:100dvh!important;
-    max-width:none!important;
-    max-height:none!important;
-    border-radius:0!important;
+    width:100vw !important;
+    height:100dvh !important;
+    max-width:none !important;
+    max-height:none !important;
+    border-radius:0 !important;
+    display:flex !important;
+    flex-direction:column !important;
+    overflow:hidden !important;
   }
   .pdf-head{
-    flex:0 0 auto;
-    padding:8px 9px!important;
-    gap:7px;
+    flex:0 0 52px !important;
+    min-height:52px !important;
+    padding:8px 12px !important;
   }
-  .pdf-head>b{
-    font-size:12px;
-    max-width:38vw;
+  .pdf-head b{
+    max-width:calc(100vw - 70px);
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
   }
-  .pdf-frame{display:none!important}
-  .pdf-mobile-viewer{display:block}
-  .pdf-tools{display:flex}
+  .pdf-frame{
+    display:block !important;
+    flex:1 1 auto !important;
+    width:100% !important;
+    height:calc(100dvh - 52px) !important;
+    min-height:0 !important;
+    border:0 !important;
+    overflow:auto !important;
+    -webkit-overflow-scrolling:touch !important;
+    touch-action:pan-x pan-y pinch-zoom !important;
+  }
 }
 
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
-<!-- SPEAKHUB PDFJS MOBILE VIEWER 2026-08-09 -->
+<!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
 </head>
 <body>
 
@@ -1199,180 +1159,13 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   <div class="pdf-panel">
     <div class="pdf-head">
       <b id="pdfTitle">Topic SpeakHub</b>
-      <div class="pdf-tools">
-        <button class="pdf-tool-btn" onclick="pdfZoomOut()" aria-label="Thu nhỏ">−</button>
-        <button class="pdf-tool-btn" onclick="pdfFitWidth()">Vừa màn hình</button>
-        <button class="pdf-tool-btn" onclick="pdfZoomIn()" aria-label="Phóng to">＋</button>
-        <span class="pdf-page-indicator" id="pdfPageIndicator">1/1</span>
-      </div>
       <button onclick="closeTopicPdf()" aria-label="Đóng">×</button>
     </div>
-
     <iframe id="pdfFrame" class="pdf-frame" src=""></iframe>
-
-    <div id="pdfMobileViewer" class="pdf-mobile-viewer">
-      <div id="pdfMobileLoading" class="pdf-mobile-loading">Đang tải tài liệu...</div>
-      <div id="pdfMobilePages" class="pdf-mobile-pages"></div>
-    </div>
   </div>
 </div>
 
 <script>
-
-let mobilePdfDoc=null;
-let mobilePdfScale=1;
-let mobilePdfBaseScale=1;
-let mobilePdfRenderToken=0;
-let currentTopicSignedUrl='';
-
-async function getPdfJs(){
-  if(window.__speakhubPdfJs) return window.__speakhubPdfJs;
-
-  const pdfjsLib=await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.min.mjs');
-  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs';
-  window.__speakhubPdfJs=pdfjsLib;
-  return pdfjsLib;
-}
-
-async function loadMobilePdf(url){
-  const viewer=document.getElementById('pdfMobileViewer');
-  const pages=document.getElementById('pdfMobilePages');
-  const loading=document.getElementById('pdfMobileLoading');
-  const indicator=document.getElementById('pdfPageIndicator');
-
-  if(!viewer||!pages||!loading)return;
-
-  const token=++mobilePdfRenderToken;
-  pages.innerHTML='';
-  loading.style.display='block';
-  loading.innerText='Đang tải tài liệu...';
-  if(indicator) indicator.innerText='…';
-
-  try{
-    const pdfjsLib=await getPdfJs();
-    const task=pdfjsLib.getDocument({
-      url,
-      withCredentials:false
-    });
-    mobilePdfDoc=await task.promise;
-    if(token!==mobilePdfRenderToken)return;
-
-    // Calculate true fit-to-phone scale from first page.
-    const firstPage=await mobilePdfDoc.getPage(1);
-    const natural=firstPage.getViewport({scale:1});
-    const available=Math.max(280,(viewer.clientWidth||window.innerWidth)-16);
-    mobilePdfBaseScale=available/natural.width;
-    mobilePdfScale=mobilePdfBaseScale;
-
-    loading.style.display='none';
-    await renderAllMobilePdfPages(token);
-  }catch(err){
-    console.error('PDF.js load failed',err);
-    loading.style.display='block';
-    loading.innerHTML='Không tải được tài liệu trên trình xem.<br><button class="btn secondary small" style="margin-top:10px" onclick="openPdfFallback()">Mở bằng trình duyệt</button>';
-  }
-}
-
-async function renderAllMobilePdfPages(token=mobilePdfRenderToken){
-  if(!mobilePdfDoc)return;
-
-  const pages=document.getElementById('pdfMobilePages');
-  const indicator=document.getElementById('pdfPageIndicator');
-  if(!pages)return;
-
-  pages.innerHTML='';
-
-  for(let pageNo=1;pageNo<=mobilePdfDoc.numPages;pageNo++){
-    if(token!==mobilePdfRenderToken)return;
-
-    const page=await mobilePdfDoc.getPage(pageNo);
-    const viewport=page.getViewport({scale:mobilePdfScale});
-    const dpr=Math.min(window.devicePixelRatio||1,2);
-
-    const canvas=document.createElement('canvas');
-    canvas.className='pdf-mobile-page';
-    canvas.dataset.page=String(pageNo);
-
-    canvas.width=Math.floor(viewport.width*dpr);
-    canvas.height=Math.floor(viewport.height*dpr);
-    canvas.style.width=`${Math.floor(viewport.width)}px`;
-    canvas.style.height=`${Math.floor(viewport.height)}px`;
-
-    pages.appendChild(canvas);
-
-    const ctx=canvas.getContext('2d',{alpha:false});
-    await page.render({
-      canvasContext:ctx,
-      viewport,
-      transform:dpr!==1?[dpr,0,0,dpr,0,0]:null
-    }).promise;
-  }
-
-  if(indicator) indicator.innerText=`1/${mobilePdfDoc.numPages}`;
-  updatePdfPageIndicator();
-}
-
-function updatePdfPageIndicator(){
-  const viewer=document.getElementById('pdfMobileViewer');
-  const indicator=document.getElementById('pdfPageIndicator');
-  if(!viewer||!indicator||!mobilePdfDoc)return;
-
-  const canvases=[...document.querySelectorAll('#pdfMobilePages .pdf-mobile-page')];
-  if(!canvases.length)return;
-
-  const y=viewer.getBoundingClientRect().top + Math.min(120,viewer.clientHeight*.25);
-  let closest=canvases[0];
-  let best=Infinity;
-
-  canvases.forEach(c=>{
-    const r=c.getBoundingClientRect();
-    const dist=Math.abs(r.top-y);
-    if(dist<best){best=dist;closest=c}
-  });
-
-  indicator.innerText=`${closest.dataset.page}/${mobilePdfDoc.numPages}`;
-}
-
-async function rerenderMobilePdfKeepPosition(){
-  const viewer=document.getElementById('pdfMobileViewer');
-  if(!viewer||!mobilePdfDoc)return;
-
-  const ratio=viewer.scrollHeight>viewer.clientHeight
-    ? viewer.scrollTop/(viewer.scrollHeight-viewer.clientHeight)
-    : 0;
-
-  const token=++mobilePdfRenderToken;
-  await renderAllMobilePdfPages(token);
-
-  requestAnimationFrame(()=>{
-    const max=Math.max(0,viewer.scrollHeight-viewer.clientHeight);
-    viewer.scrollTop=max*ratio;
-  });
-}
-
-function pdfZoomIn(){
-  if(!mobilePdfDoc)return;
-  mobilePdfScale=Math.min(mobilePdfBaseScale*2.2,mobilePdfScale*1.2);
-  rerenderMobilePdfKeepPosition();
-}
-
-function pdfZoomOut(){
-  if(!mobilePdfDoc)return;
-  mobilePdfScale=Math.max(mobilePdfBaseScale*.65,mobilePdfScale/1.2);
-  rerenderMobilePdfKeepPosition();
-}
-
-function pdfFitWidth(){
-  if(!mobilePdfDoc)return;
-  mobilePdfScale=mobilePdfBaseScale;
-  rerenderMobilePdfKeepPosition();
-}
-
-function openPdfFallback(){
-  if(currentTopicSignedUrl) window.open(currentTopicSignedUrl,'_blank','noopener');
-}
-
-
 /* Remove legacy prototype/example booking data. Real history comes from DB only. */
 localStorage.removeItem('speakhub_paid_lessons');
 const state={
@@ -1423,23 +1216,8 @@ function openTopicPdf(url,title){
   document.getElementById('pdfModal').classList.add('show');
 }
 function closeTopicPdf(){
-  mobilePdfRenderToken++;
-  mobilePdfDoc=null;
-
-  const modal=document.getElementById('pdfModal');
-  const frame=document.getElementById('pdfFrame');
-  const pages=document.getElementById('pdfMobilePages');
-  const loading=document.getElementById('pdfMobileLoading');
-
-  if(modal) modal.classList.remove('show');
-  if(frame) frame.src='';
-  if(pages) pages.innerHTML='';
-  if(loading){
-    loading.style.display='block';
-    loading.innerText='Đang tải tài liệu...';
-  }
-
-  document.body.style.overflow='';
+  document.getElementById('pdfModal').classList.remove('show');
+  document.getElementById('pdfFrame').src='';
 }
 function isValidPhoneVN(phone){
   return /^0\d{9}$/.test((phone||'').replace(/\s+/g,''));
@@ -2795,24 +2573,18 @@ async function openRealTopic(bookingId){
     const frame=document.getElementById('pdfFrame');
     const title=document.getElementById('pdfTitle');
 
-    currentTopicSignedUrl=data.signed_url;
-
     if(title) title.innerText=data.title||'Topic SpeakHub';
 
-    if(window.matchMedia('(max-width: 760px)').matches){
-      if(modal) modal.classList.add('show');
-      document.body.style.overflow='hidden';
+    // Keep the PDF inside SpeakHub's popup on both desktop and mobile.
+    // The fragment asks the browser PDF viewer to fit the page to the phone.
+    const pdfUrl=data.signed_url + (data.signed_url.includes('#')?'&':'#') + 'view=FitH&zoom=page-width';
 
-      // Give the full-screen viewer one frame to get its real phone width,
-      // then render every PDF page as a canvas.
-      requestAnimationFrame(()=>{
-        loadMobilePdf(data.signed_url);
-      });
-      return;
-    }
-
-    if(frame) frame.src=data.signed_url;
+    if(frame) frame.src=pdfUrl;
     if(modal) modal.classList.add('show');
+
+    if(window.matchMedia('(max-width:760px)').matches){
+      document.body.style.overflow='hidden';
+    }
   }catch(err){
     console.error(err);
     alert(String(err.message||err));
@@ -3082,12 +2854,6 @@ async function loginByPhone(){
 function loginOtp(){ return loginByPhone(); }
 function finishLogin(){ go(state.loginReturn||'history'); }
 
-
-
-document.addEventListener('DOMContentLoaded',()=>{
-  const viewer=document.getElementById('pdfMobileViewer');
-  if(viewer) viewer.addEventListener('scroll',updatePdfPageIndicator,{passive:true});
-});
 
 async function handlePayOSReturn(){
   const qs=new URLSearchParams(location.search);
