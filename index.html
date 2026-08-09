@@ -1140,6 +1140,8 @@ const state={
   sessionsLoading:false,
   sessionsError:'',
   sessionsLoadedKey:'',
+  activeOrder:null,
+  paymentPollTimer:null,
   placementDone:false,
   currentCheckoutStep:0,
   loginReturn:'history'
@@ -1602,143 +1604,329 @@ function applySlotSelection(){
   }
 }
 
+
 function renderCheckout(rv){
-  setTitle('Xác nhận đặt chỗ','Thông tin → OTP → Thanh toán PayOS');
-  if(state.selected.length===0){rv.innerHTML=`<div class="card success"><h3>Chưa có ca nào được chọn</h3><button class="btn primary" onclick="go('booking')">Quay lại đặt chỗ</button></div>`;return}
-  if(state.logged){
-    state.currentCheckoutStep=1;
-    checkoutLoggedConfirmation(rv);
+  setTitle('Xác nhận đặt chỗ','Kiểm tra thông tin → Thanh toán PayOS');
+  if(state.selected.length===0){
+    rv.innerHTML=`<div class="card success"><h3>Chưa có ca nào được chọn</h3><button class="btn primary" onclick="go('booking')">Quay lại đặt chỗ</button></div>`;
     return;
   }
-  state.currentCheckoutStep=1;
-  checkoutStepPersonal(rv);
+
+  const savedName=(localStorage.getItem('speakhub_name')||'').trim();
+  const savedPhone=(localStorage.getItem('speakhub_phone')||'').trim();
+
+  if(isValidFullName(savedName) && isValidPhoneVN(savedPhone)){
+    state.firstTimeName=savedName;
+    state.tempPhone=savedPhone;
+    checkoutLoggedConfirmation(rv);
+  }else{
+    checkoutStepPersonal(rv);
+  }
 }
-function checkoutLoggedConfirmation(rv){
+
+function bookingSummaryHTML(){
   const p=pricing(state.selected.length), orig=originalTotal(state.selected.length);
+  return `
+    <div style="margin-top:16px">
+      ${state.selected.map(x=>`<div class="summary-row">
+        <div>
+          <b>Ngày ${String(x.day).padStart(2,'0')}/${String(x.month||8).padStart(2,'0')}/${x.year||2026} · ${x.slot}</b>
+          <div class="tiny">${x.startsAt||''}${x.endsAt?` – ${x.endsAt}`:''} · ${x.className}</div>
+          <div class="tiny">${x.room?`🚪 ${x.room}`:''}${x.teacher?` · 👤 ${x.teacher}`:''}</div>
+        </div>
+        <span class="badge green">${x.location||'Gò Vấp'}</span>
+      </div>`).join('')}
+    </div>
+    <div class="summary-row"><span>Số buổi</span><b>${state.selected.length}</b></div>
+    <div class="summary-row"><span>Đơn giá dự kiến</span><b>${money(p.unit)} / buổi</b></div>
+    ${p.total<orig?`<div class="summary-row"><span>Giá gốc</span><span class="old">${money(orig)}</span></div>`:''}
+    <div class="summary-row"><b>Tổng dự kiến</b><b style="color:var(--gd);font-size:21px">${money(p.total)}</b></div>
+    <div class="tiny" style="margin-top:8px">Giá cuối cùng sẽ được backend SpeakHub kiểm tra lại trước khi tạo đơn.</div>
+  `;
+}
+
+function checkoutLoggedConfirmation(rv){
+  const phone=state.tempPhone||localStorage.getItem('speakhub_phone')||'';
+  const name=state.firstTimeName||localStorage.getItem('speakhub_name')||'';
+
   rv.innerHTML=`<div class="checkout">
     <section class="card">
       <div class="badge green">Xác nhận đặt chỗ</div>
       <h2>Thông tin lớp học</h2>
-      <p class="muted">Kiểm tra lại lịch trước khi thanh toán.</p>
-
-      <div style="margin-top:16px">
-        ${state.selected.map(x=>`<div class="summary-row">
-          <div>
-            <b>Ngày ${String(x.day).padStart(2,'0')}/${String(x.month||8).padStart(2,'0')}/${x.year||2026} · ${x.slot}</b>
-            <div class="tiny">${slotTime(x.slot)} · ${x.className}</div>
-          </div>
-          <span class="badge green">${x.location||'Gò Vấp'}</span>
-        </div>`).join('')}
-      </div>
-
-      <div class="summary-row"><span>Số buổi</span><b>${state.selected.length}</b></div>
-      <div class="summary-row"><span>Đơn giá</span><b>${money(p.unit)} / buổi</b></div>
-      ${p.total<orig?`<div class="summary-row"><span>Giá gốc</span><span class="old">${money(orig)}</span></div>`:''}
-      <div class="summary-row"><b>Tổng thanh toán</b><b style="color:var(--gd);font-size:21px">${money(p.total)}</b></div>
+      <p class="muted">Kiểm tra lại lịch trước khi tạo đơn thanh toán.</p>
+      ${bookingSummaryHTML()}
+      <div class="summary-row"><span>Học viên</span><b>${name}</b></div>
+      <div class="summary-row"><span>Số điện thoại</span><b>${phone}</b></div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px">
         <button class="btn secondary" onclick="go('booking')">← Quay lại chỉnh lịch</button>
-        <button class="btn primary" onclick="checkoutPay(false)">Tiếp tục thanh toán →</button>
+        <button class="btn primary" onclick="createRealBooking()">Tạo đơn & thanh toán →</button>
       </div>
-      <div class="tiny" style="text-align:center;margin-top:12px">Thiết bị này đã được xác thực trước đó nên không cần nhập lại Họ tên, SĐT hoặc OTP.</div>
+      <button class="btn ghost small" style="margin-top:10px;width:100%" onclick="forgetCheckoutIdentity()">Đổi thông tin học viên</button>
     </section>
-  </div>`
+  </div>`;
+}
+
+function forgetCheckoutIdentity(){
+  localStorage.removeItem('speakhub_name');
+  localStorage.removeItem('speakhub_phone');
+  state.firstTimeName='';
+  state.tempPhone='';
+  checkoutStepPersonal(document.getElementById('routeView'));
 }
 
 function checkoutStepPersonal(rv){
-  const p=pricing(state.selected.length),orig=originalTotal(state.selected.length);
   rv.innerHTML=`<div class="checkout">
     <section class="card">
-      <div class="badge green">Bước 1 / 3</div><h2>Thông tin học viên</h2>
+      <div class="badge green">Thông tin học viên</div>
+      <h2>Xác nhận thông tin</h2>
+      <p class="muted">Trong giai đoạn chờ Zalo OA duyệt, SpeakHub tạm ghi nhớ thông tin trên thiết bị này.</p>
+
       <div class="formrow">
-        <div class="field"><label>Họ và tên</label><input id="checkoutName" autocomplete="name" value="" placeholder="Nhập họ và tên" oninput="updateNameState('checkoutName')"></div>
-        <div class="field"><label>Số điện thoại</label><input id="checkoutPhone" inputmode="numeric" maxlength="10" autocomplete="tel" placeholder="0901234567" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10);updatePhoneState('checkoutPhone')"></div>
+        <div class="field">
+          <label>Họ và tên</label>
+          <input id="checkoutName" autocomplete="name" placeholder="Nhập họ và tên" oninput="updateNameState('checkoutName')">
+        </div>
+        <div class="field">
+          <label>Số điện thoại</label>
+          <input id="checkoutPhone" inputmode="numeric" maxlength="10" autocomplete="tel" placeholder="0901234567"
+            oninput="this.value=this.value.replace(/\D/g,'').slice(0,10);updatePhoneState('checkoutPhone')">
+        </div>
       </div>
-      <div style="margin-top:18px"><b>${state.selected.length} ca học đã chọn</b>${state.selected.map(x=>`<div class="summary-row"><span>${String(x.day).padStart(2,'0')}/${String(x.month||8).padStart(2,'0')}/${x.year||2026} · ${x.slot}</span><span>${x.className}</span></div>`).join('')}</div>
-      <div class="summary-row"><span>Tổng giá gốc</span><span class="${p.total<orig?'old':''}">${money(orig)}</span></div>
-      <div class="summary-row"><b>Tổng thanh toán</b><b style="color:var(--gd);font-size:20px">${money(p.total)}</b></div>
-      ${p.total<orig?`<div class="save">Tiết kiệm ${money(orig-p.total)}</div>`:''}
+
+      ${bookingSummaryHTML()}
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px">
         <button class="btn secondary" onclick="go('booking')">← Quay lại chỉnh lịch</button>
-        <button class="btn primary" onclick="checkoutOtp()">Tiếp tục</button>
+        <button class="btn primary" onclick="saveCheckoutIdentityAndCreate()">Tạo đơn & thanh toán →</button>
       </div>
     </section>
-  </div>`
+  </div>`;
 }
-function checkoutOtp(){
-  clearFieldError('checkoutName'); clearFieldError('checkoutPhone');
-  const n=document.getElementById('checkoutName').value.trim().replace(/\s+/g,' ');
-  const ph=document.getElementById('checkoutPhone').value.trim().replace(/\s+/g,'');
-  let ok=true;
-  if(!isValidFullName(n)){setFieldError('checkoutName','Vui lòng nhập đầy đủ họ và tên.');ok=false}
-  if(!isValidPhoneVN(ph)){setFieldError('checkoutPhone','Số điện thoại chưa hợp lệ.');ok=false}
-  if(!ok)return;
-  state.firstTimeName=n;state.tempPhone=ph;
-  const rv=document.getElementById('routeView');
-  rv.innerHTML=`<div class="checkout"><section class="card">
-    <div class="badge green">Bước 2 / 3</div><h2>Xác nhận OTP</h2><p class="muted">Mã OTP đã được gửi đến <b>${ph}</b></p>
-    <div class="otpboxes">${[1,2,3,4,5,6].map(n=>`<input maxlength="1" value="${n}">`).join('')}</div>
-    <button class="btn primary" style="width:100%" onclick="checkoutPay()">Xác nhận OTP</button>
-    <div class="tiny" style="text-align:center;margin-top:12px">Thiết bị này sẽ được ghi nhớ sau khi xác thực thành công.</div>
-  </section></div>`
-}
-function checkoutPay(markVerified=true){
-  if(markVerified){
-    state.logged=true;
-    localStorage.setItem('speakhub_login','1');
-    localStorage.setItem('speakhub_name',state.firstTimeName);
-  }
-  const p=pricing(state.selected.length);
-  document.getElementById('routeView').innerHTML=`<div class="checkout"><section class="card" style="text-align:center">
-    <div class="badge green">Bước 3 / 3</div><h2>Thanh toán đặt chỗ</h2><p class="muted">Quét mã QR PayOS để thanh toán</p>
-    <div class="qr"></div><div style="font-size:28px;font-weight:900;color:var(--gd)">${money(p.total)}</div>
-    <p class="tiny">${state.selected.length} buổi · ${money(p.unit)} / buổi</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px">
-      <button class="btn secondary" onclick="state.logged?checkoutLoggedConfirmation(document.getElementById('routeView')):checkoutStepPersonal(document.getElementById('routeView'))">← Quay lại</button>
-      <button class="btn primary" onclick="paymentSuccess()">Mô phỏng thanh toán thành công</button>
-    </div>
-  </section></div>`
-}
-function paymentSuccess(){
-  const p=pricing(state.selected.length);
-  const existing=ensurePaidLessons();
-  const conflicts=state.selected.filter(x=>existing.some(e=>isSameBookingSlot(e,x)));
 
-  if(conflicts.length){
-    const names=conflicts.map(x=>`${String(x.day).padStart(2,'0')}/${String(x.month||8).padStart(2,'0')} · ${x.slot}`).join(', ');
-    alert(`Không thể thanh toán vì lịch ${names} đã tồn tại trong lịch học của bạn. Vui lòng quay lại chỉnh lịch.`);
+function saveCheckoutIdentityAndCreate(){
+  clearFieldError('checkoutName');
+  clearFieldError('checkoutPhone');
+
+  const name=document.getElementById('checkoutName').value.trim().replace(/\s+/g,' ');
+  const phone=document.getElementById('checkoutPhone').value.trim();
+
+  let ok=true;
+  if(!isValidFullName(name)){
+    setFieldError('checkoutName','Vui lòng nhập đầy đủ họ và tên.');
+    ok=false;
+  }
+  if(!isValidPhoneVN(phone)){
+    setFieldError('checkoutPhone','Số điện thoại chưa hợp lệ.');
+    ok=false;
+  }
+  if(!ok)return;
+
+  state.firstTimeName=name;
+  state.tempPhone=phone;
+  state.logged=true;
+
+  localStorage.setItem('speakhub_login','1');
+  localStorage.setItem('speakhub_name',name);
+  localStorage.setItem('speakhub_phone',phone);
+
+  createRealBooking();
+}
+
+function bookingErrorMessage(code){
+  const map={
+    INVALID_PHONE:'Số điện thoại chưa hợp lệ.',
+    INVALID_FULL_NAME:'Họ và tên chưa hợp lệ.',
+    ALREADY_BOOKED:'Bạn đã có booking ở một trong các ca đã chọn.',
+    SESSION_FULL:'Một trong các ca vừa hết chỗ. Vui lòng chọn ca khác.',
+    SESSION_NOT_OPEN:'Một trong các ca hiện không còn mở để đặt.',
+    SESSION_ALREADY_STARTED:'Không thể đặt buổi học đã bắt đầu.',
+    SESSION_NOT_FOUND:'Không tìm thấy một trong các buổi học.',
+    NO_SESSIONS_SELECTED:'Bạn chưa chọn buổi học.',
+    ORDER_EXPIRED:'Đơn giữ chỗ đã hết hạn. Vui lòng tạo đơn mới.',
+    PAYOS_CREATE_FAILED:'Không tạo được thanh toán PayOS. Vui lòng thử lại.'
+  };
+  return map[code]||'Có lỗi khi tạo booking. Vui lòng thử lại.';
+}
+
+async function createRealBooking(){
+  const rv=document.getElementById('routeView');
+  const name=(state.firstTimeName||localStorage.getItem('speakhub_name')||'').trim();
+  const phone=(state.tempPhone||localStorage.getItem('speakhub_phone')||'').trim();
+  const sessionIds=state.selected.map(x=>x.sessionId).filter(Boolean);
+
+  if(!isValidFullName(name)||!isValidPhoneVN(phone)){
+    checkoutStepPersonal(rv);
+    return;
+  }
+  if(sessionIds.length!==state.selected.length){
+    alert('Một số ca chưa có session ID thật. Vui lòng quay lại chọn lịch.');
     go('booking');
     return;
   }
 
-  const base=Date.now();
-  const newBookings=state.selected.map((x,i)=>({
-    ...x,
-    id:'SHB-'+String(base+i),
-    teacher:i%2===0?'Ms. Cyndy (USA)':'Mr. Levi (USA)',
-    room:i%3===0?'Speaking Room 1':i%3===1?'Garden':'Speaking Room 2',
-    topic:'pending'
-  }));
+  rv.innerHTML=`<div class="checkout"><section class="card" style="text-align:center;padding:34px">
+    <div class="badge green">Đang giữ chỗ</div>
+    <h2>SpeakHub đang tạo đơn...</h2>
+    <p class="muted">Đang kiểm tra chỗ trống và giá trên hệ thống.</p>
+  </section></div>`;
 
-  // Keep all previously paid bookings and append the newly paid sessions.
-  state.demoPaid=[...existing,...newBookings];
+  try{
+    const bookingRes=await fetch('/api/bookings/create',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        full_name:name,
+        phone,
+        session_ids:sessionIds
+      })
+    });
+    const bookingData=await bookingRes.json();
 
-  // Keep one demo ready topic attached to the earliest matching lesson if none is ready.
-  if(state.demoPaid.length && !state.demoPaid.some(x=>x.topic==='ready')){
-    state.demoPaid[0].topic='ready';
-    state.demoPaid[0].topicTitle='How to Negotiate Successfully?';
-    state.demoPaid[0].topicUrl='topic-how-to-negotiate-successfully.pdf';
+    if(!bookingRes.ok){
+      throw new Error(bookingData?.error||'BOOKING_FAILED');
+    }
+
+    state.activeOrder=bookingData.order;
+
+    const payRes=await fetch('/api/payos/create',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        order_id:bookingData.order.order_id,
+        checkout_token:bookingData.order.checkout_token
+      })
+    });
+    const payData=await payRes.json();
+
+    if(!payRes.ok){
+      throw new Error(payData?.error||'PAYOS_CREATE_FAILED');
+    }
+
+    state.activeOrder={...bookingData.order,payment:payData.payment};
+    renderRealPayOS(state.activeOrder);
+  }catch(err){
+    console.error(err);
+    const code=String(err.message||'BOOKING_FAILED');
+    rv.innerHTML=`<div class="checkout"><section class="card">
+      <div class="booking-warning">⚠️ ${bookingErrorMessage(code)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px">
+        <button class="btn secondary" onclick="go('booking')">← Chỉnh lịch</button>
+        <button class="btn primary" onclick="renderCheckout(document.getElementById('routeView'))">Thử lại</button>
+      </div>
+    </section></div>`;
+  }
+}
+
+function renderRealPayOS(order){
+  stopPaymentPolling();
+  const rv=document.getElementById('routeView');
+  const payment=order.payment||{};
+
+  rv.innerHTML=`<div class="checkout">
+    <section class="card" style="text-align:center">
+      <div class="badge green">Giữ chỗ 15 phút</div>
+      <h2>Thanh toán đặt chỗ</h2>
+      <p class="muted">Quét VietQR hoặc mở trang thanh toán PayOS.</p>
+
+      ${payment.qr_image
+        ? `<img src="${payment.qr_image}" alt="QR thanh toán PayOS" style="width:260px;max-width:90%;height:auto;margin:14px auto;display:block;border:1px solid var(--line);border-radius:14px;padding:8px;background:#fff">`
+        : `<div class="qr"></div>`}
+
+      <div style="font-size:28px;font-weight:900;color:var(--gd)">${money(payment.amount||order.total_amount||0)}</div>
+      <p class="tiny">Mã đơn: ${order.order_code}</p>
+
+      <a class="btn primary" href="${payment.checkout_url||'#'}" target="_blank" rel="noopener" style="width:100%;margin-top:8px">
+        Mở trang thanh toán PayOS
+      </a>
+
+      <div id="paymentStatusBox" class="notice" style="margin-top:14px;text-align:left">
+        <b>⏳ Đang chờ thanh toán...</b>
+        <div class="tiny" style="margin-top:4px">Sau khi ngân hàng ghi nhận giao dịch, hệ thống sẽ tự xác nhận booking.</div>
+      </div>
+
+      <button class="btn secondary" style="width:100%;margin-top:10px" onclick="cancelPendingOrderAndBack()">
+        ← Quay lại chỉnh lịch
+      </button>
+    </section>
+  </div>`;
+
+  startPaymentPolling(order.order_id,order.checkout_token);
+}
+
+function stopPaymentPolling(){
+  if(state.paymentPollTimer){
+    clearInterval(state.paymentPollTimer);
+    state.paymentPollTimer=null;
+  }
+}
+
+function startPaymentPolling(orderId,token){
+  const check=async()=>{
+    try{
+      const res=await fetch(`/api/orders/status?order_id=${encodeURIComponent(orderId)}&token=${encodeURIComponent(token)}`);
+      const data=await res.json();
+      if(!res.ok)return;
+
+      const order=data.order;
+      const box=document.getElementById('paymentStatusBox');
+
+      if(order.payment_status==='PAID' && order.order_status==='CONFIRMED'){
+        stopPaymentPolling();
+        showRealPaymentSuccess(order);
+        return;
+      }
+
+      if(order.payment_status==='EXPIRED' || order.order_status==='CANCELLED'){
+        stopPaymentPolling();
+        if(box) box.innerHTML=`<b>⌛ Đơn đã hết hạn</b><div class="tiny">Chỗ giữ tạm đã được giải phóng. Vui lòng tạo booking mới.</div>`;
+      }
+    }catch(e){
+      console.warn('payment polling',e);
+    }
+  };
+  check();
+  state.paymentPollTimer=setInterval(check,2500);
+}
+
+async function cancelPendingOrderAndBack(){
+  stopPaymentPolling();
+
+  if(state.activeOrder?.order_id && state.activeOrder?.checkout_token){
+    try{
+      await fetch('/api/orders/cancel',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          order_id:state.activeOrder.order_id,
+          checkout_token:state.activeOrder.checkout_token
+        })
+      });
+    }catch(e){console.warn(e)}
   }
 
-  localStorage.setItem('speakhub_paid_lessons', JSON.stringify(state.demoPaid));
+  state.activeOrder=null;
+  state.sessionsLoadedKey='';
+  await loadBookingSessions(true);
+  go('booking');
+}
 
-  // Reschedule quota should be based on the whole current booking collection.
-  // Do not erase old lessons when adding new ones.
-  state.rescheduleUsedTotal=state.rescheduleUsedTotal||0;
-  localStorage.setItem('speakhub_reschedule_used_total',String(state.rescheduleUsedTotal));
-
-  document.getElementById('routeView').innerHTML=`<div class="checkout"><section class="card success"><div class="check">✓</div><h2>Đặt chỗ thành công!</h2><p>${newBookings.length} buổi mới đã được thêm vào lịch học của bạn.</p><div class="save" style="display:inline-block">Đã thanh toán ${money(p.total)}</div><div style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button class="btn primary" onclick="go('history')">Xem lịch học của tôi</button><button class="btn secondary" onclick="go('dashboard')">Về trang chủ</button></div></section></div>`;
+function showRealPaymentSuccess(order){
+  const rv=document.getElementById('routeView');
+  state.activeOrder=null;
   state.selected=[];
+  state.sessionsLoadedKey='';
+
+  rv.innerHTML=`<div class="checkout"><section class="card success">
+    <div class="check">✓</div>
+    <h2>Đặt chỗ thành công!</h2>
+    <p>Thanh toán đã được PayOS xác nhận và booking đã được ghi vào hệ thống SpeakHub.</p>
+    <div class="save" style="display:inline-block">Đã thanh toán ${money(order.total_amount||0)}</div>
+    <div style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button class="btn primary" onclick="go('history')">Xem lịch học của tôi</button>
+      <button class="btn secondary" onclick="go('dashboard')">Về trang chủ</button>
+    </div>
+  </section></div>`;
 }
 
 function renderPlacement(rv){
@@ -2284,8 +2472,40 @@ function loginOtp(){
 }
 function finishLogin(){state.logged=true;localStorage.setItem('speakhub_login','1');go(state.loginReturn||'history')}
 
-go('dashboard');
-showLanding();
+async function handlePayOSReturn(){
+  const qs=new URLSearchParams(location.search);
+  const payment=qs.get('payment');
+  const orderId=qs.get('order_id');
+  const token=qs.get('token');
+
+  if(!payment || !orderId || !token) return false;
+
+  showApp();
+  setTitle('Thanh toán','Đang kiểm tra trạng thái PayOS');
+
+  document.getElementById('routeView').innerHTML=`<div class="checkout"><section class="card" style="text-align:center;padding:34px">
+    <h2>${payment==='cancel'?'Thanh toán đã được huỷ':'Đang xác nhận thanh toán...'}</h2>
+    <p class="muted">${payment==='cancel'?'Bạn có thể quay lại chọn lịch.':'SpeakHub đang chờ webhook PayOS xác nhận giao dịch.'}</p>
+  </section></div>`;
+
+  if(payment==='cancel'){
+    history.replaceState({},'',location.pathname);
+    return true;
+  }
+
+  state.activeOrder={order_id:orderId,checkout_token:token};
+  startPaymentPolling(orderId,token);
+  history.replaceState({},'',location.pathname);
+  return true;
+}
+
+(async()=>{
+  const handled=await handlePayOSReturn();
+  if(!handled){
+    go('dashboard');
+    showLanding();
+  }
+})();
 </script>
 
 <div class="speakhub-branch-address">

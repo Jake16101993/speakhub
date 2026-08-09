@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { PayOS } from '@payos/node';
+import QRCode from 'qrcode';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -61,10 +62,16 @@ export default {
         .maybeSingle();
 
       if (existing?.checkout_url && existing?.qr_code) {
+        const qrImage = await QRCode.toDataURL(existing.qr_code, {
+          width: 320,
+          margin: 1,
+          errorCorrectionLevel: 'M'
+        });
         return Response.json({
           payment: {
             checkout_url: existing.checkout_url,
             qr_code: existing.qr_code,
+            qr_image: qrImage,
             provider_order_code: existing.provider_order_code,
             amount: existing.amount
           }
@@ -104,10 +111,17 @@ export default {
 
       if (paymentErr) throw paymentErr;
 
+      const qrImage = await QRCode.toDataURL(paymentLink.qrCode, {
+        width: 320,
+        margin: 1,
+        errorCorrectionLevel: 'M'
+      });
+
       return Response.json({
         payment: {
           checkout_url: paymentLink.checkoutUrl,
           qr_code: paymentLink.qrCode,
+          qr_image: qrImage,
           provider_order_code: String(orderCode),
           amount: Number(order.total_amount),
           expires_at: order.expires_at

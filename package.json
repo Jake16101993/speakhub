@@ -4,6 +4,7 @@
   "type": "module",
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",
-    "@payos/node": "latest"
+    "@payos/node": "latest",
+    "qrcode": "^1.5.4"
   }
 }
