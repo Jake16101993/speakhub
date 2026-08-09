@@ -23,7 +23,7 @@ async function getOrCreateCustomer(phone, fullName) {
 
   const { data: existing, error: findErr } = await admin
     .from('customers')
-    .select('id,phone,full_name')
+    .select('id,phone,full_name,status,device_token')
     .eq('phone', cleanPhone)
     .maybeSingle();
 
@@ -39,7 +39,8 @@ async function getOrCreateCustomer(phone, fullName) {
       .eq('id', existing.id);
 
     if (updateErr) throw updateErr;
-    return existing.id;
+    if (existing.status !== 'ACTIVE') throw new Error('CUSTOMER_NOT_ACTIVE');
+    return { id: existing.id, token: existing.device_token };
   }
 
   const { data: created, error: createErr } = await admin
@@ -48,7 +49,7 @@ async function getOrCreateCustomer(phone, fullName) {
       phone: cleanPhone,
       full_name: cleanName
     })
-    .select('id')
+    .select('id,device_token,status')
     .single();
 
   if (createErr) {
@@ -61,12 +62,20 @@ async function getOrCreateCustomer(phone, fullName) {
         .single();
 
       if (retryErr) throw retryErr;
-      return retry.id;
+      const { data: retryFull, error: retryFullErr } = await admin
+        .from('customers')
+        .select('id,device_token,status')
+        .eq('id', retry.id)
+        .single();
+      if (retryFullErr) throw retryFullErr;
+      if (retryFull.status !== 'ACTIVE') throw new Error('CUSTOMER_NOT_ACTIVE');
+      return { id: retryFull.id, token: retryFull.device_token };
     }
     throw createErr;
   }
 
-  return created.id;
+  if (created.status !== 'ACTIVE') throw new Error('CUSTOMER_NOT_ACTIVE');
+  return { id: created.id, token: created.device_token };
 }
 
 export default {
@@ -104,7 +113,8 @@ export default {
         return Response.json({ error: 'TOO_MANY_SESSIONS' }, { status: 400 });
       }
 
-      const customerId = await getOrCreateCustomer(phone, fullName);
+      const customer = await getOrCreateCustomer(phone, fullName);
+      const customerId = customer.id;
 
       const { data, error } = await admin.rpc('create_booking_order', {
         p_user_id: customerId,
@@ -121,6 +131,7 @@ export default {
         else if (msg.includes('SESSION_ALREADY_STARTED')) code = 'SESSION_ALREADY_STARTED';
         else if (msg.includes('SESSION_NOT_FOUND')) code = 'SESSION_NOT_FOUND';
         else if (msg.includes('CUSTOMER_NOT_FOUND')) code = 'CUSTOMER_NOT_FOUND';
+        else if (msg.includes('CUSTOMER_NOT_ACTIVE')) code = 'CUSTOMER_NOT_ACTIVE';
 
         return Response.json(
           { error: code, details: msg },
@@ -131,7 +142,8 @@ export default {
       return Response.json(
         {
           order: data,
-          customer_id: customerId
+          customer_id: customerId,
+          customer_token: customer.token
         },
         { status: 201 }
       );

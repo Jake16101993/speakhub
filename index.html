@@ -1121,6 +1121,8 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 </div>
 
 <script>
+/* Remove legacy prototype/example booking data. Real history comes from DB only. */
+localStorage.removeItem('speakhub_paid_lessons');
 const state={
   route:'landing',
   logged:localStorage.getItem('speakhub_login')==='1',
@@ -1142,6 +1144,9 @@ const state={
   sessionsLoadedKey:'',
   activeOrder:null,
   paymentPollTimer:null,
+  realUpcoming:[],
+  realCompleted:[],
+  realPaidLessons:[],
   placementDone:false,
   currentCheckoutStep:0,
   loginReturn:'history'
@@ -1789,6 +1794,9 @@ async function createRealBooking(){
 
     state.activeOrder=bookingData.order;
 
+    if(bookingData.customer_id) localStorage.setItem('speakhub_customer_id',bookingData.customer_id);
+    if(bookingData.customer_token) localStorage.setItem('speakhub_customer_token',bookingData.customer_token);
+
     const payRes=await fetch('/api/payos/create',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -2089,101 +2097,151 @@ function weeklyResult(){
 }
 
 
+
 function ensurePaidLessons(){
-  if(!state.demoPaid){
-    const saved=localStorage.getItem('speakhub_paid_lessons');
-    if(saved){
-      try{ state.demoPaid=JSON.parse(saved); }catch(e){}
-    }
-  }
-  if(!state.demoPaid){
-    state.demoPaid=[
-      {day:10,slot:'Tối',className:'Adult Intermediate',teacher:'Ms. Cyndy (USA)',room:'Speaking Room 1',topic:'ready',topicTitle:'How to Negotiate Successfully?',topicUrl:'topic-how-to-negotiate-successfully.pdf',id:'SHB-250810-001'},
-      {day:11,slot:'Chiều',className:'Kid Communicator',teacher:'Mr. Levi (USA)',room:'Garden',topic:'pending',id:'SHB-250811-002'},
-      {day:17,slot:'Tối',className:'Adult Intermediate',teacher:'Ms. Salma (Morocco)',room:'Speaking Room 2',topic:'pending',id:'SHB-250817-003'}
-    ];
-  }
-  if(state.demoPaid[0] && state.demoPaid[0].topic==='ready'){
-    state.demoPaid[0].topicTitle=state.demoPaid[0].topicTitle||'How to Negotiate Successfully?';
-    state.demoPaid[0].topicUrl=state.demoPaid[0].topicUrl||'topic-how-to-negotiate-successfully.pdf';
-  }
-  return state.demoPaid;
+  // Legacy helper kept only so older reschedule code does not crash.
+  // No demo/example lessons are ever created anymore.
+  return Array.isArray(state.realPaidLessons) ? state.realPaidLessons : [];
 }
 
-function upcomingLessonsHTML(){
-  const arr=ensurePaidLessons();
-  return arr.map((x,i)=>`<div class="lesson-card-clean">
+function slotTime(s){
+  return s==='Sáng'?'09:00 – 10:30':s==='Chiều'?'15:00 – 16:30':'19:30 – 21:00'
+}
+
+function periodToLabel(period){
+  return period==='MORNING'?'Sáng':period==='AFTERNOON'?'Chiều':'Tối';
+}
+
+function formatTeacher(t){
+  if(!t) return 'Đang cập nhật GV';
+  return t.country ? `${t.full_name} (${t.country})` : t.full_name;
+}
+
+function confirmedBookingCard(x,i,showReschedule=true){
+  const s=x.class_sessions||{};
+  const program=s.programs||{};
+  const room=s.rooms||{};
+  const teacher=s.teachers||{};
+  const period=periodToLabel(s.session_period);
+  const date=String(s.session_date||'').split('-');
+  const ddmm=date.length===3?`${date[2]}/${date[1]}`:'';
+  const start=String(s.starts_at||'').slice(0,5);
+  const end=String(s.ends_at||'').slice(0,5);
+  const remaining=Number(x.remaining_reschedules||0);
+
+  return `<div class="lesson-card-clean">
     <div class="lesson-topline">
       <div class="lesson-date-clean">
-        <b>${String(x.day).padStart(2,'0')}/${String(x.month||8).padStart(2,'0')}</b>
-        <span>${x.slot}</span>
+        <b>${ddmm}</b>
+        <span>${period}</span>
       </div>
       <div class="lesson-info-clean">
-        <b>${slotTime(x.slot)} · ${x.className}</b>
-        <span>👤 ${x.teacher} · 📍 Gò Vấp</span>
+        <b>${start} – ${end} · ${program.name||''}</b>
+        <span>👤 ${formatTeacher(teacher)} · 📍 Gò Vấp</span>
       </div>
     </div>
 
     <div class="lesson-actionline">
-      <span class="room room-clean">${x.room==='Garden'?'🌿':'🚪'} ${x.room}</span>
+      <span class="room room-clean">${room.name==='Garden'?'🌿':'🚪'} ${room.name||'Đang cập nhật phòng'}</span>
+      ${showReschedule && remaining>0
+        ? `<button class="btn secondary small" onclick="alert('Module đổi ca thật sẽ nối DB ở bước tiếp theo.')">Đổi ca</button><span class="tiny">Còn ${remaining} lượt đổi</span>`
+        : ''}
     </div>
 
-    ${x.topic==='ready'
-      ? `<button class="topic ready topic-clean" onclick="openTopicPdf('${x.topicUrl||'topic-how-to-negotiate-successfully.pdf'}','${x.topicTitle||'Topic SpeakHub'}')">📄 Xem topic</button>`
+    ${s.topic_storage_path
+      ? `<button class="topic ready topic-clean" onclick="alert('Topic đã có trên hệ thống. Bước kế tiếp sẽ nối signed URL từ Supabase Storage.')">📄 Xem topic</button>`
       : `<div class="topic pending topic-clean">⏳ Topic đang chuẩn bị</div>`}
-  </div>`).join('')
+  </div>`;
 }
 
-function slotTime(s){return s==='Sáng'?'09:00 – 10:30':s==='Chiều'?'15:00 – 16:30':'19:30 – 21:00'}
+async function loadRealHistory(){
+  const customerId=localStorage.getItem('speakhub_customer_id')||'';
+  const customerToken=localStorage.getItem('speakhub_customer_token')||'';
 
-function renderHistory(rv){
-  setTitle('Lịch sử đặt chỗ','Chỉ hiển thị các buổi đã thanh toán');
-  const arr=ensurePaidLessons();
-  const allowance=rescheduleAllowance(arr.length);
-  const used=state.rescheduleUsedTotal||0;
-  const remaining=Math.max(0,allowance-used);
+  if(!customerId || !customerToken){
+    state.realUpcoming=[];
+    state.realCompleted=[];
+    state.realPaidLessons=[];
+    return;
+  }
+
+  const res=await fetch(`/api/customers/history?customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(customerToken)}`);
+  const data=await res.json();
+
+  if(!res.ok){
+    if(res.status===401 || res.status===404){
+      localStorage.removeItem('speakhub_customer_id');
+      localStorage.removeItem('speakhub_customer_token');
+    }
+    throw new Error(data?.error||'HISTORY_LOAD_FAILED');
+  }
+
+  state.realUpcoming=Array.isArray(data.upcoming)?data.upcoming:[];
+  state.realCompleted=Array.isArray(data.completed)?data.completed:[];
+  state.realPaidLessons=[...state.realUpcoming,...state.realCompleted].map(x=>{
+    const s=x.class_sessions||{};
+    return {
+      bookingId:x.id,
+      day:Number(String(s.session_date||'').slice(8,10)),
+      month:Number(String(s.session_date||'').slice(5,7)),
+      year:Number(String(s.session_date||'').slice(0,4)),
+      slot:periodToLabel(s.session_period),
+      className:s.programs?.name||'',
+      teacher:formatTeacher(s.teachers),
+      room:s.rooms?.name||'',
+      status:x.status
+    };
+  });
+}
+
+async function renderHistory(rv){
+  setTitle('Lịch sử đặt chỗ','Chỉ hiển thị booking đã thanh toán thành công');
+
+  rv.innerHTML=`<section class="card dash-card">
+    <div style="padding:28px;text-align:center">
+      <b>Đang tải lịch học...</b>
+      <div class="tiny" style="margin-top:6px">SpeakHub chỉ lấy các booking đã thanh toán.</div>
+    </div>
+  </section>${supportFooterHTML()}`;
+
+  try{
+    await loadRealHistory();
+  }catch(err){
+    console.error(err);
+    rv.innerHTML=`<section class="card dash-card">
+      <div class="booking-warning">⚠️ Không tải được lịch học. Vui lòng thử lại.</div>
+    </section>${supportFooterHTML()}`;
+    return;
+  }
+
+  const upcoming=state.realUpcoming||[];
+  const completed=state.realCompleted||[];
 
   rv.innerHTML=`<section class="card dash-card">
     <div class="history-tabs">
       <button class="active" onclick="showHistoryTab('upcoming',this)">Sắp tới</button>
       <button onclick="showHistoryTab('completed',this)">Đã học</button>
     </div>
+
     <div id="historyUpcoming">
-      <div class="reschedule-box" style="margin-bottom:14px">
-        <b>Lượt đổi lịch của gói hiện tại: ${used}/${allowance} đã dùng</b><br>
-        <span class="tiny">Còn ${remaining} lượt đổi cho toàn bộ booking · chỉ đổi trước ít nhất 24 giờ.</span>
-      </div>
-      ${arr.map((x,i)=>`<div class="lesson-card-clean">
-        <div class="lesson-topline">
-          <div class="lesson-date-clean">
-            <b>${String(x.day).padStart(2,'0')}/${String(x.month||8).padStart(2,'0')}</b>
-            <span>${x.slot}</span>
-          </div>
-          <div class="lesson-info-clean">
-            <b>${slotTime(x.slot)} · ${x.className}</b>
-            <span>👤 ${x.teacher} · 📍 Gò Vấp</span>
-          </div>
-        </div>
-
-        <div class="lesson-actionline">
-          <span class="room room-clean">${x.room==='Garden'?'🌿':'🚪'} ${x.room}</span>
-          ${remaining>0
-            ? `<button class="btn secondary small" onclick="openReschedule(${i})">Đổi ca</button><span class="tiny">Còn ${remaining} lượt đổi</span>`
-            : `<button class="btn secondary small" disabled style="opacity:.45;text-decoration:line-through;cursor:not-allowed">Đổi ca</button><span class="badge orange">Hết lượt đổi</span>`}
-        </div>
-
-        ${x.topic==='ready'
-          ? `<button class="topic ready topic-clean" onclick="openTopicPdf('${x.topicUrl||'topic-how-to-negotiate-successfully.pdf'}','${x.topicTitle||'Topic SpeakHub'}')">📄 Xem topic</button>`
-          : `<div class="topic pending topic-clean">⏳ Topic đang chuẩn bị</div>`}
-      </div>`).join('')}
+      ${upcoming.length
+        ? upcoming.map((x,i)=>confirmedBookingCard(x,i,true)).join('')
+        : `<div style="padding:30px 12px;text-align:center">
+            <b>Chưa có lịch học sắp tới</b>
+            <div class="tiny" style="margin-top:6px">Booking chỉ xuất hiện ở đây sau khi thanh toán thành công.</div>
+            <button class="btn primary" style="margin-top:14px" onclick="go('booking')">Đặt chỗ học</button>
+          </div>`}
     </div>
 
     <div id="historyCompleted" class="hidden">
-      ${completedLessonsHTML()}
+      ${completed.length
+        ? completed.map((x,i)=>confirmedBookingCard(x,i,false)).join('')
+        : `<div style="padding:30px 12px;text-align:center">
+            <b>Chưa có buổi đã học</b>
+          </div>`}
     </div>
   </section>${supportFooterHTML()}`
 }
-function rescheduleAllowance(n){return n<4?1:(n<=7?2:3)}
 
 function showHistoryTab(tab,btn){
   document.querySelectorAll('.history-tabs button').forEach(b=>b.classList.remove('active'));
@@ -2191,20 +2249,13 @@ function showHistoryTab(tab,btn){
   document.getElementById('historyUpcoming').classList.toggle('hidden',tab!=='upcoming');
   document.getElementById('historyCompleted').classList.toggle('hidden',tab!=='completed');
 }
+
 function completedLessonsHTML(){
-  const completed=[
-    {day:'03/08',slot:'Sáng',time:'09:00 – 10:30',className:'Adult Intermediate',teacher:'Ms. Cyndy (USA)',room:'Speaking Room 1'},
-    {day:'31/07',slot:'Tối',time:'19:30 – 21:00',className:'Adult Intermediate',teacher:'Ms. Salma (Morocco)',room:'Speaking Room 2'},
-    {day:'27/07',slot:'Sáng',time:'09:00 – 10:30',className:'Adult Intermediate',teacher:'Mr. Levi (USA)',room:'Garden'}
-  ];
-  return completed.map(x=>`<div class="history-compact">
-    <div class="history-date"><b>${x.day}</b><span>${x.slot}</span></div>
-    <div class="history-main">
-      <b>${x.time} · ${x.className}</b>
-      <div class="tiny">👤 ${x.teacher} · ${x.room==='Garden'?'🌿':'🚪'} ${x.room} · 📍 Gò Vấp</div>
-    </div>
-  </div>`).join('');
+  const completed=state.realCompleted||[];
+  return completed.map((x,i)=>confirmedBookingCard(x,i,false)).join('');
 }
+
+function rescheduleAllowance(n){return n<4?1:(n<=7?2:3)}
 
 function openReschedule(i){
   const arr=ensurePaidLessons();
