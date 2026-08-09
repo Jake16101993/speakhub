@@ -22,6 +22,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 @media(max-width:760px){.grid4,.row,.row2{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.card{overflow:auto}}
 </style>
 <!-- SPEAKHUB ADMIN RECURRING SESSION 2026-08-09 -->
+<!-- SPEAKHUB ADMIN PROGRAM + TEACHER FIX 2026-08-09 -->
 </head>
 <body>
 <div class="wrap">
@@ -65,8 +66,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
         <div class="row" style="margin-top:10px">
           <input id="sStart" type="time" value="19:30">
           <input id="sEnd" type="time" value="21:00">
-          <input id="sTeacher" placeholder="Tên giáo viên">
-          <input id="sCountry" placeholder="Quốc gia GV">
+          <select id="sTeacher" onchange="syncTeacherCountry()"></select>
+          <input id="sCountry" placeholder="Quốc gia GV" readonly>
         </div>
         <div class="row2" style="margin-top:10px">
           <input id="sCapacity" type="number" min="1" value="10" placeholder="Sức chứa">
@@ -122,7 +123,11 @@ async function boot(){
   document.getElementById('loginBox').classList.add('hidden');document.getElementById('adminApp').classList.remove('hidden');document.getElementById('logoutBtn').classList.remove('hidden');
   try{
     await Promise.all([loadOverview(),loadSessions(),loadCustomers(),loadBookings()]);
-  }catch(e){console.error(e)}
+  }catch(e){
+    console.error(e);
+    const msg=document.getElementById('sessionMsg');
+    if(msg) msg.innerHTML=`<div class="error">Không tải được dữ liệu Admin: ${e.message}</div>`;
+  }
 }
 function showTab(name,btn){
   document.querySelectorAll('[id^="tab-"]').forEach(x=>x.classList.add('hidden'));
@@ -141,8 +146,17 @@ async function loadOverview(){
 async function loadSessions(){
   const d=await api('/api/admin?action=sessions');
   cache=d;
-  document.getElementById('sProgram').innerHTML=d.programs.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
-  document.getElementById('topicSession').innerHTML=d.sessions.map(x=>`<option value="${x.id}">${x.session_date} · ${x.starts_at.slice(0,5)} · ${x.program_name}</option>`).join('');
+
+  const programSelect=document.getElementById('sProgram');
+  programSelect.innerHTML=`<option value="">Chọn lớp</option>`+
+    (d.programs||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+
+  const teacherSelect=document.getElementById('sTeacher');
+  teacherSelect.innerHTML=`<option value="">Chọn giáo viên</option>`+
+    (d.teachers||[]).map(x=>`<option value="${x.id}" data-country="${x.country||''}">${x.full_name}</option>`).join('');
+  syncTeacherCountry();
+
+  document.getElementById('topicSession').innerHTML=(d.sessions||[]).map(x=>`<option value="${x.id}">${x.session_date} · ${x.starts_at.slice(0,5)} · ${x.program_name}</option>`).join('');
   document.getElementById('sessionsTable').innerHTML=table(['Ngày','Giờ','Lớp','Loại','GV','Chỗ','Status'],d.sessions.map(x=>[
     x.session_date,
     `${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,
@@ -153,12 +167,34 @@ async function loadSessions(){
     `<span class="badge">${x.status}</span>`
   ]));
 }
+function syncTeacherCountry(){
+  const select=document.getElementById('sTeacher');
+  const opt=select?.selectedOptions?.[0];
+  document.getElementById('sCountry').value=opt?.dataset?.country||'';
+}
+
 async function createSession(){
   const msg=document.getElementById('sessionMsg');msg.innerHTML='';
+
+  if(!sProgram.value){
+    msg.innerHTML='<div class="error">Vui lòng chọn lớp.</div>';
+    return;
+  }
+  if(!sDate.value){
+    msg.innerHTML='<div class="error">Vui lòng chọn ngày bắt đầu.</div>';
+    return;
+  }
+
   try{
     await api('/api/admin?action=sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      program_id:sProgram.value,session_type:sType.value,session_date:sDate.value,session_period:sPeriod.value,starts_at:sStart.value,ends_at:sEnd.value,
-      teacher_name:sTeacher.value.trim(),teacher_country:sCountry.value.trim(),capacity:Number(sCapacity.value)
+      program_id:sProgram.value,
+      session_type:sType.value,
+      session_date:sDate.value,
+      session_period:sPeriod.value,
+      starts_at:sStart.value,
+      ends_at:sEnd.value,
+      teacher_id:sTeacher.value||null,
+      capacity:Number(sCapacity.value)
     })});
     msg.innerHTML=`<div class="ok">${sType.value==='RECURRING'?'Đã tạo lớp cố định cho các tuần trong 3 tháng tới.':'Đã tạo lớp lẻ.'}</div>`;await loadSessions();await loadOverview();
   }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
