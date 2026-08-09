@@ -2538,6 +2538,117 @@ async function openRealTopic(bookingId){
 }
 
 
+function getTodayKey(){
+  const d=new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function getCommunityPostQuota(){
+  const key='speakhub_community_posts_'+getTodayKey();
+  return parseInt(localStorage.getItem(key)||'0',10);
+}
+function incrementCommunityPostQuota(){
+  const key='speakhub_community_posts_'+getTodayKey();
+  const n=getCommunityPostQuota()+1;
+  localStorage.setItem(key,String(n));
+  return n;
+}
+
+function supportFooterHTML(){
+  return `<section class="card support-footer"><div><b>Cần hỗ trợ nhanh?</b><div class="tiny">Liên hệ SpeakHub qua Zalo · 0377 125 247</div></div><a class="btn zalo" href="https://zalo.me/0377125247" target="_blank" rel="noopener">Mở Zalo</a></section>
+  <section class="card support-footer" style="margin-top:10px"><div><b>Tham gia cộng đồng Zalo của CLB</b><div class="tiny">Nhận thông báo, trao đổi và kết nối cùng học viên SpeakHub.</div></div><a class="btn zalo" href="https://zalo.me/g/gueiri581" target="_blank" rel="noopener">Tham gia nhóm</a></section>`;
+}
+function sendChat(){
+  const input=document.getElementById('chatText');
+  if(!input || !input.value.trim()) return;
+  state.chatMessages=state.chatMessages||[];
+  state.chatMessages.push({me:true,text:input.value.trim()});
+  input.value='';
+  renderChat(document.getElementById('routeView'));
+  setTimeout(()=>{
+    state.chatMessages.push({me:false,text:'SpeakHub đã nhận được tin nhắn. Nhân viên hỗ trợ sẽ phản hồi bạn tại đây.'});
+    if(state.route==='chat') renderChat(document.getElementById('routeView'));
+  },400);
+}
+function toggleCommunityForm(){
+  const f=document.getElementById('communityForm'); if(f) f.classList.toggle('hidden');
+}
+function normalizeCommunity(){
+  if(!state.communityPosts) state.communityPosts=[
+    {tag:'Thảo luận',title:'Làm sao để tự tin hơn khi nói tiếng Anh với người lạ?',author:'Minh Anh',likes:96,liked:false,comments:[
+      {author:'Khánh Linh',time:'18:42',text:'Mình hay bắt đầu bằng câu hỏi đơn giản để đỡ áp lực.'},
+      {author:'Hoàng Nam',time:'18:50',text:'Mình thấy luyện theo topic trước cũng đỡ bí hơn.'},
+      {author:'Thuỳ Anh',time:'19:02',text:'Đi club đều giúp phản xạ nhanh lên rõ.'},
+      {author:'Long',time:'19:08',text:'Quan trọng là đừng cố nói hoàn hảo quá.'}
+    ]},
+    {tag:'Hỏi đáp',title:'Phân biệt cách dùng “in”, “on”, “at” trong thời gian?',author:'Hoàng Nam',likes:42,liked:false,comments:[
+      {author:'Minh',time:'17:15',text:'Có thể làm một topic riêng về cái này á.'}
+    ]},
+    {tag:'Chia sẻ kinh nghiệm',title:'Có cách nào luyện speaking mỗi ngày mà không bị chán?',author:'Khánh Linh',likes:88,liked:false,comments:[
+      {author:'An',time:'16:40',text:'Mình đổi topic mỗi ngày, khá hiệu quả.'},
+      {author:'Huy',time:'17:03',text:'Shadowing 10 phút rồi free talk 10 phút.'}
+    ]}
+  ];
+  state.communityPosts.forEach(p=>{
+    if(typeof p.liked!=='boolean') p.liked=false;
+    p.comments=(p.comments||[]).map(c=>typeof c==='string'?{author:'Học viên',time:'vừa xong',text:c}:c);
+  });
+}
+function communityPostsHTML(){
+  normalizeCommunity();
+  return state.communityPosts.map((p,i)=>{
+    const recent=[...(p.comments||[])].slice(-3).reverse();
+    return `<div class="post">
+      <span class="tag">${p.tag}</span><h3 style="cursor:pointer" onclick="openCommunityPost(${i})">${p.title}</h3>
+      <div class="tiny">${p.author} · 👍 ${p.likes} · 💬 ${p.comments.length}</div>
+      <div style="margin-top:10px"><button class="btn ${p.liked?'primary':'ghost'} small" onclick="likePost(${i})">${p.liked?'👍 Đã thích':'👍 Hữu ích'}</button> <button class="btn ghost small" onclick="openCommunityPost(${i})">Xem bài viết</button></div>
+      ${recent.map(c=>`<div class="comment"><div class="comment-head"><b>${c.author}</b><span>${c.time}</span></div><div>${c.text}</div></div>`).join('')}
+      ${p.comments.length>3?`<div class="tiny" style="margin-top:7px">Chỉ hiển thị 3 bình luận gần nhất · <b onclick="openCommunityPost(${i})" style="color:var(--g);cursor:pointer">Xem tất cả ${p.comments.length} bình luận</b></div>`:''}
+      <div class="commentbox"><input id="comment${i}" placeholder="Viết bình luận..."><button class="btn secondary small" onclick="addComment(${i})">Gửi</button></div>
+    </div>`
+  }).join('');
+}
+function submitCommunityPost(){
+  const t=document.getElementById('postTitle'), tag=document.getElementById('postTag');
+  if(getCommunityPostQuota()>=3){
+    alert('Bạn đã đạt giới hạn 3 bài viết hôm nay.');
+    renderCommunity(document.getElementById('routeView'));
+    return;
+  }
+  if(!t.value.trim()) return;
+  normalizeCommunity();
+  state.communityPosts.unshift({tag:tag.value,title:t.value.trim(),author:state.firstTimeName||'Bạn',likes:0,liked:false,comments:[]});
+  incrementCommunityPostQuota();
+  renderCommunity(document.getElementById('routeView'));
+}
+function likePost(i){
+  normalizeCommunity();
+  const p=state.communityPosts[i];
+  p.liked=!p.liked;
+  p.likes=Math.max(0,p.likes+(p.liked?1:-1));
+  if(state.route==='postDetail') openCommunityPost(i); else renderCommunity(document.getElementById('routeView'));
+}
+function addComment(i){
+  normalizeCommunity();
+  const el=document.getElementById('comment'+i); if(!el||!el.value.trim())return;
+  const time=new Date().toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});
+  state.communityPosts[i].comments.push({author:state.firstTimeName||'Bạn',time,text:el.value.trim()});
+  if(state.route==='postDetail') openCommunityPost(i); else renderCommunity(document.getElementById('routeView'));
+}
+function openCommunityPost(i){
+  normalizeCommunity();
+  state.route='postDetail';
+  const p=state.communityPosts[i];
+  setTitle('Bài viết cộng đồng',p.tag);
+  document.getElementById('routeView').innerHTML=`<div class="checkout"><section class="card dash-card">
+    <button class="btn ghost small" onclick="go('community')">← Quay lại cộng đồng</button>
+    <h2>${p.title}</h2><div class="tiny">${p.author} · 👍 ${p.likes} · 💬 ${p.comments.length}</div>
+    <div style="margin:12px 0"><button class="btn ${p.liked?'primary':'ghost'} small" onclick="likePost(${i})">${p.liked?'👍 Đã thích':'👍 Hữu ích'}</button></div>
+    <h3>Bình luận</h3>
+    ${(p.comments||[]).map(c=>`<div class="comment"><div class="comment-head"><b>${c.author}</b><span>${c.time}</span></div><div>${c.text}</div></div>`).join('')||'<p class="tiny">Chưa có bình luận.</p>'}
+    <div class="commentbox"><input id="comment${i}" placeholder="Viết bình luận..."><button class="btn secondary small" onclick="addComment(${i})">Gửi</button></div>
+  </section></div>`
+}
+
 function renderCommunity(rv){
   setTitle('Cộng đồng SpeakHub','Thảo luận · Hỏi đáp · Chia sẻ kinh nghiệm');
   normalizeCommunity();
