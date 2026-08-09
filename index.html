@@ -1712,6 +1712,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB AUTO STATUS BADGES + WEB OVERALL SCHEDULE V5.2 -->
 <!-- SPEAKHUB V6 UX + TEST + DUPLICATE BOOKING -->
 <!-- SPEAKHUB V6.1 POLISHED CHART + LANDING -->
+<!-- SPEAKHUB WEEKLY PUBLIC TIMETABLE V6.2 -->
 </head>
 <body>
 
@@ -2589,14 +2590,30 @@ function sessionsForDay(day){
 
 
 let publicScheduleProgram='ALL';
-let publicScheduleMonthOffset=0;
+let publicScheduleWeekOffset=0;
 
-function publicScheduleMonthRange(offset=0){
+function publicScheduleWeekRange(offset=0){
   const now=new Date();
-  const first=new Date(now.getFullYear(),now.getMonth()+offset,1);
-  const last=new Date(now.getFullYear(),now.getMonth()+offset+1,0);
+  now.setHours(0,0,0,0);
+
+  // Monday as start of week.
+  const day=now.getDay();
+  const diffToMonday=(day===0?-6:1-day);
+
+  const start=new Date(now);
+  start.setDate(now.getDate()+diffToMonday+(offset*7));
+
+  const end=new Date(start);
+  end.setDate(start.getDate()+6);
+
   const yyyyMmDd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  return {from:yyyyMmDd(first),to:yyyyMmDd(last),first,last};
+
+  return {
+    from:yyyyMmDd(start),
+    to:yyyyMmDd(end),
+    start,
+    end
+  };
 }
 
 function setPublicScheduleProgram(code){
@@ -2612,21 +2629,22 @@ function showScheduleLimitNote(){
   window.__scheduleLimitTimer=setTimeout(()=>note.classList.remove('show'),2600);
 }
 
-function movePublicScheduleMonth(delta){
-  const next=publicScheduleMonthOffset+delta;
+function movePublicScheduleWeek(delta){
+  const next=publicScheduleWeekOffset+delta;
 
+  // Do not allow viewing before current week.
   if(next<0){
-    publicScheduleMonthOffset=0;
-    renderPublicSchedule(document.getElementById('routeView'));
+    publicScheduleWeekOffset=0;
     return;
   }
 
-  if(next>2){
+  // Maximum 3 months ahead ~= 13 weeks.
+  if(next>12){
     showScheduleLimitNote();
     return;
   }
 
-  publicScheduleMonthOffset=next;
+  publicScheduleWeekOffset=next;
   renderPublicSchedule(document.getElementById('routeView'));
 }
 
@@ -2654,8 +2672,9 @@ function scheduleTeacher(s){
     : 'Đang cập nhật';
 }
 
-function scheduleMonthLabel(d){
-  return `Tháng ${d.getMonth()+1}/${d.getFullYear()}`;
+function scheduleWeekLabel(start,end){
+  const fmt=d=>`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+  return `${fmt(start)} – ${fmt(end)}/${end.getFullYear()}`;
 }
 
 function compactTime(t){
@@ -2669,10 +2688,6 @@ function compactTime(t){
 }
 
 function scheduleDateTimeLabel(s){
-  const parts=String(s.session_date||'').split('-');
-  const m=parts[1]||'';
-  const d=parts[2]||'';
-
   const startRaw=String(s.starts_at||'').slice(0,5);
   const endRaw=String(s.ends_at||'').slice(0,5);
   const [sh,sm]=startRaw.split(':').map(Number);
@@ -2680,6 +2695,7 @@ function scheduleDateTimeLabel(s){
 
   const startMeridiem=sh>=12?'pm':'am';
   const endMeridiem=eh>=12?'pm':'am';
+
   const fmt=(h,m,withSuffix)=>{
     const h12=((h+11)%12)+1;
     const core=m===0?`${h12}`:`${h12}:${String(m).padStart(2,'0')}`;
@@ -2687,10 +2703,7 @@ function scheduleDateTimeLabel(s){
   };
 
   const sameMeridiem=startMeridiem===endMeridiem;
-  const start=fmt(sh,sm,!sameMeridiem);
-  const end=fmt(eh,em,true);
-
-  return `${d}/${m} (${start}-${end})`;
+  return `${fmt(sh,sm,!sameMeridiem)}-${fmt(eh,em,true)}`;
 }
 
 
@@ -2701,9 +2714,18 @@ function compactProgramLabel(name){
 }
 
 function renderScheduleTable(sessions){
+  const weekInfo=publicScheduleWeekRange(publicScheduleWeekOffset);
   const weekdays=[
     [1,'T2'],[2,'T3'],[3,'T4'],[4,'T5'],[5,'T6'],[6,'T7'],[0,'CN']
   ];
+
+  const dateByWeekday={};
+  for(let i=0;i<7;i++){
+    const d=new Date(weekInfo.start);
+    d.setDate(weekInfo.start.getDate()+i);
+    const wd=d.getDay();
+    dateByWeekday[wd]=`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
 
   const programOrder={
     'KID_STARTER':1,
@@ -2737,7 +2759,7 @@ function renderScheduleTable(sessions){
     .sort((a,b)=>a.order-b.order || a.name.localeCompare(b.name,'vi'));
 
   if(!orderedPrograms.length){
-    return `<div class="schedule-empty">Chưa có lớp phù hợp trong tháng này.</div>`;
+    return `<div class="schedule-empty">Chưa có lớp phù hợp trong tuần này.</div>`;
   }
 
   return `<div class="schedule-table-scroll">
@@ -2745,7 +2767,7 @@ function renderScheduleTable(sessions){
       <thead>
         <tr>
           <th>Lớp</th>
-          ${weekdays.map(x=>`<th>${x[1]}</th>`).join('')}
+          ${weekdays.map(([wd,label])=>`<th>${label}<div style="font-size:9px;font-weight:700;opacity:.8;margin-top:2px">${dateByWeekday[wd]||''}</div></th>`).join('')}
         </tr>
       </thead>
       <tbody>
@@ -2772,16 +2794,16 @@ function renderScheduleTable(sessions){
 }
 
 async function renderPublicSchedule(rv){
-  setTitle('Lịch học SpeakHub','Xem nhanh lịch lớp · tối đa 3 tháng tới');
+  setTitle('Lịch học SpeakHub','Xem nhanh lịch lớp theo tuần · tối đa 3 tháng tới');
 
-  const {from,to,first}=publicScheduleMonthRange(publicScheduleMonthOffset);
+  const {from,to,start,end}=publicScheduleWeekRange(publicScheduleWeekOffset);
 
   rv.innerHTML=`<div class="public-schedule-wrap">
     <section class="card" style="padding:18px">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
         <div>
           <h2 style="margin:0 0 5px">Lịch học</h2>
-          <div class="tiny">Lịch cố định + lớp lẻ · chỉ xem trước tối đa 3 tháng</div>
+          <div class="tiny">Xem theo từng tuần · lịch cố định + lớp lẻ</div>
         </div>
         <button class="btn primary small" onclick="go('booking')">Đặt chỗ</button>
       </div>
@@ -2791,14 +2813,14 @@ async function renderPublicSchedule(rv){
       </div>
 
       <div class="schedule-month-nav">
-        <button onclick="movePublicScheduleMonth(-1)" ${publicScheduleMonthOffset===0?'disabled':''}>← Tháng trước</button>
-        <div class="schedule-month-label">${scheduleMonthLabel(first)}</div>
-        <button onclick="movePublicScheduleMonth(1)">Tháng sau →</button>
+        <button onclick="movePublicScheduleWeek(-1)" ${publicScheduleWeekOffset===0?'disabled':''}>← Tuần trước</button>
+        <div class="schedule-month-label">Tuần ${scheduleWeekLabel(start,end)}</div>
+        <button onclick="movePublicScheduleWeek(1)">Tuần sau →</button>
       </div>
 
       <div id="scheduleLimitNote" class="schedule-limit-note">Chỉ xem trước lịch tối đa 3 tháng.</div>
       <div id="publicScheduleList"><div class="schedule-empty">Đang tải lịch học...</div></div>
-      <div class="schedule-legend">Kéo ngang để xem T2–CN. Cột lớp và dòng thứ luôn được giữ cố định.</div>
+      <div class="schedule-legend">Kéo ngang để xem cả tuần. Cột lớp và dòng ngày luôn được giữ cố định.</div>
 
       <button class="btn secondary" style="width:100%;margin-top:14px" onclick="showLanding()">← Quay lại trang chủ</button>
     </section>
