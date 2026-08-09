@@ -1558,6 +1558,140 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   .landing-trust,.landing-how{grid-template-columns:1fr}
 }
 
+
+/* ===== V6.1 polished progress chart ===== */
+.progress-chart-card{
+  margin-top:14px;
+  padding:14px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:linear-gradient(180deg,#fbfdfc 0%,#f5faf7 100%);
+}
+.progress-chart-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:8px;
+}
+.progress-chart-head .score-up{
+  font-size:12px;
+  font-weight:900;
+  color:var(--gd);
+  background:var(--gs);
+  padding:6px 9px;
+  border-radius:999px;
+  white-space:nowrap;
+}
+.progress-svg{
+  display:block;
+  width:100%;
+  height:auto;
+  overflow:visible;
+}
+.progress-axis-label{
+  font-size:9px;
+  fill:#75827d;
+}
+.progress-point-label{
+  font-size:9px;
+  font-weight:800;
+  fill:#075b43;
+}
+.progress-grid-line{
+  stroke:#dfe8e4;
+  stroke-width:1;
+}
+.progress-line{
+  fill:none;
+  stroke:#0d7a59;
+  stroke-width:3;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.progress-area{
+  fill:url(#progressGradient);
+  opacity:.35;
+}
+.progress-dot{
+  fill:#fff;
+  stroke:#0d7a59;
+  stroke-width:2.5;
+}
+.landing-showcase{
+  display:grid;
+  grid-template-columns:1.05fr .95fr;
+  gap:18px;
+  align-items:stretch;
+}
+.landing-showcase-visual{
+  border-radius:18px;
+  overflow:hidden;
+  min-height:300px;
+  position:relative;
+  background:#e9f4ef;
+}
+.landing-showcase-visual img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+.landing-showcase-overlay{
+  position:absolute;
+  inset:auto 14px 14px 14px;
+  background:rgba(255,255,255,.92);
+  backdrop-filter:blur(10px);
+  border-radius:14px;
+  padding:12px 14px;
+  border:1px solid rgba(255,255,255,.7);
+}
+.landing-showcase-copy{
+  padding:22px;
+}
+.landing-metric-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px;
+  margin-top:16px;
+}
+.landing-metric{
+  padding:12px;
+  border-radius:13px;
+  background:#f7faf8;
+  border:1px solid var(--line);
+  text-align:center;
+}
+.landing-metric b{
+  display:block;
+  font-size:20px;
+  color:var(--gd);
+}
+.landing-mini-chart{
+  margin-top:18px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:14px;
+  background:#fff;
+}
+.landing-mini-bars{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  height:100px;
+  margin-top:12px;
+}
+.landing-mini-bars span{
+  flex:1;
+  border-radius:8px 8px 3px 3px;
+  background:linear-gradient(180deg,#5fb794,#0d7a59);
+}
+@media(max-width:760px){
+  .landing-showcase{grid-template-columns:1fr}
+  .landing-showcase-visual{min-height:220px}
+  .landing-metric-grid{grid-template-columns:repeat(3,1fr)}
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
@@ -1577,6 +1711,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB MENU POLISH + SCHEDULE COUNT V5.1 -->
 <!-- SPEAKHUB AUTO STATUS BADGES + WEB OVERALL SCHEDULE V5.2 -->
 <!-- SPEAKHUB V6 UX + TEST + DUPLICATE BOOKING -->
+<!-- SPEAKHUB V6.1 POLISHED CHART + LANDING -->
 </head>
 <body>
 
@@ -1713,6 +1848,47 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
     <button class="btn secondary" onclick="openCommunityFromLanding()">Tham gia ngay ›</button>
   </div></section>
 
+
+
+  <section class="section"><div class="container">
+    <div class="landing-showcase">
+      <div class="landing-showcase-visual">
+        <img src="hero-approved-collage.jpg" alt="SpeakHub English speaking sessions">
+        <div class="landing-showcase-overlay">
+          <b>Không chỉ học tiếng Anh — bạn dùng tiếng Anh thật.</b>
+          <div class="tiny" style="margin-top:4px">Small groups · International teachers · Real conversation</div>
+        </div>
+      </div>
+
+      <div class="card landing-showcase-copy">
+        <span class="badge green">SpeakHub learning loop</span>
+        <h2 style="margin:10px 0 8px">Book → Meet → Speak → Improve</h2>
+        <p class="muted">Một vòng học đơn giản: chọn ca phù hợp, gặp giáo viên, nói thật nhiều và xem lại tiến bộ sau từng buổi.</p>
+
+        <div class="landing-metric-grid">
+          <div class="landing-metric"><b>10</b><span class="tiny">HV tối đa / ca</span></div>
+          <div class="landing-metric"><b>90'</b><span class="tiny">mỗi session</span></div>
+          <div class="landing-metric"><b>100%</b><span class="tiny">English environment</span></div>
+        </div>
+
+        <div class="landing-mini-chart">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+            <div><b>Progress after practice</b><div class="tiny">Minh họa hành trình cải thiện</div></div>
+            <span class="badge green">↑ confidence</span>
+          </div>
+          <div class="landing-mini-bars">
+            <span style="height:34%"></span>
+            <span style="height:48%"></span>
+            <span style="height:57%"></span>
+            <span style="height:68%"></span>
+            <span style="height:78%"></span>
+            <span style="height:90%"></span>
+          </div>
+          <div class="tiny" style="text-align:center;margin-top:7px">Practice → feedback → repeat</div>
+        </div>
+      </div>
+    </div>
+  </div></section>
 
   <section class="section"><div class="container">
     <div style="text-align:center;margin-bottom:18px">
@@ -2203,18 +2379,47 @@ function progressEvaluationHTML(){
 function progressChartHTML(){
   const scores=[54,60,66,71,72,75];
   const labels=['05/07','12/07','19/07','26/07','02/08','09/08'];
-  return `<div style="margin-top:12px">
-    <div class="test-trend">
-      ${scores.map((score,i)=>`<div class="test-trend-col">
-        <b style="font-size:10px">${score}</b>
-        <div class="test-trend-bar" style="height:${Math.max(12,score)}%"></div>
-        <small>${labels[i]}</small>
-      </div>`).join('')}
+
+  const w=540,h=190,pL=34,pR=16,pT=18,pB=34;
+  const min=45,max=80;
+  const x=i=>pL+i*((w-pL-pR)/(scores.length-1));
+  const y=v=>pT+(max-v)*((h-pT-pB)/(max-min));
+
+  const pts=scores.map((v,i)=>[x(i),y(v)]);
+  const line=pts.map((p,i)=>`${i?'L':'M'} ${p[0]} ${p[1]}`).join(' ');
+  const area=`M ${pts[0][0]} ${h-pB} `+pts.map((p,i)=>`${i?'L':'L'} ${p[0]} ${p[1]}`).join(' ')+` L ${pts[pts.length-1][0]} ${h-pB} Z`;
+
+  return `<div class="progress-chart-card">
+    <div class="progress-chart-head">
+      <div>
+        <b>Xu hướng tiến bộ</b>
+        <div class="tiny" style="margin-top:3px">6 bài test gần nhất</div>
+      </div>
+      <span class="score-up">↑ +21 điểm</span>
     </div>
-    <div class="progress-note">
-      <span class="progress-pill">↑ +21 điểm</span>
-      <span class="tiny">Xu hướng tiến bộ qua 6 bài test</span>
-    </div>
+
+    <svg class="progress-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Biểu đồ tiến bộ">
+      <defs>
+        <linearGradient id="progressGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#0d7a59" stop-opacity=".34"/>
+          <stop offset="100%" stop-color="#0d7a59" stop-opacity=".02"/>
+        </linearGradient>
+      </defs>
+
+      ${[50,60,70,80].map(v=>`
+        <line class="progress-grid-line" x1="${pL}" x2="${w-pR}" y1="${y(v)}" y2="${y(v)}"/>
+        <text class="progress-axis-label" x="${pL-7}" y="${y(v)+3}" text-anchor="end">${v}</text>
+      `).join('')}
+
+      <path class="progress-area" d="${area}"></path>
+      <path class="progress-line" d="${line}"></path>
+
+      ${pts.map((p,i)=>`
+        <circle class="progress-dot" cx="${p[0]}" cy="${p[1]}" r="4.5"></circle>
+        <text class="progress-point-label" x="${p[0]}" y="${p[1]-10}" text-anchor="middle">${scores[i]}</text>
+        <text class="progress-axis-label" x="${p[0]}" y="${h-10}" text-anchor="middle">${labels[i]}</text>
+      `).join('')}
+    </svg>
   </div>`;
 }
 
