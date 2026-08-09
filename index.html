@@ -1130,19 +1130,12 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 }
 .schedule-class-cell{
   min-width:150px!important;
+  width:150px;
+  max-width:150px;
   font-weight:900;
   color:var(--ink);
   vertical-align:middle!important;
-}
-.schedule-time-cell{
-  min-width:105px!important;
-  font-weight:800;
-  background:#fbfcfb;
-  white-space:nowrap;
-}
-.schedule-grid th:nth-child(2),
-.schedule-grid td:nth-child(2){
-  min-width:105px;
+  white-space:normal;
 }
 .schedule-limit-note{
   display:none;
@@ -1183,6 +1176,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB PUBLIC SCHEDULE NO ROOM 2026-08-09 -->
 <!-- SPEAKHUB TIMETABLE + 3 MONTH LIMIT 2026-08-09 -->
 <!-- SPEAKHUB TIMETABLE REFINED V2 2026-08-09 -->
+<!-- SPEAKHUB TIMETABLE V3 2026-08-09 -->
 </head>
 <body>
 
@@ -1927,6 +1921,23 @@ function scheduleMonthLabel(d){
   return `Tháng ${d.getMonth()+1}/${d.getFullYear()}`;
 }
 
+function compactTime(t){
+  const raw=String(t||'').slice(0,5);
+  const [hh,mm]=raw.split(':').map(Number);
+  if(Number.isNaN(hh))return raw;
+
+  const suffix=hh>=12?'pm':'am';
+  const h12=((hh+11)%12)+1;
+  return mm===0?`${h12}${suffix}`:`${h12}:${String(mm).padStart(2,'0')}${suffix}`;
+}
+
+function scheduleDateTimeLabel(s){
+  const parts=String(s.session_date||'').split('-');
+  const m=parts[1]||'';
+  const d=parts[2]||'';
+  return `${d}/${m} (${compactTime(s.starts_at)}-${compactTime(s.ends_at)})`;
+}
+
 function renderScheduleTable(sessions){
   const weekdays=[
     [1,'T2'],[2,'T3'],[3,'T4'],[4,'T5'],[5,'T6'],[6,'T7'],[0,'CN']
@@ -1939,7 +1950,6 @@ function renderScheduleTable(sessions){
     'ADULT_INTERMEDIATE':4
   };
 
-  // Group by program, then by time slot.
   const programs=new Map();
 
   sessions.forEach(s=>{
@@ -1951,25 +1961,14 @@ function renderScheduleTable(sessions){
         code,
         name,
         order:programOrder[code]||99,
-        slots:new Map()
-      });
-    }
-
-    const slotKey=`${shortTime(s.starts_at)}__${shortTime(s.ends_at)}`;
-    const p=programs.get(code);
-
-    if(!p.slots.has(slotKey)){
-      p.slots.set(slotKey,{
-        start:shortTime(s.starts_at),
-        end:shortTime(s.ends_at),
         days:{}
       });
     }
 
-    const slot=p.slots.get(slotKey);
+    const p=programs.get(code);
     const wd=scheduleWeekdayIndex(s.session_date);
-    if(!slot.days[wd])slot.days[wd]=[];
-    slot.days[wd].push(s);
+    if(!p.days[wd])p.days[wd]=[];
+    p.days[wd].push(s);
   });
 
   const orderedPrograms=[...programs.values()]
@@ -1979,54 +1978,33 @@ function renderScheduleTable(sessions){
     return `<div class="schedule-empty">Chưa có lớp phù hợp trong tháng này.</div>`;
   }
 
-  const bodyRows=[];
-
-  orderedPrograms.forEach(p=>{
-    const slots=[...p.slots.values()].sort((a,b)=>a.start.localeCompare(b.start));
-
-    slots.forEach((slot,slotIndex)=>{
-      bodyRows.push(`<tr>
-        ${slotIndex===0
-          ? `<td class="schedule-class-cell" rowspan="${slots.length}">${p.name}</td>`
-          : ''
-        }
-        <td class="schedule-time-cell">${slot.start}–${slot.end}</td>
-
-        ${weekdays.map(([wd])=>{
-          const items=(slot.days[wd]||[]).sort((a,b)=>a.session_date.localeCompare(b.session_date));
-          if(!items.length)return `<td class="schedule-empty-cell">—</td>`;
-
-          const teacherMap=new Map();
-          items.forEach(s=>{
-            const t=scheduleTeacher(s);
-            if(!teacherMap.has(t))teacherMap.set(t,[]);
-            teacherMap.get(t).push(s);
-          });
-
-          return `<td>${[...teacherMap.entries()].map(([teacher,arr])=>{
-            const minSeat=Math.min(...arr.map(x=>Number(x.available_seats||0)));
-            const recurring=arr.some(x=>x.is_recurring===true);
-            return `<div class="schedule-cell">
-              <b>${teacher}</b>
-              <span>${recurring?'Lịch cố định':(arr.length>1?`${arr.length} buổi trong tháng`:arr[0].session_date.split('-').reverse().slice(0,2).join('/'))}</span>
-              <span class="seat">Còn từ ${minSeat} chỗ</span>
-            </div>`;
-          }).join('')}</td>`;
-        }).join('')}
-      </tr>`);
-    });
-  });
-
   return `<div class="schedule-table-scroll">
     <table class="schedule-grid">
       <thead>
         <tr>
           <th>Lớp</th>
-          <th>Giờ</th>
           ${weekdays.map(x=>`<th>${x[1]}</th>`).join('')}
         </tr>
       </thead>
-      <tbody>${bodyRows.join('')}</tbody>
+      <tbody>
+        ${orderedPrograms.map(p=>`<tr>
+          <td class="schedule-class-cell">${p.name}</td>
+          ${weekdays.map(([wd])=>{
+            const items=(p.days[wd]||[])
+              .sort((a,b)=>`${a.session_date} ${a.starts_at}`.localeCompare(`${b.session_date} ${b.starts_at}`));
+
+            if(!items.length)return `<td class="schedule-empty-cell">—</td>`;
+
+            return `<td>${items.map(s=>`
+              <div class="schedule-cell">
+                <b>${scheduleTeacher(s)}</b>
+                <span>${scheduleDateTimeLabel(s)}</span>
+                <span class="seat">Còn ${Number(s.available_seats||0)} chỗ</span>
+              </div>
+            `).join('')}</td>`;
+          }).join('')}
+        </tr>`).join('')}
+      </tbody>
     </table>
   </div>`;
 }
