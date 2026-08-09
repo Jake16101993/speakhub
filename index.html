@@ -1086,6 +1086,32 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   .schedule-summary-seat{font-size:10px}
 }
 
+
+/* ===== SpeakHub public timetable v2 ===== */
+.public-schedule-wrap{width:min(1100px,100%);margin:0 auto}
+.schedule-month-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0}
+.schedule-month-nav button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;font-weight:900;color:var(--gd)}
+.schedule-month-nav button:disabled{opacity:.3;cursor:not-allowed}
+.schedule-month-label{font-size:16px;font-weight:900}
+.schedule-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:14px}
+.schedule-grid{width:100%;min-width:820px;border-collapse:separate;border-spacing:0;background:#fff}
+.schedule-grid th{background:var(--gd);color:#fff;padding:10px 8px;font-size:12px;text-align:center;position:sticky;top:0}
+.schedule-grid th:first-child{text-align:left;min-width:160px}
+.schedule-grid td{border-top:1px solid var(--line);border-right:1px solid var(--line);padding:8px;vertical-align:top;min-width:125px}
+.schedule-grid td:first-child{font-weight:900;background:#f7faf8;min-width:160px}
+.schedule-grid td:last-child{border-right:0}
+.schedule-cell{background:var(--gs);border:1px solid #cde6dc;border-radius:9px;padding:7px;margin:3px 0}
+.schedule-cell b{display:block;font-size:12px;color:var(--gd)}
+.schedule-cell span{display:block;font-size:10px;color:#52605c;margin-top:2px}
+.schedule-cell .seat{font-weight:800;color:var(--gd)}
+.schedule-empty-cell{color:#b1b8b5;text-align:center;padding-top:12px}
+.schedule-legend{font-size:11px;color:var(--muted);margin-top:9px}
+@media(max-width:760px){
+  .public-schedule-wrap{width:100%}
+  .schedule-table-scroll{margin-left:-4px;margin-right:-4px}
+  .schedule-month-label{font-size:14px}
+}
+
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
@@ -1096,6 +1122,7 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
 <!-- SPEAKHUB TOPICS ROUTER DIRECT FIX 2026-08-09 -->
 <!-- SPEAKHUB PUBLIC SCHEDULE SUMMARY 2026-08-09 -->
 <!-- SPEAKHUB PUBLIC SCHEDULE NO ROOM 2026-08-09 -->
+<!-- SPEAKHUB TIMETABLE + 3 MONTH LIMIT 2026-08-09 -->
 </head>
 <body>
 
@@ -1771,18 +1798,23 @@ function sessionsForDay(day){
 
 
 let publicScheduleProgram='ALL';
+let publicScheduleMonthOffset=0;
 
-function publicScheduleDateRange(){
+function publicScheduleMonthRange(offset=0){
   const now=new Date();
-  const from=now.toISOString().slice(0,10);
-  const end=new Date(now);
-  end.setDate(end.getDate()+21);
-  const to=end.toISOString().slice(0,10);
-  return {from,to};
+  const first=new Date(now.getFullYear(),now.getMonth()+offset,1);
+  const last=new Date(now.getFullYear(),now.getMonth()+offset+1,0);
+  const yyyyMmDd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return {from:yyyyMmDd(first),to:yyyyMmDd(last),first,last};
 }
 
 function setPublicScheduleProgram(code){
   publicScheduleProgram=code;
+  renderPublicSchedule(document.getElementById('routeView'));
+}
+
+function movePublicScheduleMonth(delta){
+  publicScheduleMonthOffset=Math.max(0,Math.min(2,publicScheduleMonthOffset+delta));
   renderPublicSchedule(document.getElementById('routeView'));
 }
 
@@ -1799,23 +1831,87 @@ function publicScheduleProgramButtons(){
   ).join('');
 }
 
-function formatScheduleDay(dateStr){
+function scheduleWeekdayIndex(dateStr){
   const d=new Date(dateStr+'T00:00:00');
-  const wd=['CN','T2','T3','T4','T5','T6','T7'][d.getDay()];
-  return `${wd}, ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+  return d.getDay(); // 0 Sun ... 6 Sat
+}
+
+function scheduleTeacher(s){
+  return s.teacher_name
+    ? `${s.teacher_name}${s.teacher_country?` · ${s.teacher_country}`:''}`
+    : 'Đang cập nhật';
+}
+
+function scheduleMonthLabel(d){
+  return `Tháng ${d.getMonth()+1}/${d.getFullYear()}`;
+}
+
+function renderScheduleTable(sessions){
+  const weekdays=[
+    [1,'T2'],[2,'T3'],[3,'T4'],[4,'T5'],[5,'T6'],[6,'T7'],[0,'CN']
+  ];
+
+  const grouped=new Map();
+  sessions.forEach(s=>{
+    const key=`${s.program_name||''}__${shortTime(s.starts_at)}__${shortTime(s.ends_at)}`;
+    if(!grouped.has(key)) grouped.set(key,{program:s.program_name||'',start:shortTime(s.starts_at),end:shortTime(s.ends_at),days:{}});
+    const g=grouped.get(key);
+    const wd=scheduleWeekdayIndex(s.session_date);
+    if(!g.days[wd]) g.days[wd]=[];
+    g.days[wd].push(s);
+  });
+
+  const rows=[...grouped.values()].sort((a,b)=>
+    a.program.localeCompare(b.program,'vi') || a.start.localeCompare(b.start)
+  );
+
+  if(!rows.length) return `<div class="schedule-empty">Chưa có lớp phù hợp trong tháng này.</div>`;
+
+  return `<div class="schedule-table-scroll">
+    <table class="schedule-grid">
+      <thead><tr>
+        <th>Lớp / Giờ</th>
+        ${weekdays.map(x=>`<th>${x[1]}</th>`).join('')}
+      </tr></thead>
+      <tbody>
+        ${rows.map(r=>`<tr>
+          <td>${r.program}<div class="tiny" style="margin-top:4px">${r.start}–${r.end}</div></td>
+          ${weekdays.map(([wd])=>{
+            const items=(r.days[wd]||[]).sort((a,b)=>a.session_date.localeCompare(b.session_date));
+            if(!items.length) return `<td class="schedule-empty-cell">—</td>`;
+            // Sessions with the same weekly slot are summarized by teacher.
+            const teacherMap=new Map();
+            items.forEach(s=>{
+              const t=scheduleTeacher(s);
+              if(!teacherMap.has(t)) teacherMap.set(t,[]);
+              teacherMap.get(t).push(s);
+            });
+            return `<td>${[...teacherMap.entries()].map(([teacher,arr])=>{
+              const minSeat=Math.min(...arr.map(x=>Number(x.available_seats||0)));
+              return `<div class="schedule-cell">
+                <b>${teacher}</b>
+                <span>${arr.length>1?`${arr.length} buổi trong tháng`:arr[0].session_date.split('-').reverse().slice(0,2).join('/')}</span>
+                <span class="seat">Còn từ ${minSeat} chỗ</span>
+              </div>`;
+            }).join('')}</td>`;
+          }).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
 }
 
 async function renderPublicSchedule(rv){
-  setTitle('Lịch học SpeakHub','Xem nhanh các lớp sắp tới · Không cần đăng nhập');
+  setTitle('Lịch học SpeakHub','Xem nhanh lịch lớp · tối đa 3 tháng tới');
 
-  const {from,to}=publicScheduleDateRange();
+  const {from,to,first}=publicScheduleMonthRange(publicScheduleMonthOffset);
 
   rv.innerHTML=`<div class="public-schedule-wrap">
     <section class="card" style="padding:18px">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
         <div>
-          <h2 style="margin:0 0 5px">Các lớp sắp tới</h2>
-          <div class="tiny">Lịch học trong 3 tuần tới</div>
+          <h2 style="margin:0 0 5px">Lịch học</h2>
+          <div class="tiny">Lịch cố định + lớp lẻ · chỉ xem trước tối đa 3 tháng</div>
         </div>
         <button class="btn primary small" onclick="go('booking')">Đặt chỗ</button>
       </div>
@@ -1824,11 +1920,16 @@ async function renderPublicSchedule(rv){
         ${publicScheduleProgramButtons()}
       </div>
 
-      <div id="publicScheduleList">
-        <div class="schedule-empty">Đang tải lịch học...</div>
+      <div class="schedule-month-nav">
+        <button onclick="movePublicScheduleMonth(-1)" ${publicScheduleMonthOffset===0?'disabled':''}>← Tháng trước</button>
+        <div class="schedule-month-label">${scheduleMonthLabel(first)}</div>
+        <button onclick="movePublicScheduleMonth(1)" ${publicScheduleMonthOffset===2?'disabled':''}>Tháng sau →</button>
       </div>
 
-      <button class="btn secondary" style="width:100%;margin-top:12px" onclick="showLanding()">← Quay lại trang chủ</button>
+      <div id="publicScheduleList"><div class="schedule-empty">Đang tải lịch học...</div></div>
+      <div class="schedule-legend">Mỗi ô tóm tắt lớp, giờ học, giáo viên và số chỗ còn lại. Không hiển thị phòng học.</div>
+
+      <button class="btn secondary" style="width:100%;margin-top:14px" onclick="showLanding()">← Quay lại trang chủ</button>
     </section>
   </div>`;
 
@@ -1842,40 +1943,10 @@ async function renderPublicSchedule(rv){
       .filter(s=>String(s.status||'OPEN').toUpperCase()==='OPEN')
       .filter(s=>Number(s.available_seats)>0)
       .filter(s=>publicScheduleProgram==='ALL'||String(s.program_code||'').toUpperCase()===publicScheduleProgram)
-      .sort((a,b)=>{
-        const aa=`${a.session_date} ${a.starts_at}`;
-        const bb=`${b.session_date} ${b.starts_at}`;
-        return aa.localeCompare(bb);
-      });
+      .sort((a,b)=>`${a.session_date} ${a.starts_at}`.localeCompare(`${b.session_date} ${b.starts_at}`));
 
     const list=document.getElementById('publicScheduleList');
-    if(!list)return;
-
-    if(!sessions.length){
-      list.innerHTML=`<div class="schedule-empty">Chưa có lớp phù hợp trong thời gian này.</div>`;
-      return;
-    }
-
-    list.innerHTML=sessions.map(s=>{
-      const teacher=s.teacher_name
-        ? `${s.teacher_name}${s.teacher_country?` · ${s.teacher_country}`:''}`
-        : 'Giáo viên đang cập nhật';
-
-      return `<div class="schedule-summary-card">
-        <div class="schedule-summary-top">
-          <div>
-            <div class="schedule-summary-date">${formatScheduleDay(s.session_date)}</div>
-            <div class="schedule-summary-title">${s.program_name||''}</div>
-          </div>
-          <div class="schedule-summary-seat">Còn ${s.available_seats} chỗ</div>
-        </div>
-
-        <div class="schedule-summary-meta">
-          <span class="schedule-meta-chip">🕘 ${shortTime(s.starts_at)}–${shortTime(s.ends_at)}</span>
-          <span class="schedule-meta-chip teacher">👤 ${teacher}</span>
-        </div>
-      </div>`;
-    }).join('');
+    if(list) list.innerHTML=renderScheduleTable(sessions);
   }catch(err){
     console.error('public schedule',err);
     const list=document.getElementById('publicScheduleList');
