@@ -56,6 +56,19 @@ function readTeacherToken(request){
     return data;
   }catch{return null}
 }
+
+async function resolveTeacherId(teacherName){
+  const {data,error}=await supabase
+    .from('teachers')
+    .select('id,full_name,country,is_active')
+    .eq('full_name',teacherName)
+    .eq('is_active',true)
+    .maybeSingle();
+
+  if(error) throw error;
+  return data||null;
+}
+
 async function requireTeacher(request){
   const token=readTeacherToken(request);
   if(!token) return {error:'UNAUTHORIZED',status:401};
@@ -139,16 +152,24 @@ async function schedule(request){
   const auth=await requireTeacher(request);
   if(auth.error) return Response.json({error:auth.error},{status:auth.status});
 
+  const teacher=await resolveTeacherId(auth.account.teacher_name);
+  if(!teacher){
+    return Response.json({
+      error:'TEACHER_NOT_MAPPED',
+      details:`Không tìm thấy giáo viên "${auth.account.teacher_name}" trong bảng teachers.`
+    },{status:400});
+  }
+
   const from=plusDaysISO(-14);
   const to=plusDaysISO(90);
 
   const {data:sessions,error:sErr}=await supabase
     .from('class_sessions')
     .select(`
-      id,session_date,starts_at,ends_at,status,topic_title,teacher_name,
-      programs(name),rooms(name)
+      id,session_date,starts_at,ends_at,status,topic_title,teacher_id,
+      programs(name),rooms(name),teachers(full_name,country)
     `)
-    .eq('teacher_name',auth.account.teacher_name)
+    .eq('teacher_id',teacher.id)
     .gte('session_date',from)
     .lte('session_date',to)
     .neq('status','CANCELLED')
@@ -162,16 +183,20 @@ async function schedule(request){
   if(ids.length){
     const {data:bookings,error:bErr}=await supabase
       .from('bookings')
-      .select('session_id,status,orders!inner(payment_status)')
+      .select('session_id,status')
       .in('session_id',ids)
-      .in('status',['CONFIRMED','ATTENDED','NO_SHOW'])
-      .eq('orders.payment_status','PAID');
+      .in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
 
     if(bErr) throw bErr;
     (bookings||[]).forEach(b=>counts[b.session_id]=(counts[b.session_id]||0)+1);
   }
 
   return Response.json({
+    teacher:{
+      id:teacher.id,
+      full_name:teacher.full_name,
+      country:teacher.country||''
+    },
     sessions:(sessions||[]).map(s=>({
       id:s.id,
       session_date:s.session_date,
@@ -179,7 +204,7 @@ async function schedule(request){
       ends_at:s.ends_at,
       status:s.status,
       topic_title:s.topic_title||'',
-      teacher_name:s.teacher_name||'',
+      teacher_name:s.teachers?.full_name||auth.account.teacher_name,
       program_name:s.programs?.name||'',
       room_name:s.rooms?.name||'',
       booked_count:counts[s.id]||0
@@ -194,14 +219,17 @@ async function sessionDetail(request,url){
   const sessionId=url.searchParams.get('session_id');
   if(!sessionId) return Response.json({error:'SESSION_ID_REQUIRED'},{status:400});
 
+  const teacher=await resolveTeacherId(auth.account.teacher_name);
+  if(!teacher) return Response.json({error:'TEACHER_NOT_MAPPED'},{status:400});
+
   const {data:session,error:sErr}=await supabase
     .from('class_sessions')
     .select(`
-      id,session_date,starts_at,ends_at,status,topic_title,teacher_name,
-      programs(name),rooms(name)
+      id,session_date,starts_at,ends_at,status,topic_title,teacher_id,
+      programs(name),rooms(name),teachers(full_name,country)
     `)
     .eq('id',sessionId)
-    .eq('teacher_name',auth.account.teacher_name)
+    .eq('teacher_id',teacher.id)
     .maybeSingle();
 
   if(sErr) throw sErr;
@@ -229,7 +257,7 @@ async function sessionDetail(request,url){
       ends_at:session.ends_at,
       status:session.status,
       topic_title:session.topic_title||'',
-      teacher_name:session.teacher_name||'',
+      teacher_name:session.teachers?.full_name||auth.account.teacher_name,
       program_name:session.programs?.name||'',
       room_name:session.rooms?.name||''
     },
@@ -253,14 +281,17 @@ async function attendance(request){
   const attended=Boolean(body.attended);
   if(!bookingId) return Response.json({error:'BOOKING_ID_REQUIRED'},{status:400});
 
+  const teacher=await resolveTeacherId(auth.account.teacher_name);
+  if(!teacher) return Response.json({error:'TEACHER_NOT_MAPPED'},{status:400});
+
   const {data:booking,error:bErr}=await supabase
     .from('bookings')
     .select(`
       id,status,session_id,
-      class_sessions!inner(id,teacher_name)
+      class_sessions!inner(id,teacher_id)
     `)
     .eq('id',bookingId)
-    .eq('class_sessions.teacher_name',auth.account.teacher_name)
+    .eq('class_sessions.teacher_id',teacher.id)
     .maybeSingle();
 
   if(bErr) throw bErr;
