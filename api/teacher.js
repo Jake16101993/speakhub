@@ -207,7 +207,7 @@ async function schedule(request){
   const {data:sessions,error:sErr}=await supabase
     .from('class_sessions')
     .select(`
-      id,session_date,starts_at,ends_at,status,topic_title,teacher_id,
+      id,session_date,starts_at,ends_at,status,topic_title,topic_vocabulary,teacher_id,
       programs(name),rooms(name),teachers(full_name,country)
     `)
     .eq('teacher_id',teacher.id)
@@ -245,6 +245,7 @@ async function schedule(request){
       ends_at:s.ends_at,
       status:s.status,
       topic_title:s.topic_title||'',
+      topic_vocabulary:Array.isArray(s.topic_vocabulary)?s.topic_vocabulary:[],
       teacher_name:s.teachers?.full_name||auth.account.teacher_name,
       program_name:s.programs?.name||'',
       room_name:s.rooms?.name||'',
@@ -266,7 +267,7 @@ async function sessionDetail(request,url){
   const {data:session,error:sErr}=await supabase
     .from('class_sessions')
     .select(`
-      id,program_id,room_id,session_date,starts_at,ends_at,status,topic_title,teacher_id,
+      id,program_id,room_id,session_date,starts_at,ends_at,status,topic_title,topic_vocabulary,teacher_id,
       programs(name),rooms(name),teachers(full_name,country)
     `)
     .eq('id',sessionId)
@@ -342,6 +343,7 @@ async function sessionDetail(request,url){
       ends_at:session.ends_at,
       status:session.status,
       topic_title:session.topic_title||'',
+      topic_vocabulary:Array.isArray(session.topic_vocabulary)?session.topic_vocabulary:[],
       teacher_name:session.teachers?.full_name||auth.account.teacher_name,
       program_name:session.programs?.name||'',
       room_name:session.rooms?.name||''
