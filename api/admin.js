@@ -104,60 +104,57 @@ function fillRate(sessions,bookingCounts){
   return seats>0?Math.round((booked/seats)*1000)/10:0;
 }
 async function handleOverview(){
-  const w=currentWeekBounds();
-  const month=monthBounds();
-  const weekEndExclusive=addDaysISO(w.current_to,1);
-
+  const w=currentWeekBounds(), month=monthBounds(), weekEndExclusive=addDaysISO(w.current_to,1);
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}).format(new Date());
   const results=await Promise.all([
     supabase.from('customers').select('*',{count:'exact',head:true}),
     supabase.from('orders').select('*',{count:'exact',head:true}).eq('payment_status','PAID'),
     supabase.from('bookings').select('*',{count:'exact',head:true}).eq('status','CONFIRMED'),
     supabase.from('class_sessions').select('*',{count:'exact',head:true}).eq('status','OPEN'),
-    supabase.from('class_sessions').select('id,capacity,session_date').gte('session_date',w.current_from).lte('session_date',w.current_to).neq('status','CANCELLED'),
-    supabase.from('class_sessions').select('id,capacity,session_date').gte('session_date',w.prev_from).lte('session_date',w.prev_to).neq('status','CANCELLED'),
-    supabase.from('class_sessions').select('id,capacity,session_date').gte('session_date',w.next_from).lte('session_date',w.next_to).neq('status','CANCELLED'),
+    supabase.from('class_sessions').select('id,capacity,topic_storage_path').gte('session_date',w.current_from).lte('session_date',w.current_to).neq('status','CANCELLED'),
+    supabase.from('class_sessions').select('id,capacity').gte('session_date',w.prev_from).lte('session_date',w.prev_to).neq('status','CANCELLED'),
+    supabase.from('class_sessions').select('id,capacity').gte('session_date',w.next_from).lte('session_date',w.next_to).neq('status','CANCELLED'),
     supabase.from('placement_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
     supabase.from('progress_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
     supabase.from('placement_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED'),
     supabase.from('progress_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED'),
-    supabase.from('orders').select('total_amount,created_at').eq('payment_status','PAID').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
-    supabase.from('orders').select('total_amount,created_at').eq('payment_status','PAID').gte('created_at',`${month.first}T00:00:00+07:00`).lt('created_at',`${month.next}T00:00:00+07:00`)
+    supabase.from('orders').select('total_amount').eq('payment_status','PAID').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
+    supabase.from('orders').select('total_amount').eq('payment_status','PAID').gte('created_at',`${month.first}T00:00:00+07:00`).lt('created_at',`${month.next}T00:00:00+07:00`),
+    supabase.from('class_sessions').select('id').gte('session_date',today).neq('status','CANCELLED')
   ]);
-  const err=results.find(x=>x.error)?.error;
-  if(err) throw err;
-
-  const [c,o,b,s,week,prev,next,pw,gw,pa,ga,mw,mm]=results;
-  const allSessions=[...(prev.data||[]),...(week.data||[]),...(next.data||[])];
-  const ids=allSessions.map(x=>x.id);
-  const bookingCounts={};
-
+  const err=results.find(x=>x.error)?.error;if(err) throw err;
+  const [c,o,b,s,week,prev,next,pw,gw,pa,ga,mw,mm,future]=results;
+  const all=[...(prev.data||[]),...(week.data||[]),...(next.data||[])], counts={}, ids=all.map(x=>x.id);
   if(ids.length){
-    const {data:bs,error:bErr}=await supabase
-      .from('bookings')
-      .select('session_id,status')
-      .in('session_id',ids)
-      .in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
-    if(bErr) throw bErr;
-    for(const x of (bs||[])) bookingCounts[x.session_id]=(bookingCounts[x.session_id]||0)+1;
+    const {data:bs,error}=await supabase.from('bookings').select('session_id').in('session_id',ids).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
+    if(error) throw error;
+    for(const x of (bs||[])) counts[x.session_id]=(counts[x.session_id]||0)+1;
   }
-
+  let activeStudents=0;
+  const futureIds=(future.data||[]).map(x=>x.id);
+  if(futureIds.length){
+    const {data:fb,error}=await supabase.from('bookings').select('user_id').in('session_id',futureIds).eq('status','CONFIRMED');
+    if(error) throw error;
+    activeStudents=new Set((fb||[]).map(x=>x.user_id).filter(Boolean)).size;
+  }
+  const fill=rows=>{
+    rows=rows||[];if(!rows.length)return 0;
+    const maxSeats=Math.max(0,...rows.map(x=>Number(x.capacity||0)));
+    const total=rows.length*maxSeats;
+    const booked=rows.reduce((n,x)=>n+Number(counts[x.id]||0),0);
+    return total?Math.round((booked/total)*1000)/10:0;
+  };
   const sum=rows=>(rows||[]).reduce((n,x)=>n+Number(x.total_amount||0),0);
-
   return Response.json({
-    counts:{
-      customers:c.count||0,paid_orders:o.count||0,
-      confirmed_bookings:b.count||0,open_sessions:s.count||0
-    },
+    counts:{customers:c.count||0,paid_orders:o.count||0,confirmed_bookings:b.count||0,open_sessions:s.count||0},
     analytics:{
       sessions_this_week:(week.data||[]).length,
+      topics_this_week:(week.data||[]).filter(x=>String(x.topic_storage_path||'').trim()).length,
+      active_students:activeStudents,
       tests_this_week:{placement:pw.count||0,progress:gw.count||0},
       tests_all:{placement:pa.count||0,progress:ga.count||0},
       paid_amount:{week:sum(mw.data),month:sum(mm.data)},
-      fill_rate:{
-        previous_week:fillRate(prev.data,bookingCounts),
-        current_week:fillRate(week.data,bookingCounts),
-        next_week:fillRate(next.data,bookingCounts)
-      },
+      fill_rate:{previous_week:fill(prev.data),current_week:fill(week.data),next_week:fill(next.data)},
       ranges:w
     }
   });

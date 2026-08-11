@@ -207,7 +207,7 @@ async function schedule(request){
   const {data:sessions,error:sErr}=await supabase
     .from('class_sessions')
     .select(`
-      id,session_date,starts_at,ends_at,status,topic_title,topic_vocabulary,teacher_id,
+      id,session_date,starts_at,ends_at,status,topic_title,topic_storage_path,topic_vocabulary,teacher_id,
       programs(name),rooms(name),teachers(full_name,country)
     `)
     .eq('teacher_id',teacher.id)
@@ -245,6 +245,7 @@ async function schedule(request){
       ends_at:s.ends_at,
       status:s.status,
       topic_title:s.topic_title||'',
+      topic_storage_path:s.topic_storage_path||'',
       topic_vocabulary:Array.isArray(s.topic_vocabulary)?s.topic_vocabulary:[],
       teacher_name:s.teachers?.full_name||auth.account.teacher_name,
       program_name:s.programs?.name||'',
@@ -267,7 +268,7 @@ async function sessionDetail(request,url){
   const {data:session,error:sErr}=await supabase
     .from('class_sessions')
     .select(`
-      id,program_id,room_id,session_date,starts_at,ends_at,status,topic_title,topic_vocabulary,teacher_id,
+      id,program_id,room_id,session_date,starts_at,ends_at,status,topic_title,topic_storage_path,topic_vocabulary,teacher_id,
       programs(name),rooms(name),teachers(full_name,country)
     `)
     .eq('id',sessionId)
@@ -343,6 +344,7 @@ async function sessionDetail(request,url){
       ends_at:session.ends_at,
       status:session.status,
       topic_title:session.topic_title||'',
+      topic_storage_path:session.topic_storage_path||'',
       topic_vocabulary:Array.isArray(session.topic_vocabulary)?session.topic_vocabulary:[],
       teacher_name:session.teachers?.full_name||auth.account.teacher_name,
       program_name:session.programs?.name||'',
@@ -364,6 +366,29 @@ async function sessionDetail(request,url){
       paid_bookings:paidBookings.length
     }
   });
+}
+
+async function openTeacherTopic(request,url){
+  const auth=await requireTeacher(request);
+  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+  const sessionId=url.searchParams.get('session_id');
+  if(!sessionId) return Response.json({error:'SESSION_ID_REQUIRED'},{status:400});
+  const teacher=await resolveTeacherId(auth.account.teacher_name);
+  if(!teacher) return Response.json({error:'TEACHER_NOT_MAPPED'},{status:400});
+
+  const {data:session,error}=await supabase
+    .from('class_sessions')
+    .select('id,teacher_id,topic_title,topic_storage_path')
+    .eq('id',sessionId).eq('teacher_id',teacher.id).maybeSingle();
+  if(error) throw error;
+  if(!session) return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
+
+  const path=String(session.topic_storage_path||'').trim();
+  if(!path) return Response.json({error:'TOPIC_NOT_READY'},{status:404});
+
+  const {data:signed,error:signedErr}=await supabase.storage.from('topics').createSignedUrl(path,600);
+  if(signedErr) throw signedErr;
+  return Response.json({title:session.topic_title||'SpeakHub Topic',signed_url:signed.signedUrl,expires_in:600});
 }
 
 async function attendance(request){
