@@ -284,6 +284,112 @@ html,body{max-width:100%;overflow-x:hidden!important}
 @keyframes teacherPulse{from{opacity:.25;transform:scale(.8)}to{opacity:1;transform:scale(1.15)}}
 </style>
 
+
+<style>
+.teacher-class-name{
+  font-weight:950!important;
+}
+.teacher-room-name{
+  display:block!important;
+  margin-top:3px;
+  font-weight:850!important;
+  color:#52625c!important;
+}
+.teacher-topic-line{
+  display:block!important;
+  margin-top:4px;
+  color:#6b7772!important;
+  font-size:11px!important;
+  line-height:1.35!important;
+  white-space:normal!important;
+}
+.day-pill{position:relative}
+.day-class-count{
+  position:absolute;
+  top:3px;
+  right:4px;
+  min-width:17px;
+  height:17px;
+  padding:0 4px;
+  border-radius:999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#e54848;
+  color:#fff!important;
+  font-size:8px!important;
+  font-weight:950!important;
+  line-height:1;
+}
+.teacher-resource-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-top:10px;
+}
+.teacher-resource-card{
+  min-width:0;
+  border:1px solid #d8e5df;
+  border-radius:13px;
+  padding:12px;
+  background:#f8fbfa;
+}
+.teacher-resource-card.vocabulary-card{background:#f5faf8}
+.teacher-resource-label{
+  display:block;
+  margin-bottom:6px;
+  color:#5f6e68;
+  font-size:10px;
+  font-weight:900;
+  text-transform:uppercase;
+}
+#sessionTopicTitle{
+  display:block;
+  font-size:14px;
+  line-height:1.4;
+  color:#16231f;
+}
+.teacher-vocab-list{
+  display:grid;
+  gap:6px;
+  max-height:230px;
+  overflow:auto;
+}
+.teacher-vocab-item{
+  padding:7px 8px;
+  border-radius:9px;
+  background:#fff;
+  border:1px solid #e0ebe6;
+}
+.teacher-vocab-item b{
+  display:block;
+  font-size:12px;
+  color:#0d654d;
+}
+.teacher-vocab-item span{
+  display:block;
+  margin-top:2px;
+  font-size:10px;
+  color:#3f514a;
+}
+.teacher-vocab-item small{
+  display:block;
+  margin-top:3px;
+  font-size:9px;
+  color:#7a8681;
+  line-height:1.35;
+}
+@media(max-width:700px){
+  .teacher-resource-grid{
+    grid-template-columns:1fr 1fr!important;
+    gap:7px!important;
+  }
+  .teacher-resource-card{padding:9px!important}
+  #sessionTopicTitle{font-size:12px!important}
+  .teacher-vocab-list{max-height:180px}
+}
+</style>
+
 </head>
 <body>
 <div id="loginView" class="shell">
@@ -352,12 +458,22 @@ html,body{max-width:100%;overflow-x:hidden!important}
       <div style="width:100%">
         <span class="badge">Session</span>
         <h1 id="sessionTitle">Session</h1>
-        <div id="sessionTopic" class="topic">Topic not updated</div>
         <div class="meta-grid">
           <div class="meta"><span>Date</span><b id="detailDate">-</b></div>
           <div class="meta"><span>Time</span><b id="detailTime">-</b></div>
           <div class="meta"><span>Room</span><b id="detailRoom">-</b></div>
           <div class="meta"><span>Class size</span><b id="detailCount">0 students</b></div>
+        </div>
+
+        <div class="teacher-resource-grid">
+          <div class="teacher-resource-card">
+            <span class="teacher-resource-label">Topic</span>
+            <b id="sessionTopicTitle">Not updated</b>
+          </div>
+          <div class="teacher-resource-card vocabulary-card">
+            <span class="teacher-resource-label">Vocabulary</span>
+            <div id="sessionVocabulary"><span class="muted">Not generated yet</span></div>
+          </div>
         </div>
       </div>
     </section>
@@ -496,7 +612,9 @@ function renderDateStrip(){
   if(!selectedDate) selectedDate=new Date().toISOString().slice(0,10);
   document.getElementById('dateStrip').innerHTML=dates.map(d=>{
     const x=new Date(d+'T00:00:00');
+    const dayCount=schedule.filter(s=>s.session_date===d).length;
     return `<button class="day-pill ${selectedDate===d?'active':''}" onclick="selectDate('${d}')">
+      ${dayCount?`<span class="day-class-count">${dayCount}</span>`:''}
       <b>${x.toLocaleDateString('en-GB',{weekday:'short'})}</b>
       <span>${String(x.getDate()).padStart(2,'0')}/${String(x.getMonth()+1).padStart(2,'0')}</span>
     </button>`;
@@ -516,8 +634,9 @@ function renderSessions(){
     <button class="session" onclick="openSession('${s.id}')">
       <div class="session-time">${time24(s.starts_at)}<br><span style="font-size:11px;color:#7b8883">${time24(s.ends_at)}</span></div>
       <div class="session-main">
-        <b>${s.program_name||'SpeakHub'}</b>
-        <span>${s.room_name||'Room not assigned'}${s.topic_title?` · ${s.topic_title}`:''}</span>
+        <b class="teacher-class-name">${s.program_name||'SpeakHub'}</b>
+        <span class="teacher-room-name">${s.room_name||'Room not assigned'}</span>
+        ${s.topic_title?`<span class="teacher-topic-line">${escapeHtml(s.topic_title)}</span>`:''}
       </div>
       <div class="session-count">${Number(s.booked_count||0)} HV</div>
     </button>
@@ -536,6 +655,27 @@ function renderToday(){
   `).join('');
 }
 
+
+function renderTeacherVocabulary(items){
+  const host=document.getElementById('sessionVocabulary');
+  const rows=Array.isArray(items)?items:[];
+  if(!rows.length){
+    host.innerHTML='<span class="muted">Not generated yet</span>';
+    return;
+  }
+
+  host.innerHTML=`<div class="teacher-vocab-list">
+    ${rows.map(v=>`
+      <div class="teacher-vocab-item">
+        <b>${escapeHtml(v.word||'')}</b>
+        ${v.vietnamese?`<span>${escapeHtml(v.vietnamese)}</span>`:''}
+        ${v.situation?`<small>${escapeHtml(v.situation)}</small>`:''}
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+
 async function openSession(id){
   const summary=schedule.find(s=>String(s.id)===String(id));
 
@@ -547,7 +687,8 @@ async function openSession(id){
   if(summary){
     currentSession=summary;
     document.getElementById('sessionTitle').textContent=summary.program_name||'SpeakHub';
-    document.getElementById('sessionTopic').textContent=summary.topic_title?`Topic: ${summary.topic_title}`:'Topic not updated';
+    document.getElementById('sessionTopicTitle').textContent=summary.topic_title||'Not updated';
+    renderTeacherVocabulary(summary.topic_vocabulary||[]);
     document.getElementById('detailDate').textContent=fmtDateLong(summary.session_date);
     document.getElementById('detailTime').textContent=`${time24(summary.starts_at)} – ${time24(summary.ends_at)}`;
     document.getElementById('detailRoom').textContent=summary.room_name||'Room not assigned';
@@ -565,7 +706,8 @@ async function openSession(id){
     const data=await api(`?action=session&session_id=${encodeURIComponent(id)}`);
     currentSession=data.session;
     document.getElementById('sessionTitle').textContent=currentSession.program_name||'SpeakHub';
-    document.getElementById('sessionTopic').textContent=currentSession.topic_title?`Topic: ${currentSession.topic_title}`:'Topic not updated';
+    document.getElementById('sessionTopicTitle').textContent=currentSession.topic_title||'Not updated';
+    renderTeacherVocabulary(currentSession.topic_vocabulary||[]);
     document.getElementById('detailDate').textContent=fmtDateLong(currentSession.session_date);
     document.getElementById('detailTime').textContent=`${time24(currentSession.starts_at)} – ${time24(currentSession.ends_at)}`;
     document.getElementById('detailRoom').textContent=currentSession.room_name||'Room not assigned';
