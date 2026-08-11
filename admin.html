@@ -289,7 +289,7 @@ button.primary.ui-button-busy::after{
         </div>
         <div style="margin-top:10px">
           <label>Session</label>
-          <select id="manualSession"></select>
+          <select id="manualSession"><option value="">Đang tải session...</option></select>
         </div>
         <button class="btn primary" style="width:100%;margin-top:12px" onclick="addManualBooking()">+ Thêm học viên vào session</button>
         <div id="manualMsg"></div>
@@ -541,17 +541,64 @@ async function loadBookings(){
 }
 
 
+
+function getManualSessionsFromCache(){
+  const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'});
+  return (cache.sessions||[])
+    .filter(x=>
+      String(x.session_date||'')>=today &&
+      String(x.status||'').toUpperCase()!=='CANCELLED'
+    )
+    .sort((a,b)=>`${a.session_date} ${a.starts_at}`.localeCompare(`${b.session_date} ${b.starts_at}`))
+    .map(x=>({
+      id:x.id,
+      session_date:x.session_date,
+      starts_at:x.starts_at,
+      ends_at:x.ends_at,
+      capacity:Number(x.capacity||0),
+      booked_count:Number(x.booked_count||0),
+      program_name:x.program_name||''
+    }));
+}
+
+function fillManualSessionDropdown(sessions){
+  const sel=document.getElementById('manualSession');
+  if(!sel)return;
+  sel.innerHTML=(sessions||[]).map(x=>
+    `<option value="${x.id}">${x.session_date} · ${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)} · ${escapeHtml(x.program_name||'')} · ${Number(x.booked_count||0)}/${Number(x.capacity||0)}</option>`
+  ).join('') || '<option value="">Không có session sắp tới</option>';
+}
+
 async function loadManual(){
+  const box=document.getElementById('manualBookings');
+
   try{
-    const d=await api('/api/admin?action=manual-bookings');
-    const sessions=(d.sessions||[]);
-    const bookings=(d.bookings||[]);
+    // Sessions tab is already the proven source of truth in Admin.
+    // If cache is not ready (e.g. user opens this tab immediately), load it first.
+    if(!Array.isArray(cache.sessions) || !cache.sessions.length){
+      try{ await loadSessions(); }catch(_){}
+    }
 
-    const sessionOptions=sessions.map(x=>`<option value="${x.id}">${x.session_date} · ${String(x.starts_at).slice(0,5)}–${String(x.ends_at).slice(0,5)} · ${escapeHtml(x.program_name)} · ${x.booked_count}/${x.capacity}</option>`).join('');
-    const sel=document.getElementById('manualSession');
-    if(sel) sel.innerHTML=sessionOptions||'<option value="">Không có session sắp tới</option>';
+    const cachedSessions=getManualSessionsFromCache();
+    fillManualSessionDropdown(cachedSessions);
 
-    const box=document.getElementById('manualBookings');
+    // Manual-booking history is loaded separately. A failure here must NOT
+    // blank the session dropdown.
+    let d={bookings:[],sessions:[]};
+    try{
+      d=await api('/api/admin?action=manual-bookings');
+    }catch(e){
+      if(box){
+        box.innerHTML=`<div class="error">Không tải được danh sách booking thủ công: ${escapeHtml(e.message)}</div>`;
+      }
+      return;
+    }
+
+    // Prefer backend sessions if returned; otherwise keep the working Admin cache.
+    const sessions=(d.sessions||[]).length ? d.sessions : cachedSessions;
+    if((d.sessions||[]).length) fillManualSessionDropdown(sessions);
+
+    const bookings=d.bookings||[];
     if(!box)return;
 
     if(!bookings.length){
@@ -568,14 +615,13 @@ async function loadManual(){
         </div>
         <div class="manual-reschedule">
           <select id="move-${b.booking_id}">
-            ${sessions.map(s=>`<option value="${s.id}" ${s.id===b.session_id?'selected':''}>${s.session_date} · ${String(s.starts_at).slice(0,5)} · ${escapeHtml(s.program_name)} · ${s.booked_count}/${s.capacity}</option>`).join('')}
+            ${sessions.map(s=>`<option value="${s.id}" ${s.id===b.session_id?'selected':''}>${s.session_date} · ${String(s.starts_at||'').slice(0,5)} · ${escapeHtml(s.program_name||'')} · ${Number(s.booked_count||0)}/${Number(s.capacity||0)}</option>`).join('')}
           </select>
           <button class="btn" onclick="moveManualBooking('${b.booking_id}')">Đổi buổi học</button>
         </div>
       </div>
     `).join('');
   }catch(e){
-    const box=document.getElementById('manualBookings');
     if(box) box.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;
   }
 }
