@@ -387,7 +387,7 @@ async function getManualSessions(){
     .from('class_sessions')
     .select('id,session_date,starts_at,ends_at,capacity,status,programs(name)')
     .gte('session_date',today)
-    .eq('status','OPEN')
+    .neq('status','CANCELLED')
     .order('session_date',{ascending:true})
     .order('starts_at',{ascending:true})
     .limit(250);
@@ -449,24 +449,28 @@ async function ensureManualCustomer(phone,fullName){
 async function handleManualBookings(request){
   if(request.method==='GET'){
     const sessions=await getManualSessions();
-    const {data,error}=await supabase
-      .from('bookings')
-      .select(`
-        id,user_id,session_id,status,created_at,
-        customers:user_id(full_name,phone),
-        orders!inner(id,order_code,payment_status,order_status),
-        class_sessions(session_date,starts_at,ends_at,programs(name))
-      `)
-      .eq('status','CONFIRMED')
-      .eq('orders.payment_status','PAID')
-      .like('orders.order_code','MANUAL-%')
-      .order('created_at',{ascending:false})
-      .limit(300);
-    if(error) throw error;
 
-    return Response.json({
-      sessions,
-      bookings:(data||[]).map(x=>({
+    // Booking history is secondary. Never let a relationship/query problem
+    // prevent Admin from seeing the session dropdown.
+    let bookings=[];
+    try{
+      const {data,error}=await supabase
+        .from('bookings')
+        .select(`
+          id,user_id,session_id,status,created_at,
+          customers:user_id(full_name,phone),
+          orders!inner(id,order_code,payment_status,order_status),
+          class_sessions(session_date,starts_at,ends_at,programs(name))
+        `)
+        .eq('status','CONFIRMED')
+        .eq('orders.payment_status','PAID')
+        .like('orders.order_code','MANUAL-%')
+        .order('created_at',{ascending:false})
+        .limit(300);
+
+      if(error) throw error;
+
+      bookings=(data||[]).map(x=>({
         booking_id:x.id,
         session_id:x.session_id,
         full_name:x.customers?.full_name||'',
@@ -475,8 +479,12 @@ async function handleManualBookings(request){
         starts_at:x.class_sessions?.starts_at||'',
         ends_at:x.class_sessions?.ends_at||'',
         program_name:x.class_sessions?.programs?.name||''
-      }))
-    });
+      }));
+    }catch(historyErr){
+      console.error('manual booking history load failed',historyErr);
+    }
+
+    return Response.json({sessions,bookings});
   }
 
   if(request.method==='POST'){
