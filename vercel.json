@@ -1,5 +1,42 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
+    {
+      "source": "/api/bookings/create",
+      "destination": "/api/router?group=bookings&action=create"
+    },
+    {
+      "source": "/api/bookings/reschedule",
+      "destination": "/api/router?group=bookings&action=reschedule"
+    },
+    {
+      "source": "/api/customers/history",
+      "destination": "/api/router?group=customers&action=history"
+    },
+    {
+      "source": "/api/customers/login",
+      "destination": "/api/router?group=customers&action=login"
+    },
+    {
+      "source": "/api/orders/cancel",
+      "destination": "/api/router?group=orders&action=cancel"
+    },
+    {
+      "source": "/api/orders/status",
+      "destination": "/api/router?group=orders&action=status"
+    },
+    {
+      "source": "/api/payos/create",
+      "destination": "/api/router?group=payos&action=create"
+    },
+    {
+      "source": "/api/payos/reconcile",
+      "destination": "/api/router?group=payos&action=reconcile"
+    },
+    {
+      "source": "/api/payos/webhook",
+      "destination": "/api/router?group=payos&action=webhook"
+    },
     {
       "source": "/teacher",
       "destination": "/teacher/index.html"
