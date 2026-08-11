@@ -525,9 +525,10 @@ export default {
     if(action==='me') return await me(request);
     if(action==='schedule') return await schedule(request);
     if(action==='session') return await sessionDetail(request,url);
+    if(action==='topic-open') return await openTeacherTopic(request,url);
     if(action==='attendance') return await attendance(request);
 
-    return Response.json({error:'NOT_FOUND'},{status:404});
+    return Response.json({error:'NOT_FOUND',action},{status:404});
   }catch(err){
     console.error('teacher api error',err);
     return Response.json({
