@@ -712,11 +712,11 @@ async function openTeacherTopicModal(){
 
   title.textContent=currentSession.topic_title||'Topic';
   modal.classList.remove('hidden');
-  body.innerHTML='<div class="teacher-modal-empty">Loading topic...</div>';
+  body.innerHTML='<div class="teacher-modal-empty">Loading topic PDF...</div>';
 
   try{
     const res=await fetch(`/api/teacher?action=topic-open&session_id=${encodeURIComponent(currentSession.id)}`,{
-      headers:{Authorization:`Bearer ${token}`},
+      headers:{Authorization:`Bearer ${teacherToken}`},
       cache:'no-store'
     });
 
