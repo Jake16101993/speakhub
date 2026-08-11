@@ -401,7 +401,32 @@ html,body{max-width:100%;overflow-x:hidden!important}
 .teacher-vocab-no{width:30px;height:30px;border-radius:9px;background:#edf8f4;color:#0c6a50;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900}.teacher-vocab-word{font-size:14px;font-weight:900;color:#0e624b}
 .teacher-vocab-vi{margin-top:2px;font-size:12px;font-weight:700}.teacher-vocab-example{margin-top:4px;font-size:11px;color:#69756f}.teacher-vocab-situation{margin-top:5px;padding:6px 8px;background:#f6faf8;border-radius:8px;font-size:10px;color:#5d6964}
 @media(max-width:700px){.teacher-modal{padding:8px;align-items:flex-end}.teacher-modal-sheet{max-height:90vh;border-radius:18px 18px 8px 8px}.teacher-topic-frame{height:72vh}}
-</style></head>
+</style>
+<style>
+.teacher-resource-button{
+  border:2px solid #77c9ab!important;
+  background:linear-gradient(180deg,#effbf6 0%,#e4f6ef 100%)!important;
+  box-shadow:0 3px 10px rgba(20,113,82,.08)!important;
+  position:relative;
+}
+.teacher-resource-button:not(:disabled)::after{
+  content:"VIEW";
+  position:absolute;
+  right:10px;
+  top:9px;
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.6px;
+  color:#0d6a50;
+  background:#fff;
+  border:1px solid #b8dfd0;
+  border-radius:999px;
+  padding:3px 6px;
+}
+.teacher-resource-button:not(:disabled):active{transform:scale(.985)}
+.teacher-resource-button:not(:disabled) .teacher-resource-label{color:#0b7557!important}
+</style>
+</head>
 <body>
 <div id="loginView" class="shell">
   <div class="card login-wrap">
@@ -670,16 +695,43 @@ function renderTeacherVocabulary(items){
   const count=document.getElementById('sessionVocabularyCount');
   if(count) count.textContent=rows.length?`${rows.length} words`:'Not generated yet';
 }
-function closeTeacherModal(id){document.getElementById(id)?.classList.add('hidden');}
+function closeTeacherModal(id){
+  const modal=document.getElementById(id);
+  const body=modal?.querySelector('.teacher-modal-body');
+  if(body?.dataset?.objectUrl){
+    URL.revokeObjectURL(body.dataset.objectUrl);
+    delete body.dataset.objectUrl;
+  }
+  modal?.classList.add('hidden');
+}
 async function openTeacherTopicModal(){
   if(!currentSession)return;
-  const modal=document.getElementById('teacherTopicModal'), title=document.getElementById('teacherTopicModalTitle'), body=document.getElementById('teacherTopicModalBody');
-  title.textContent=currentSession.topic_title||'Topic';modal.classList.remove('hidden');
+  const modal=document.getElementById('teacherTopicModal'),
+        title=document.getElementById('teacherTopicModalTitle'),
+        body=document.getElementById('teacherTopicModalBody');
+
+  title.textContent=currentSession.topic_title||'Topic';
+  modal.classList.remove('hidden');
   body.innerHTML='<div class="teacher-modal-empty">Loading topic...</div>';
+
   try{
-    const data=await api(`?action=topic-open&session_id=${encodeURIComponent(currentSession.id)}`);
-    body.innerHTML=data.signed_url?`<iframe class="teacher-topic-frame" src="${data.signed_url}" title="Topic PDF"></iframe>`:'<div class="teacher-modal-empty">Topic PDF is not available.</div>';
-  }catch(e){body.innerHTML=`<div class="teacher-modal-empty">${escapeHtml(e.message)}</div>`}
+    const res=await fetch(`/api/teacher?action=topic-open&session_id=${encodeURIComponent(currentSession.id)}`,{
+      headers:{Authorization:`Bearer ${token}`},
+      cache:'no-store'
+    });
+
+    if(!res.ok){
+      const err=await res.json().catch(()=>({}));
+      throw new Error(err.details||err.error||'TOPIC_OPEN_FAILED');
+    }
+
+    const blob=await res.blob();
+    const objectUrl=URL.createObjectURL(blob);
+    body.innerHTML=`<iframe class="teacher-topic-frame" src="${objectUrl}" title="Topic PDF"></iframe>`;
+    body.dataset.objectUrl=objectUrl;
+  }catch(e){
+    body.innerHTML=`<div class="teacher-modal-empty">${escapeHtml(e.message)}</div>`;
+  }
 }
 function openTeacherVocabularyModal(){
   if(!currentSession)return;
