@@ -87,10 +87,23 @@ async function requireTeacher(request){
 function todayISO(){
   return new Date().toISOString().slice(0,10);
 }
-function plusDaysISO(days){
-  const d=new Date();
-  d.setDate(d.getDate()+days);
-  return d.toISOString().slice(0,10);
+function localDateISO(d){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function currentWeekRange(){
+  const now=new Date();
+  const monday=new Date(now);
+  const offset=(now.getDay()+6)%7;
+  monday.setDate(now.getDate()-offset);
+  monday.setHours(0,0,0,0);
+
+  const sunday=new Date(monday);
+  sunday.setDate(monday.getDate()+6);
+
+  return {from:localDateISO(monday),to:localDateISO(sunday)};
 }
 
 async function login(request){
@@ -160,8 +173,7 @@ async function schedule(request){
     },{status:400});
   }
 
-  const from=plusDaysISO(-14);
-  const to=plusDaysISO(90);
+  const {from,to}=currentWeekRange();
 
   const {data:sessions,error:sErr}=await supabase
     .from('class_sessions')
@@ -225,7 +237,7 @@ async function sessionDetail(request,url){
   const {data:session,error:sErr}=await supabase
     .from('class_sessions')
     .select(`
-      id,session_date,starts_at,ends_at,status,topic_title,teacher_id,
+      id,program_id,room_id,session_date,starts_at,ends_at,status,topic_title,teacher_id,
       programs(name),rooms(name),teachers(full_name,country)
     `)
     .eq('id',sessionId)
@@ -235,19 +247,67 @@ async function sessionDetail(request,url){
   if(sErr) throw sErr;
   if(!session) return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
 
-  const {data:bookings,error:bErr}=await supabase
+  // Old recurring data may contain duplicate physical rows for what is actually
+  // the same logical class. Gather all equivalent session IDs so a paid booking
+  // is never hidden just because it points to a duplicate row.
+  const {data:equivalentSessions,error:eqErr}=await supabase
+    .from('class_sessions')
+    .select('id')
+    .eq('teacher_id',teacher.id)
+    .eq('program_id',session.program_id)
+    .eq('session_date',session.session_date)
+    .eq('starts_at',session.starts_at)
+    .eq('ends_at',session.ends_at)
+    .neq('status','CANCELLED');
+
+  if(eqErr) throw eqErr;
+
+  const logicalSessionIds=[...new Set(
+    [session.id,...(equivalentSessions||[]).map(x=>x.id)].filter(Boolean)
+  )];
+
+  // Read bookings first, then orders/customers separately.
+  // This is more reliable than an inner relationship filter and lets us
+  // explicitly verify which paid order each booking belongs to.
+  const {data:bookingRows,error:bErr}=await supabase
     .from('bookings')
-    .select(`
-      id,status,
-      customers:user_id(id,full_name,phone),
-      orders!inner(payment_status,order_status)
-    `)
-    .eq('session_id',sessionId)
+    .select('id,status,user_id,order_id,session_id,created_at')
+    .in('session_id',logicalSessionIds)
     .in('status',['CONFIRMED','ATTENDED','NO_SHOW'])
-    .eq('orders.payment_status','PAID')
     .order('created_at',{ascending:true});
 
   if(bErr) throw bErr;
+
+  const orderIds=[...new Set((bookingRows||[]).map(b=>b.order_id).filter(Boolean))];
+  const userIds=[...new Set((bookingRows||[]).map(b=>b.user_id).filter(Boolean))];
+
+  let orders=[];
+  if(orderIds.length){
+    const {data,error}=await supabase
+      .from('orders')
+      .select('id,payment_status,order_status')
+      .in('id',orderIds);
+    if(error) throw error;
+    orders=data||[];
+  }
+
+  let customers=[];
+  if(userIds.length){
+    const {data,error}=await supabase
+      .from('customers')
+      .select('id,full_name,phone')
+      .in('id',userIds);
+    if(error) throw error;
+    customers=data||[];
+  }
+
+  const orderMap=new Map(orders.map(o=>[o.id,o]));
+  const customerMap=new Map(customers.map(c=>[c.id,c]));
+
+  const paidBookings=(bookingRows||[]).filter(b=>{
+    const o=orderMap.get(b.order_id);
+    return o?.payment_status==='PAID' && o?.order_status==='CONFIRMED';
+  });
 
   return Response.json({
     session:{
@@ -261,13 +321,21 @@ async function sessionDetail(request,url){
       program_name:session.programs?.name||'',
       room_name:session.rooms?.name||''
     },
-    students:(bookings||[]).map(b=>({
-      booking_id:b.id,
-      customer_id:b.customers?.id||'',
-      full_name:b.customers?.full_name||'Học viên',
-      phone:b.customers?.phone||'',
-      status:b.status
-    }))
+    students:paidBookings.map(b=>{
+      const c=customerMap.get(b.user_id)||{};
+      return {
+        booking_id:b.id,
+        customer_id:b.user_id||'',
+        full_name:c.full_name||'Học viên',
+        phone:c.phone||'',
+        status:b.status
+      };
+    }),
+    debug:{
+      logical_session_ids:logicalSessionIds.length,
+      raw_bookings:(bookingRows||[]).length,
+      paid_bookings:paidBookings.length
+    }
   });
 }
 
