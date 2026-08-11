@@ -368,6 +368,40 @@ async function sessionDetail(request,url){
   });
 }
 
+function normalizeTopicStoragePath(raw){
+  let path=String(raw||'').trim();
+  if(!path) return '';
+
+  // Sometimes an old row may contain a complete Supabase Storage URL.
+  // Convert it back to a bucket-relative path.
+  try{
+    if(/^https?:\/\//i.test(path)){
+      const u=new URL(path);
+      const marker='/topics/';
+      const i=u.pathname.indexOf(marker);
+      if(i>=0) path=decodeURIComponent(u.pathname.slice(i+marker.length));
+    }
+  }catch(_){}
+
+  path=path.replace(/^\/+/,'');
+  if(path.startsWith('topics/')) path=path.slice('topics/'.length);
+  return path;
+}
+
+async function downloadFirstTopicFile(paths){
+  const unique=[...new Set((paths||[]).map(normalizeTopicStoragePath).filter(Boolean))];
+
+  let lastError=null;
+  for(const path of unique){
+    const {data:file,error}=await supabase.storage.from('topics').download(path);
+    if(!error && file) return {file,path};
+    lastError=error||lastError;
+    console.warn('Teacher topic candidate not found',path,error?.message||error);
+  }
+
+  return {file:null,path:'',error:lastError};
+}
+
 async function openTeacherTopic(request,url){
   const auth=await requireTeacher(request);
   if(auth.error) return Response.json({error:auth.error},{status:auth.status});
@@ -380,7 +414,7 @@ async function openTeacherTopic(request,url){
 
   const {data:session,error}=await supabase
     .from('class_sessions')
-    .select('id,teacher_id,topic_title,topic_storage_path')
+    .select('id,program_id,teacher_id,session_date,starts_at,ends_at,topic_title,topic_storage_path')
     .eq('id',sessionId)
     .eq('teacher_id',teacher.id)
     .maybeSingle();
@@ -388,22 +422,46 @@ async function openTeacherTopic(request,url){
   if(error) throw error;
   if(!session) return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
 
-  const path=String(session.topic_storage_path||'').trim();
-  if(!path) return Response.json({error:'TOPIC_NOT_READY'},{status:404});
+  // Old recurring data may contain duplicate physical rows for one logical lesson.
+  // The row assigned to the teacher can carry a stale/missing file path while an
+  // equivalent row has the valid uploaded PDF. Try all equivalent topic paths.
+  const candidatePaths=[session.topic_storage_path];
 
-  const {data:file,error:fileErr}=await supabase.storage.from('topics').download(path);
-  if(fileErr){
-    console.error('teacher topic download failed', {path,fileErr});
-    return Response.json({error:'TOPIC_FILE_NOT_FOUND',details:String(fileErr.message||fileErr)},{status:404});
+  const {data:equivalents,error:eqErr}=await supabase
+    .from('class_sessions')
+    .select('id,topic_storage_path')
+    .eq('program_id',session.program_id)
+    .eq('teacher_id',session.teacher_id)
+    .eq('session_date',session.session_date)
+    .eq('starts_at',session.starts_at)
+    .eq('ends_at',session.ends_at);
+
+  if(eqErr) throw eqErr;
+  for(const row of (equivalents||[])){
+    candidatePaths.push(row.topic_storage_path);
   }
 
-  const bytes=await file.arrayBuffer();
+  if(!candidatePaths.some(Boolean)){
+    return Response.json({error:'TOPIC_NOT_READY'},{status:404});
+  }
+
+  const result=await downloadFirstTopicFile(candidatePaths);
+  if(!result.file){
+    return Response.json({
+      error:'TOPIC_FILE_NOT_FOUND',
+      details:'Topic đã được gắn vào session nhưng file PDF không còn tồn tại trong Storage. Vui lòng upload lại topic một lần.'
+    },{status:404});
+  }
+
+  const bytes=await result.file.arrayBuffer();
+
   return new Response(bytes,{
     status:200,
     headers:{
       'Content-Type':'application/pdf',
-      'Content-Disposition':`inline; filename="speakhub-topic.pdf"`,
-      'Cache-Control':'private, max-age=300'
+      'Content-Disposition':'inline; filename="speakhub-topic.pdf"',
+      'Cache-Control':'private, no-store',
+      'X-Content-Type-Options':'nosniff'
     }
   });
 }

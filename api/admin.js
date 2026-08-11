@@ -390,7 +390,7 @@ async function getManualSessions(){
     .neq('status','CANCELLED')
     .order('session_date',{ascending:true})
     .order('starts_at',{ascending:true})
-    .limit(250);
+    .limit(500);
   if(error) throw error;
 
   const ids=(sessions||[]).map(x=>x.id), counts={};
@@ -545,7 +545,14 @@ async function handleManualBookings(request){
     }).select('id').single();
     if(bErr) throw bErr;
 
-    return Response.json({success:true,booking_id:booking.id,customer_id:customerId},{status:201});
+    return Response.json({
+      success:true,
+      source:'ADMIN_MANUAL_TRANSFER',
+      payment_status:'PAID',
+      booking_status:'CONFIRMED',
+      booking_id:booking.id,
+      customer_id:customerId
+    },{status:201});
   }
 
   return Response.json({error:'Method not allowed'},{status:405});
