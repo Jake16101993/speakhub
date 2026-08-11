@@ -13,7 +13,7 @@ button,input,select{font:inherit}.wrap{width:min(1180px,calc(100% - 28px));margi
 .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat b{display:block;font-size:28px;color:var(--gd)}
 .btn{border:0;border-radius:11px;padding:11px 14px;font-weight:800;cursor:pointer}.primary{background:var(--g);color:#fff}.secondary{background:#fff;border:1px solid #bddfd3;color:var(--gd)}
 input,select{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px;background:#fff}
-.row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.row2>div{min-width:0}.row2>div input{width:100%}
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.tab{background:#fff;border:1px solid var(--line);padding:10px 12px;border-radius:10px}.tab.on{background:var(--gs);border-color:#b8dccc;color:var(--gd);font-weight:800}
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:#4b5a60}
 .badge{display:inline-block;padding:4px 7px;border-radius:999px;font-size:11px;font-weight:800;background:var(--gs);color:var(--gd)}
@@ -210,10 +210,16 @@ button.primary.ui-button-busy::after{
         <h3>Upload topic PDF</h3>
         <div class="row2">
           <select id="topicSession" onchange="syncTopicTitleFromSession()"></select>
-          <input id="topicTitle" placeholder="Nhập tên topic, ví dụ: How to Negotiate Successfully?">
+          <div>
+  <label style="display:block;font-size:11px;font-weight:800;margin:0 0 5px;color:#53615c">Tên Topic</label>
+  <input id="topicTitle" placeholder="Ví dụ: How to Negotiate Successfully?">
+</div>
         </div>
         <div class="row2" style="margin-top:10px">
-          <input id="topicFile" type="file" accept="application/pdf">
+          <div>
+  <label style="display:block;font-size:11px;font-weight:800;margin:0 0 5px;color:#53615c">File PDF</label>
+  <input id="topicFile" type="file" accept="application/pdf">
+</div>
           <button class="btn primary" onclick="uploadTopic()">Upload & gắn vào session</button>
         </div>
         <div id="topicMsg"></div>
