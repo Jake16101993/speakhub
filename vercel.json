@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/teacher",
+      "destination": "/teacher/index.html"
+    }
+  ]
+}

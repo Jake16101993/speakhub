@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SpeakHub Teacher</title>
+<style>
+:root{
+  --g:#087052;--gd:#075842;--gs:#e9f7f1;--line:#dce7e2;--muted:#6d7a75;
+  --bg:#f4f8f6;--white:#fff;--red:#d83b3b;--orange:#d88117;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:#17211e}
+button,input{font:inherit}
+.hidden{display:none!important}
+.shell{max-width:1180px;margin:0 auto;padding:22px}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  margin-bottom:18px
+}
+.brand{display:flex;align-items:center;gap:10px}
+.logo{font-size:27px;font-weight:950;color:var(--gd);letter-spacing:-1px}
+.logo span{color:#50b68e}
+.teacher-chip{
+  display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:999px;
+  background:#fff;border:1px solid var(--line);font-size:13px
+}
+.card{
+  background:#fff;border:1px solid var(--line);border-radius:18px;
+  box-shadow:0 8px 26px rgba(21,69,54,.05)
+}
+.login-wrap{max-width:480px;margin:8vh auto 0;padding:28px}
+.login-wrap h1{font-size:28px;margin:5px 0 6px}
+.muted{color:var(--muted);line-height:1.55}
+.field{display:grid;gap:6px;margin-top:14px}
+.field label{font-size:13px;font-weight:800;color:#31423c}
+.field input{
+  width:100%;border:1px solid #cfdcd7;border-radius:12px;padding:13px 14px;
+  outline:0;background:#fff
+}
+.field input:focus{border-color:#7ec8aa;box-shadow:0 0 0 3px #e8f6f0}
+.btn{
+  border:0;border-radius:12px;padding:11px 15px;font-weight:850;cursor:pointer;
+  transition:.15s
+}
+.btn.primary{background:var(--g);color:#fff}
+.btn.primary:hover{background:var(--gd)}
+.btn.secondary{background:#fff;border:1px solid #bcdacf;color:var(--gd)}
+.btn.ghost{background:transparent;color:var(--gd)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.login-error{margin-top:12px;padding:10px 12px;border-radius:11px;background:#fff1f1;color:#a42d2d;font-size:13px}
+
+.hero{
+  display:flex;justify-content:space-between;align-items:flex-end;gap:15px;
+  padding:20px;margin-bottom:16px;background:linear-gradient(135deg,#ecf8f3,#fff)
+}
+.hero h1{margin:4px 0 4px;font-size:28px;letter-spacing:-.6px}
+.badge{
+  display:inline-flex;padding:5px 9px;border-radius:999px;background:var(--gs);
+  color:var(--gd);font-size:11px;font-weight:900
+}
+.stats{display:flex;gap:8px;flex-wrap:wrap}
+.stat{
+  min-width:105px;padding:10px 12px;border-radius:12px;background:#fff;
+  border:1px solid var(--line);text-align:center
+}
+.stat b{display:block;color:var(--gd);font-size:20px}
+.stat span{font-size:11px;color:var(--muted)}
+
+.layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr);gap:16px}
+.section-card{padding:18px}
+.section-head{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  margin-bottom:12px
+}
+.section-head h2{font-size:19px;margin:0}
+.date-strip{
+  display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-bottom:13px
+}
+.day-pill{
+  padding:8px 5px;border:1px solid var(--line);border-radius:11px;text-align:center;
+  background:#fff;cursor:pointer
+}
+.day-pill b{display:block;font-size:12px}
+.day-pill span{font-size:10px;color:var(--muted)}
+.day-pill.active{background:var(--gs);border-color:#94ceb6;color:var(--gd)}
+.session-list{display:grid;gap:9px}
+.session{
+  width:100%;display:grid;grid-template-columns:80px minmax(0,1fr) auto;
+  gap:12px;align-items:center;text-align:left;padding:13px;border-radius:14px;
+  background:#fff;border:1px solid var(--line);cursor:pointer
+}
+.session:hover{border-color:#a9d7c4;background:#fbfefc}
+.session-time{font-size:15px;font-weight:950;color:var(--gd);white-space:nowrap}
+.session-main b{display:block;font-size:15px}
+.session-main span{font-size:12px;color:var(--muted);line-height:1.45}
+.session-count{
+  min-width:52px;text-align:center;padding:7px 8px;border-radius:10px;
+  background:var(--gs);color:var(--gd);font-size:11px;font-weight:900
+}
+.empty{
+  padding:24px;text-align:center;border:1px dashed #cbdad4;border-radius:14px;
+  color:var(--muted)
+}
+
+.today-box{
+  padding:15px;border-radius:14px;background:#f8fbfa;border:1px solid var(--line)
+}
+.today-box h3{margin:0 0 7px;font-size:16px}
+.today-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-top:7px}
+.today-row span{color:var(--muted)}
+.tip{
+  margin-top:12px;padding:13px;border-radius:13px;background:#fff8ea;border:1px solid #f0dfbc;
+  font-size:12px;line-height:1.55;color:#71551d
+}
+
+.session-view{display:none}
+.session-view.active{display:block}
+.session-detail-head{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+  padding:18px;margin-bottom:13px
+}
+.back{margin-bottom:10px}
+.session-detail-head h1{margin:5px 0 6px;font-size:24px}
+.meta-grid{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px
+}
+.meta{
+  padding:10px;border-radius:11px;background:#f7faf9;border:1px solid var(--line)
+}
+.meta span{display:block;font-size:10px;color:var(--muted);margin-bottom:3px}
+.meta b{font-size:13px}
+.roster{padding:18px}
+.roster-head{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  margin-bottom:12px
+}
+.roster-head h2{margin:0;font-size:19px}
+.student-list{display:grid;gap:8px}
+.student{
+  display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;
+  gap:11px;padding:11px 12px;border:1px solid var(--line);border-radius:13px;background:#fff;
+  transition:.15s
+}
+.student.present{background:#effaf5;border-color:#9fd5bf}
+.avatar{
+  width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#dff4eb,#f1e8d8);
+  display:grid;place-items:center;color:var(--gd);font-weight:950
+}
+.student-name b{display:block;font-size:14px}
+.student-name span{font-size:11px;color:var(--muted)}
+.attendance-check{
+  width:34px;height:34px;border-radius:10px;border:1.5px solid #b9cfc7;
+  background:#fff;display:grid;place-items:center;cursor:pointer;font-weight:950;
+  color:transparent
+}
+.student.present .attendance-check{
+  background:var(--g);border-color:var(--g);color:#fff
+}
+.save-state{font-size:11px;color:var(--muted);margin-top:8px}
+.topic{
+  margin-top:10px;padding:11px 12px;border-radius:12px;background:#eef8f4;
+  color:#244239;font-size:13px;line-height:1.5
+}
+
+.toast{
+  position:fixed;right:18px;bottom:18px;padding:10px 13px;border-radius:11px;
+  background:#163e32;color:#fff;font-size:12px;box-shadow:0 8px 28px rgba(0,0,0,.17);
+  opacity:0;transform:translateY(8px);pointer-events:none;transition:.2s
+}
+.toast.show{opacity:1;transform:translateY(0)}
+@media(max-width:820px){
+  .shell{padding:14px}
+  .layout{grid-template-columns:1fr}
+  .hero{align-items:flex-start;flex-direction:column}
+  .date-strip{overflow-x:auto;grid-template-columns:repeat(7,minmax(64px,1fr))}
+  .session{grid-template-columns:72px minmax(0,1fr) auto}
+  .meta-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:520px){
+  .logo{font-size:23px}
+  .teacher-chip{padding:7px 9px}
+  .hero h1{font-size:24px}
+  .session{grid-template-columns:64px minmax(0,1fr)}
+  .session-count{grid-column:2;justify-self:start}
+  .student{grid-template-columns:38px minmax(0,1fr) auto}
+}
+</style>
+</head>
+<body>
+<div id="loginView" class="shell">
+  <div class="card login-wrap">
+    <div class="logo">Speak<span>Hub</span> Teacher</div>
+    <h1>Đăng nhập giáo viên</h1>
+    <div class="muted">Xem lịch dạy, topic, phòng học và điểm danh học viên ngay trong buổi học.</div>
+
+    <div class="field">
+      <label>Tài khoản</label>
+      <input id="username" autocomplete="username" placeholder="Ví dụ: cyndy">
+    </div>
+    <div class="field">
+      <label>Mật khẩu</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button class="btn primary" style="width:100%;margin-top:16px" onclick="loginTeacher()">Đăng nhập</button>
+    <div id="loginError" class="login-error hidden"></div>
+  </div>
+</div>
+
+<div id="appView" class="shell hidden">
+  <div class="topbar">
+    <div class="brand"><div class="logo">Speak<span>Hub</span> Teacher</div></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <div class="teacher-chip">👩‍🏫 <b id="teacherName">Teacher</b></div>
+      <button class="btn secondary" onclick="logoutTeacher()">Đăng xuất</button>
+    </div>
+  </div>
+
+  <div id="scheduleView">
+    <section class="card hero">
+      <div>
+        <span class="badge">Teacher Dashboard</span>
+        <h1>Lịch dạy của bạn</h1>
+        <div class="muted">Chọn một buổi học để xem topic, phòng và điểm danh học viên.</div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="statToday">0</b><span>Buổi hôm nay</span></div>
+        <div class="stat"><b id="statWeek">0</b><span>Buổi tuần này</span></div>
+        <div class="stat"><b id="statStudents">0</b><span>Lượt học viên</span></div>
+      </div>
+    </section>
+
+    <div class="layout">
+      <section class="card section-card">
+        <div class="section-head">
+          <h2>Lịch dạy tổng thể</h2>
+          <button class="btn secondary" onclick="loadSchedule()">↻ Làm mới</button>
+        </div>
+        <div id="dateStrip" class="date-strip"></div>
+        <div id="sessionList" class="session-list"><div class="empty">Đang tải lịch...</div></div>
+      </section>
+
+      <aside class="card section-card">
+        <div class="section-head"><h2>Hôm nay</h2></div>
+        <div id="todayBox" class="today-box">Đang tải...</div>
+        <div class="tip"><b>Điểm danh nhanh:</b> mở buổi học → tick vào ô cạnh tên học viên. Hệ thống lưu ngay, không cần nút Save.</div>
+      </aside>
+    </div>
+  </div>
+
+  <div id="sessionView" class="session-view">
+    <button class="btn ghost back" onclick="backToSchedule()">← Quay lại lịch dạy</button>
+    <section class="card session-detail-head">
+      <div style="width:100%">
+        <span class="badge">Buổi học</span>
+        <h1 id="sessionTitle">Session</h1>
+        <div id="sessionTopic" class="topic">Topic chưa cập nhật</div>
+        <div class="meta-grid">
+          <div class="meta"><span>Ngày</span><b id="detailDate">-</b></div>
+          <div class="meta"><span>Thời gian</span><b id="detailTime">-</b></div>
+          <div class="meta"><span>Phòng học</span><b id="detailRoom">-</b></div>
+          <div class="meta"><span>Sĩ số</span><b id="detailCount">0 học viên</b></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card roster">
+      <div class="roster-head">
+        <div>
+          <h2>Điểm danh học viên</h2>
+          <div class="muted" style="font-size:12px">Tick ✓ vào người có mặt. Thay đổi được lưu ngay.</div>
+        </div>
+        <span id="attendanceSummary" class="badge">0 / 0 có mặt</span>
+      </div>
+      <div id="studentList" class="student-list"></div>
+      <div id="saveState" class="save-state"></div>
+    </section>
+  </div>
+</div>
+
+<div id="toast" class="toast">Đã lưu</div>
+
+<script>
+const API='/api/teacher';
+let teacherToken=localStorage.getItem('speakhub_teacher_token')||'';
+let teacherProfile=null;
+let schedule=[];
+let selectedDate='';
+let currentSession=null;
+
+function fmtDate(d){
+  const x=new Date(d+'T00:00:00');
+  return x.toLocaleDateString('vi-VN',{weekday:'short',day:'2-digit',month:'2-digit'});
+}
+function fmtDateLong(d){
+  const x=new Date(d+'T00:00:00');
+  return x.toLocaleDateString('vi-VN',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function time24(t){return String(t||'').slice(0,5)}
+function authHeaders(extra={}){return {Authorization:`Bearer ${teacherToken}`,...extra}}
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),1600);
+}
+
+async function api(url,opts={}){
+  const res=await fetch(API+url,{...opts,headers:{...authHeaders(),...(opts.headers||{})}});
+  const data=await res.json().catch(()=>({}));
+  if(res.status===401){
+    logoutTeacher();
+    throw new Error('Phiên đăng nhập đã hết hạn.');
+  }
+  if(!res.ok) throw new Error(data.error||data.details||'Có lỗi xảy ra.');
+  return data;
+}
+
+async function loginTeacher(){
+  const username=document.getElementById('username').value.trim();
+  const password=document.getElementById('password').value;
+  const err=document.getElementById('loginError');
+  err.classList.add('hidden');
+
+  try{
+    const res=await fetch(API+'?action=login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username,password})
+    });
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.error==='INVALID_LOGIN'?'Sai tài khoản hoặc mật khẩu.':data.error||'Không đăng nhập được.');
+    teacherToken=data.token;
+    teacherProfile=data.teacher;
+    localStorage.setItem('speakhub_teacher_token',teacherToken);
+    showApp();
+  }catch(e){
+    err.textContent=e.message;err.classList.remove('hidden');
+  }
+}
+function logoutTeacher(){
+  teacherToken='';
+  teacherProfile=null;
+  localStorage.removeItem('speakhub_teacher_token');
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById('loginView').classList.remove('hidden');
+}
+async function showApp(){
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('appView').classList.remove('hidden');
+  if(!teacherProfile){
+    const me=await api('?action=me');
+    teacherProfile=me.teacher;
+  }
+  document.getElementById('teacherName').textContent=teacherProfile.full_name||teacherProfile.teacher_name||'Teacher';
+  await loadSchedule();
+}
+
+async function loadSchedule(){
+  try{
+    const data=await api('?action=schedule');
+    schedule=data.sessions||[];
+    setStats();
+    renderDateStrip();
+    renderToday();
+    renderSessions();
+  }catch(e){
+    document.getElementById('sessionList').innerHTML=`<div class="empty">${e.message}</div>`;
+  }
+}
+function setStats(){
+  const today=new Date().toISOString().slice(0,10);
+  const now=new Date();
+  const monday=new Date(now);
+  const day=(now.getDay()+6)%7;
+  monday.setDate(now.getDate()-day);monday.setHours(0,0,0,0);
+  const sunday=new Date(monday);sunday.setDate(monday.getDate()+6);
+
+  const todaySessions=schedule.filter(s=>s.session_date===today);
+  const weekSessions=schedule.filter(s=>{
+    const d=new Date(s.session_date+'T00:00:00');
+    return d>=monday&&d<=sunday;
+  });
+  document.getElementById('statToday').textContent=todaySessions.length;
+  document.getElementById('statWeek').textContent=weekSessions.length;
+  document.getElementById('statStudents').textContent=weekSessions.reduce((n,s)=>n+Number(s.booked_count||0),0);
+}
+function weekDates(){
+  const now=new Date();
+  const mon=new Date(now);mon.setDate(now.getDate()-((now.getDay()+6)%7));
+  return Array.from({length:7},(_,i)=>{
+    const d=new Date(mon);d.setDate(mon.getDate()+i);
+    return d.toISOString().slice(0,10);
+  });
+}
+function renderDateStrip(){
+  const dates=weekDates();
+  if(!selectedDate) selectedDate=new Date().toISOString().slice(0,10);
+  document.getElementById('dateStrip').innerHTML=dates.map(d=>{
+    const x=new Date(d+'T00:00:00');
+    return `<button class="day-pill ${selectedDate===d?'active':''}" onclick="selectDate('${d}')">
+      <b>${x.toLocaleDateString('vi-VN',{weekday:'short'})}</b>
+      <span>${String(x.getDate()).padStart(2,'0')}/${String(x.getMonth()+1).padStart(2,'0')}</span>
+    </button>`;
+  }).join('');
+}
+function selectDate(d){
+  selectedDate=d;renderDateStrip();renderSessions();
+}
+function renderSessions(){
+  const items=schedule.filter(s=>s.session_date===selectedDate);
+  const host=document.getElementById('sessionList');
+  if(!items.length){
+    host.innerHTML=`<div class="empty">Không có buổi dạy ngày ${fmtDate(selectedDate)}.</div>`;
+    return;
+  }
+  host.innerHTML=items.map(s=>`
+    <button class="session" onclick="openSession('${s.id}')">
+      <div class="session-time">${time24(s.starts_at)}<br><span style="font-size:11px;color:#7b8883">${time24(s.ends_at)}</span></div>
+      <div class="session-main">
+        <b>${s.program_name||'SpeakHub'}</b>
+        <span>${s.room_name||'Chưa xếp phòng'}${s.topic_title?` · ${s.topic_title}`:''}</span>
+      </div>
+      <div class="session-count">${Number(s.booked_count||0)} HV</div>
+    </button>
+  `).join('');
+}
+function renderToday(){
+  const today=new Date().toISOString().slice(0,10);
+  const items=schedule.filter(s=>s.session_date===today);
+  const host=document.getElementById('todayBox');
+  if(!items.length){
+    host.innerHTML='<h3>Không có buổi dạy hôm nay</h3><div class="muted" style="font-size:12px">Bạn có thể xem các ngày khác ở lịch bên trái.</div>';
+    return;
+  }
+  host.innerHTML=`<h3>${items.length} buổi dạy hôm nay</h3>`+items.map(s=>`
+    <div class="today-row"><span>${time24(s.starts_at)} · ${s.program_name}</span><b>${s.room_name||'-'}</b></div>
+  `).join('');
+}
+
+async function openSession(id){
+  try{
+    const data=await api(`?action=session&session_id=${encodeURIComponent(id)}`);
+    currentSession=data.session;
+    document.getElementById('scheduleView').style.display='none';
+    document.getElementById('sessionView').classList.add('active');
+
+    document.getElementById('sessionTitle').textContent=currentSession.program_name||'SpeakHub';
+    document.getElementById('sessionTopic').textContent=currentSession.topic_title?`Topic: ${currentSession.topic_title}`:'Topic chưa cập nhật';
+    document.getElementById('detailDate').textContent=fmtDateLong(currentSession.session_date);
+    document.getElementById('detailTime').textContent=`${time24(currentSession.starts_at)} – ${time24(currentSession.ends_at)}`;
+    document.getElementById('detailRoom').textContent=currentSession.room_name||'Chưa xếp phòng';
+    document.getElementById('detailCount').textContent=`${data.students.length} học viên`;
+    renderStudents(data.students||[]);
+  }catch(e){
+    toast(e.message);
+  }
+}
+function backToSchedule(){
+  document.getElementById('sessionView').classList.remove('active');
+  document.getElementById('scheduleView').style.display='';
+  currentSession=null;
+}
+function renderStudents(students){
+  const host=document.getElementById('studentList');
+  if(!students.length){
+    host.innerHTML='<div class="empty">Chưa có học viên đã thanh toán trong buổi này.</div>';
+    updateAttendanceSummary([]);
+    return;
+  }
+  host.innerHTML=students.map(s=>{
+    const present=s.status==='ATTENDED';
+    const initial=(s.full_name||'H').trim().charAt(0).toUpperCase();
+    return `<div class="student ${present?'present':''}" id="student-${s.booking_id}">
+      <div class="avatar">${initial}</div>
+      <div class="student-name">
+        <b>${escapeHtml(s.full_name||'Học viên')}</b>
+        <span>${present?'Đã điểm danh':'Chưa điểm danh'}</span>
+      </div>
+      <button class="attendance-check" onclick="toggleAttendance('${s.booking_id}',${present?'false':'true'})">✓</button>
+    </div>`;
+  }).join('');
+  updateAttendanceSummary(students);
+}
+function updateAttendanceSummary(students){
+  const present=students.filter(s=>s.status==='ATTENDED').length;
+  document.getElementById('attendanceSummary').textContent=`${present} / ${students.length} có mặt`;
+}
+async function toggleAttendance(bookingId,attended){
+  const row=document.getElementById('student-'+bookingId);
+  const btn=row?.querySelector('.attendance-check');
+  if(btn) btn.disabled=true;
+  document.getElementById('saveState').textContent='Đang lưu điểm danh...';
+  try{
+    await api('?action=attendance',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({booking_id:bookingId,attended})
+    });
+    toast(attended?'Đã điểm danh':'Đã bỏ điểm danh');
+    const data=await api(`?action=session&session_id=${encodeURIComponent(currentSession.id)}`);
+    renderStudents(data.students||[]);
+    document.getElementById('saveState').textContent='Đã lưu tự động.';
+  }catch(e){
+    toast(e.message);
+    document.getElementById('saveState').textContent='Không lưu được. Thử lại.';
+    if(btn) btn.disabled=false;
+  }
+}
+function escapeHtml(v){
+  return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+if(teacherToken){
+  showApp().catch(()=>logoutTeacher());
+}
+document.getElementById('password').addEventListener('keydown',e=>{
+  if(e.key==='Enter') loginTeacher();
+});
+</script>
+</body>
+</html>
