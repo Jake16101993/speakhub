@@ -40,6 +40,10 @@
     {
       "source": "/teacher",
       "destination": "/teacher/index.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
     }
   ]
 }
