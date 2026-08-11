@@ -322,6 +322,72 @@ async function handleBookings(){
   });
 }
 
+
+function extractOpenAIOutputText(data){
+  if(typeof data?.output_text==='string' && data.output_text.trim()) return data.output_text;
+  const parts=[];
+  for(const item of (data?.output||[])){
+    for(const c of (item?.content||[])){
+      if(typeof c?.text==='string') parts.push(c.text);
+      else if(typeof c?.text?.value==='string') parts.push(c.text.value);
+    }
+  }
+  return parts.join('\n').trim();
+}
+
+function parseOpenAIJson(text){
+  return JSON.parse(String(text||'')
+    .replace(/^```json\s*/i,'')
+    .replace(/^```\s*/,'')
+    .replace(/```$/,'')
+    .trim());
+}
+
+async function generateTopicVocabulary(topic,program){
+  const key=process.env.OPENAI_API_KEY;
+  if(!key) throw new Error('OPENAI_API_KEY_MISSING');
+
+  const model=process.env.OPENAI_PLACEMENT_MODEL || 'gpt-5-mini';
+  const prompt=`You create practical vocabulary for an offline English speaking club in Vietnam.
+
+Class: ${program}
+Topic: ${topic}
+
+Return exactly 10 useful vocabulary items that students can actively use in discussion.
+Adapt difficulty to the class name:
+- Kid Starter: very simple everyday words/short phrases.
+- Kid Communicator: simple but expressive speaking vocabulary.
+- Adult Beginner: common, practical conversational English.
+- Adult Intermediate: natural discussion vocabulary, useful collocations and phrases, but not overly academic.
+
+For each item provide:
+- word: English word, phrase, or collocation
+- part_of_speech: short label such as noun, verb, adjective, phrase, collocation
+- pronunciation: simple IPA when useful; otherwise empty string
+- vietnamese: concise Vietnamese meaning
+- example: one natural English example sentence directly related to the topic
+
+Avoid obscure vocabulary. Avoid duplicate meanings. Make the list immediately useful for speaking.
+Return ONLY valid JSON in this exact shape:
+{"items":[{"word":"","part_of_speech":"","pronunciation":"","vietnamese":"","example":""}]}`;
+
+  const response=await fetch('https://api.openai.com/v1/responses',{
+    method:'POST',
+    headers:{
+      authorization:`Bearer ${key}`,
+      'content-type':'application/json'
+    },
+    body:JSON.stringify({model,input:prompt,max_output_tokens:1800})
+  });
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data?.error?.message||'OPENAI_VOCABULARY_FAILED');
+
+  const parsed=parseOpenAIJson(extractOpenAIOutputText(data));
+  const items=Array.isArray(parsed?.items)?parsed.items.slice(0,10):[];
+  if(!items.length) throw new Error('VOCABULARY_EMPTY');
+  return items;
+}
+
 async function handleTopicUpload(request){
   if(request.method!=='POST'){
     return Response.json({error:'Method not allowed'},{status:405});
@@ -365,15 +431,25 @@ async function handleTopicUpload(request){
 
   const topicTitle=title||file.name.replace(/\.pdf$/i,'');
 
-  // Important: older recurring data may contain more than one physical
-  // class_sessions row for the same logical lesson. A customer's paid booking
-  // can point to a different duplicate row than the one selected in Admin.
-  // Propagate the topic to every equivalent logical session.
+  // Generate ONCE at upload time and persist it on the session.
+  // Every student sees the exact same vocabulary; opening the modal does not call AI.
+  let topicVocabulary=[];
+  let vocabularyError='';
+  try{
+    topicVocabulary=await generateTopicVocabulary(topicTitle,session.programs?.name||'SpeakHub');
+  }catch(vErr){
+    vocabularyError=String(vErr?.message||vErr);
+    console.error('topic vocabulary pre-generation failed',vErr);
+  }
+
+  // Important: older recurring data may contain duplicate physical rows.
+  // Propagate topic + shared vocabulary to every equivalent logical session.
   let q=supabase
     .from('class_sessions')
     .update({
       topic_title:topicTitle,
-      topic_storage_path:path
+      topic_storage_path:path,
+      topic_vocabulary:topicVocabulary
     })
     .eq('program_id',session.program_id)
     .eq('session_date',session.session_date)
@@ -394,6 +470,9 @@ async function handleTopicUpload(request){
     success:true,
     path,
     topic_title:topicTitle,
+    vocabulary_generated:topicVocabulary.length>0,
+    vocabulary_count:topicVocabulary.length,
+    vocabulary_error:vocabularyError||null,
     updated_session_count:(updated||[]).length,
     updated_session_ids:(updated||[]).map(x=>x.id)
   });
