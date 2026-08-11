@@ -263,6 +263,27 @@ html,body{max-width:100%;overflow-x:hidden!important}
 }
 </style>
 
+
+<style>
+.teacher-roster-loading{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  padding:24px;
+  border:1px dashed #cbdad4;
+  border-radius:14px;
+  color:var(--muted);
+  font-size:12px;
+}
+.teacher-loading-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--g);
+  animation:teacherPulse .9s ease-in-out infinite alternate;
+}
+@keyframes teacherPulse{from{opacity:.25;transform:scale(.8)}to{opacity:1;transform:scale(1.15)}}
+</style>
+
 </head>
 <body>
 <div id="loginView" class="shell">
@@ -516,12 +537,33 @@ function renderToday(){
 }
 
 async function openSession(id){
+  const summary=schedule.find(s=>String(s.id)===String(id));
+
+  // Perceived-performance optimization:
+  // open the session screen immediately from schedule data already in memory.
+  document.getElementById('scheduleView').style.display='none';
+  document.getElementById('sessionView').classList.add('active');
+
+  if(summary){
+    currentSession=summary;
+    document.getElementById('sessionTitle').textContent=summary.program_name||'SpeakHub';
+    document.getElementById('sessionTopic').textContent=summary.topic_title?`Topic: ${summary.topic_title}`:'Topic not updated';
+    document.getElementById('detailDate').textContent=fmtDateLong(summary.session_date);
+    document.getElementById('detailTime').textContent=`${time24(summary.starts_at)} – ${time24(summary.ends_at)}`;
+    document.getElementById('detailRoom').textContent=summary.room_name||'Room not assigned';
+    document.getElementById('detailCount').textContent=`${Number(summary.booked_count||0)} students`;
+  }
+
+  document.getElementById('studentList').innerHTML=`
+    <div class="teacher-roster-loading">
+      <span class="teacher-loading-dot"></span>
+      Loading student list...
+    </div>`;
+  document.getElementById('attendanceSummary').textContent='Loading...';
+
   try{
     const data=await api(`?action=session&session_id=${encodeURIComponent(id)}`);
     currentSession=data.session;
-    document.getElementById('scheduleView').style.display='none';
-    document.getElementById('sessionView').classList.add('active');
-
     document.getElementById('sessionTitle').textContent=currentSession.program_name||'SpeakHub';
     document.getElementById('sessionTopic').textContent=currentSession.topic_title?`Topic: ${currentSession.topic_title}`:'Topic not updated';
     document.getElementById('detailDate').textContent=fmtDateLong(currentSession.session_date);
@@ -530,6 +572,8 @@ async function openSession(id){
     document.getElementById('detailCount').textContent=`${data.students.length} students`;
     renderStudents(data.students||[]);
   }catch(e){
+    document.getElementById('studentList').innerHTML=`<div class="empty">${escapeHtml(e.message)}</div>`;
+    document.getElementById('attendanceSummary').textContent='Unavailable';
     toast(e.message);
   }
 }
