@@ -303,11 +303,12 @@ html,body{max-width:100%;overflow-x:hidden!important}
   line-height:1.35!important;
   white-space:normal!important;
 }
-.day-pill{position:relative}
+.day-pill{position:relative;padding-top:14px!important}
 .day-class-count{
   position:absolute;
-  top:3px;
-  right:4px;
+  top:-7px;
+  right:50%;
+  transform:translateX(50%);
   min-width:17px;
   height:17px;
   padding:0 4px;
@@ -390,7 +391,17 @@ html,body{max-width:100%;overflow-x:hidden!important}
 }
 </style>
 
-</head>
+<style>
+.teacher-resource-button{text-align:left!important;cursor:pointer}.teacher-resource-button small{display:block;margin-top:5px;font-size:9px;color:#6f7b76}.teacher-resource-button:disabled{opacity:.5;cursor:not-allowed}
+.teacher-modal{position:fixed;inset:0;z-index:9999;background:rgba(16,31,26,.46);display:flex;align-items:center;justify-content:center;padding:16px}.teacher-modal.hidden{display:none!important}
+.teacher-modal-sheet{width:min(860px,100%);max-height:88vh;overflow:auto;background:#fff;border-radius:18px;border:1px solid #d9e5df}.teacher-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid #e2eae6}
+.teacher-modal-head span{font-size:10px;color:#65736d;font-weight:900;text-transform:uppercase}.teacher-modal-head h3{margin:4px 0 0;font-size:20px}.teacher-modal-head button{width:34px;height:34px;border-radius:10px;border:1px solid #d8e2dd;background:#fff;font-size:22px}
+.teacher-modal-body{padding:14px}.teacher-topic-frame{width:100%;height:70vh;border:0;border-radius:10px}.teacher-modal-empty{padding:28px;text-align:center;color:#6b7872;border:1px dashed #cad9d2;border-radius:12px}
+.teacher-vocab-modal-list{display:grid;gap:8px}.teacher-vocab-modal-item{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;border:1px solid #dfe8e4;border-radius:12px;padding:10px}
+.teacher-vocab-no{width:30px;height:30px;border-radius:9px;background:#edf8f4;color:#0c6a50;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900}.teacher-vocab-word{font-size:14px;font-weight:900;color:#0e624b}
+.teacher-vocab-vi{margin-top:2px;font-size:12px;font-weight:700}.teacher-vocab-example{margin-top:4px;font-size:11px;color:#69756f}.teacher-vocab-situation{margin-top:5px;padding:6px 8px;background:#f6faf8;border-radius:8px;font-size:10px;color:#5d6964}
+@media(max-width:700px){.teacher-modal{padding:8px;align-items:flex-end}.teacher-modal-sheet{max-height:90vh;border-radius:18px 18px 8px 8px}.teacher-topic-frame{height:72vh}}
+</style></head>
 <body>
 <div id="loginView" class="shell">
   <div class="card login-wrap">
@@ -466,14 +477,12 @@ html,body{max-width:100%;overflow-x:hidden!important}
         </div>
 
         <div class="teacher-resource-grid">
-          <div class="teacher-resource-card">
-            <span class="teacher-resource-label">Topic</span>
-            <b id="sessionTopicTitle">Not updated</b>
-          </div>
-          <div class="teacher-resource-card vocabulary-card">
-            <span class="teacher-resource-label">Vocabulary</span>
-            <div id="sessionVocabulary"><span class="muted">Not generated yet</span></div>
-          </div>
+          <button id="teacherTopicButton" class="teacher-resource-card teacher-resource-button" onclick="openTeacherTopicModal()">
+            <span class="teacher-resource-label">Topic</span><b id="sessionTopicTitle">Not updated</b><small>Tap to view</small>
+          </button>
+          <button id="teacherVocabButton" class="teacher-resource-card vocabulary-card teacher-resource-button" onclick="openTeacherVocabularyModal()">
+            <span class="teacher-resource-label">Vocabulary</span><b id="sessionVocabularyCount">Not generated yet</b><small>Tap to view</small>
+          </button>
         </div>
       </div>
     </section>
@@ -657,24 +666,29 @@ function renderToday(){
 
 
 function renderTeacherVocabulary(items){
-  const host=document.getElementById('sessionVocabulary');
   const rows=Array.isArray(items)?items:[];
-  if(!rows.length){
-    host.innerHTML='<span class="muted">Not generated yet</span>';
-    return;
-  }
-
-  host.innerHTML=`<div class="teacher-vocab-list">
-    ${rows.map(v=>`
-      <div class="teacher-vocab-item">
-        <b>${escapeHtml(v.word||'')}</b>
-        ${v.vietnamese?`<span>${escapeHtml(v.vietnamese)}</span>`:''}
-        ${v.situation?`<small>${escapeHtml(v.situation)}</small>`:''}
-      </div>
-    `).join('')}
-  </div>`;
+  const count=document.getElementById('sessionVocabularyCount');
+  if(count) count.textContent=rows.length?`${rows.length} words`:'Not generated yet';
 }
-
+function closeTeacherModal(id){document.getElementById(id)?.classList.add('hidden');}
+async function openTeacherTopicModal(){
+  if(!currentSession)return;
+  const modal=document.getElementById('teacherTopicModal'), title=document.getElementById('teacherTopicModalTitle'), body=document.getElementById('teacherTopicModalBody');
+  title.textContent=currentSession.topic_title||'Topic';modal.classList.remove('hidden');
+  body.innerHTML='<div class="teacher-modal-empty">Loading topic...</div>';
+  try{
+    const data=await api(`?action=topic-open&session_id=${encodeURIComponent(currentSession.id)}`);
+    body.innerHTML=data.signed_url?`<iframe class="teacher-topic-frame" src="${data.signed_url}" title="Topic PDF"></iframe>`:'<div class="teacher-modal-empty">Topic PDF is not available.</div>';
+  }catch(e){body.innerHTML=`<div class="teacher-modal-empty">${escapeHtml(e.message)}</div>`}
+}
+function openTeacherVocabularyModal(){
+  if(!currentSession)return;
+  const modal=document.getElementById('teacherVocabModal'),title=document.getElementById('teacherVocabModalTitle'),body=document.getElementById('teacherVocabModalBody');
+  const rows=Array.isArray(currentSession.topic_vocabulary)?currentSession.topic_vocabulary:[];
+  title.textContent=currentSession.topic_title||'Vocabulary';modal.classList.remove('hidden');
+  if(!rows.length){body.innerHTML='<div class="teacher-modal-empty">Vocabulary is not generated yet.</div>';return}
+  body.innerHTML=`<div class="teacher-vocab-modal-list">${rows.map((v,i)=>`<div class="teacher-vocab-modal-item"><div class="teacher-vocab-no">${String(i+1).padStart(2,'0')}</div><div><div class="teacher-vocab-word">${escapeHtml(v.word||'')}</div>${v.vietnamese?`<div class="teacher-vocab-vi">${escapeHtml(v.vietnamese)}</div>`:''}${v.example?`<div class="teacher-vocab-example">“${escapeHtml(v.example)}”</div>`:''}${v.situation?`<div class="teacher-vocab-situation">${escapeHtml(v.situation)}</div>`:''}</div></div>`).join('')}</div>`;
+}
 
 async function openSession(id){
   const summary=schedule.find(s=>String(s.id)===String(id));
@@ -689,6 +703,8 @@ async function openSession(id){
     document.getElementById('sessionTitle').textContent=summary.program_name||'SpeakHub';
     document.getElementById('sessionTopicTitle').textContent=summary.topic_title||'Not updated';
     renderTeacherVocabulary(summary.topic_vocabulary||[]);
+    document.getElementById('teacherTopicButton').disabled=!summary.topic_storage_path;
+    document.getElementById('teacherVocabButton').disabled=!(Array.isArray(summary.topic_vocabulary)&&summary.topic_vocabulary.length);
     document.getElementById('detailDate').textContent=fmtDateLong(summary.session_date);
     document.getElementById('detailTime').textContent=`${time24(summary.starts_at)} – ${time24(summary.ends_at)}`;
     document.getElementById('detailRoom').textContent=summary.room_name||'Room not assigned';
@@ -708,6 +724,8 @@ async function openSession(id){
     document.getElementById('sessionTitle').textContent=currentSession.program_name||'SpeakHub';
     document.getElementById('sessionTopicTitle').textContent=currentSession.topic_title||'Not updated';
     renderTeacherVocabulary(currentSession.topic_vocabulary||[]);
+    document.getElementById('teacherTopicButton').disabled=!currentSession.topic_storage_path;
+    document.getElementById('teacherVocabButton').disabled=!(Array.isArray(currentSession.topic_vocabulary)&&currentSession.topic_vocabulary.length);
     document.getElementById('detailDate').textContent=fmtDateLong(currentSession.session_date);
     document.getElementById('detailTime').textContent=`${time24(currentSession.starts_at)} – ${time24(currentSession.ends_at)}`;
     document.getElementById('detailRoom').textContent=currentSession.room_name||'Room not assigned';
@@ -806,5 +824,8 @@ document.getElementById('password').addEventListener('keydown',e=>{
   if(e.key==='Enter') loginTeacher();
 });
 </script>
+
+<div id="teacherTopicModal" class="teacher-modal hidden" onclick="if(event.target===this)closeTeacherModal('teacherTopicModal')"><div class="teacher-modal-sheet"><div class="teacher-modal-head"><div><span>Topic</span><h3 id="teacherTopicModalTitle">Topic</h3></div><button onclick="closeTeacherModal('teacherTopicModal')">×</button></div><div id="teacherTopicModalBody" class="teacher-modal-body"></div></div></div>
+<div id="teacherVocabModal" class="teacher-modal hidden" onclick="if(event.target===this)closeTeacherModal('teacherVocabModal')"><div class="teacher-modal-sheet"><div class="teacher-modal-head"><div><span>Vocabulary</span><h3 id="teacherVocabModalTitle">Vocabulary</h3></div><button onclick="closeTeacherModal('teacherVocabModal')">×</button></div><div id="teacherVocabModalBody" class="teacher-modal-body"></div></div></div>
 </body>
 </html>
