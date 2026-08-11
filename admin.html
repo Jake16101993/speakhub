@@ -132,6 +132,21 @@ button.primary.ui-button-busy::after{
 }
 </style>
 
+<style>
+.overview-analytics-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:12px}
+.overview-metric span{display:block;color:var(--muted);font-size:12px;font-weight:700}
+.overview-metric b{display:block;margin-top:7px;font-size:26px;color:var(--gd)}
+.overview-metric small{display:block;margin-top:5px;color:var(--muted)}
+.overview-metric .money-metric{font-size:18px;line-height:1.35}
+.overview-fill-card{margin-top:12px}
+.fill-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+.fill-metrics>div{padding:14px;border:1px solid var(--line);border-radius:12px;background:#fafcfb}
+.fill-metrics>div.current{background:#edf8f4;border-color:#b8dfcf}
+.fill-metrics span{display:block;font-size:11px;color:var(--muted)}
+.fill-metrics b{display:block;margin-top:5px;font-size:24px;color:var(--gd)}
+@media(max-width:900px){.overview-analytics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.overview-analytics-grid{grid-template-columns:1fr}.fill-metrics{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -195,7 +210,7 @@ button.primary.ui-button-busy::after{
         <h3>Upload topic PDF</h3>
         <div class="row2">
           <select id="topicSession" onchange="syncTopicTitleFromSession()"></select>
-          <input id="topicTitle" placeholder="Topic title">
+          <input id="topicTitle" placeholder="Nhập tên topic, ví dụ: How to Negotiate Successfully?">
         </div>
         <div class="row2" style="margin-top:10px">
           <input id="topicFile" type="file" accept="application/pdf">
@@ -293,12 +308,30 @@ function showTab(name,btn){
 }
 async function loadOverview(){
   const d=await api('/api/admin?action=overview');
-  document.getElementById('tab-overview').innerHTML=`<div class="grid4">
-    <div class="card stat"><span class="muted">Customers</span><b>${d.counts.customers}</b></div>
-    <div class="card stat"><span class="muted">Paid orders</span><b>${d.counts.paid_orders}</b></div>
-    <div class="card stat"><span class="muted">Confirmed bookings</span><b>${d.counts.confirmed_bookings}</b></div>
-    <div class="card stat"><span class="muted">Open sessions</span><b>${d.counts.open_sessions}</b></div>
-  </div>`;
+  const a=d.analytics||{};
+  const money=n=>new Intl.NumberFormat('vi-VN').format(Number(n||0))+'đ';
+  const pct=n=>`${Number(n||0).toFixed(1).replace('.0','')}%`;
+  document.getElementById('tab-overview').innerHTML=`
+    <div class="grid4">
+      <div class="card stat"><span class="muted">Customers</span><b>${d.counts.customers}</b></div>
+      <div class="card stat"><span class="muted">Paid orders</span><b>${d.counts.paid_orders}</b></div>
+      <div class="card stat"><span class="muted">Confirmed bookings</span><b>${d.counts.confirmed_bookings}</b></div>
+      <div class="card stat"><span class="muted">Open sessions</span><b>${d.counts.open_sessions}</b></div>
+    </div>
+    <div class="overview-analytics-grid">
+      <div class="card overview-metric"><span>Sessions tuần hiện tại</span><b>${Number(a.sessions_this_week||0)}</b><small>${a.ranges?.current_from||''} → ${a.ranges?.current_to||''}</small></div>
+      <div class="card overview-metric"><span>Tests trong tuần</span><b>${Number(a.tests_this_week?.placement||0)} / ${Number(a.tests_this_week?.progress||0)}</b><small>Xếp lớp / Tiến bộ</small></div>
+      <div class="card overview-metric"><span>Tests toàn bộ</span><b>${Number(a.tests_all?.placement||0)} / ${Number(a.tests_all?.progress||0)}</b><small>Xếp lớp / Tiến bộ</small></div>
+      <div class="card overview-metric"><span>Paid tuần / tháng</span><b class="money-metric">${money(a.paid_amount?.week)} / ${money(a.paid_amount?.month)}</b><small>Đã PAID</small></div>
+    </div>
+    <div class="card overview-fill-card">
+      <div><h3 style="margin:0">Tỷ lệ lấp đầy trung bình</h3><div class="muted" style="font-size:12px;margin-top:4px">Booking / tổng sức chứa session</div></div>
+      <div class="fill-metrics">
+        <div><span>Tuần trước</span><b>${pct(a.fill_rate?.previous_week)}</b></div>
+        <div class="current"><span>Tuần hiện tại</span><b>${pct(a.fill_rate?.current_week)}</b></div>
+        <div><span>Tuần tiếp theo</span><b>${pct(a.fill_rate?.next_week)}</b></div>
+      </div>
+    </div>`;
 }
 async function loadSessions(){
   const d=await api('/api/admin?action=sessions');
