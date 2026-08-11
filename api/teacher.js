@@ -224,9 +224,13 @@ async function schedule(request){
   if(ids.length){
     const {data:bookings,error:bErr}=await supabase
       .from('bookings')
-      .select('session_id,status')
+      .select(`
+        session_id,status,
+        orders!inner(payment_status,order_status)
+      `)
       .in('session_id',ids)
-      .in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
+      .neq('status','CANCELLED')
+      .eq('orders.payment_status','PAID');
 
     if(bErr) throw bErr;
     (bookings||[]).forEach(b=>counts[b.session_id]=(counts[b.session_id]||0)+1);
@@ -302,9 +306,9 @@ async function sessionDetail(request,url){
   // explicitly verify which paid order each booking belongs to.
   const {data:bookingRows,error:bErr}=await supabase
     .from('bookings')
-    .select('id,status,user_id,order_id,session_id,created_at')
+    .select('id,status,attendance_status,user_id,order_id,session_id,created_at')
     .in('session_id',logicalSessionIds)
-    .in('status',['CONFIRMED','ATTENDED','NO_SHOW'])
+    .neq('status','CANCELLED')
     .order('created_at',{ascending:true});
 
   if(bErr) throw bErr;
@@ -333,7 +337,7 @@ async function sessionDetail(request,url){
 
   const paidBookings=(bookingRows||[]).filter(b=>{
     const o=orderMap.get(b.order_id);
-    return o?.payment_status==='PAID' && o?.order_status==='CONFIRMED';
+    return o?.payment_status==='PAID' && b.status!=='CANCELLED';
   });
 
   return Response.json({
@@ -357,7 +361,11 @@ async function sessionDetail(request,url){
         customer_id:b.user_id||'',
         full_name:c.full_name||'Học viên',
         phone:c.phone||'',
-        status:b.status
+        status:
+          b.attendance_status==='PRESENT' ? 'ATTENDED'
+          : b.attendance_status==='ABSENT' ? 'NO_SHOW'
+          : 'CONFIRMED',
+        attendance_status:b.attendance_status||'NOT_MARKED'
       };
     }),
     debug:{
@@ -482,7 +490,7 @@ async function attendance(request){
   const {data:booking,error:bErr}=await supabase
     .from('bookings')
     .select(`
-      id,status,session_id,
+      id,status,attendance_status,session_id,
       class_sessions!inner(id,teacher_id)
     `)
     .eq('id',bookingId)
@@ -492,10 +500,11 @@ async function attendance(request){
   if(bErr) throw bErr;
   if(!booking) return Response.json({error:'BOOKING_NOT_FOUND'},{status:404});
 
-  const nextStatus=attended?'ATTENDED':'CONFIRMED';
+  const nextAttendanceStatus=attended?'PRESENT':'NOT_MARKED';
+
   const {error:uErr}=await supabase
     .from('bookings')
-    .update({status:nextStatus})
+    .update({attendance_status:nextAttendanceStatus})
     .eq('id',bookingId);
 
   if(uErr) throw uErr;
@@ -511,7 +520,11 @@ async function attendance(request){
     });
   if(logErr) console.warn('attendance log error',logErr.message);
 
-  return Response.json({success:true,status:nextStatus});
+  return Response.json({
+    success:true,
+    status:attended?'ATTENDED':'CONFIRMED',
+    attendance_status:nextAttendanceStatus
+  });
 }
 
 export default {
