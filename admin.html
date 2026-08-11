@@ -147,6 +147,55 @@ button.primary.ui-button-busy::after{
 @media(max-width:900px){.overview-analytics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.overview-analytics-grid{grid-template-columns:1fr}.fill-metrics{grid-template-columns:1fr}}
 </style>
+
+<style>
+@media(max-width:560px){
+  #tab-overview .grid4{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  #tab-overview .overview-analytics-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  #tab-overview .card.stat,
+  #tab-overview .overview-metric{
+    padding:9px 6px!important;
+    min-width:0;
+  }
+  #tab-overview .card.stat span,
+  #tab-overview .overview-metric span{
+    font-size:9px!important;
+    line-height:1.2;
+  }
+  #tab-overview .card.stat b,
+  #tab-overview .overview-metric b{
+    font-size:17px!important;
+    line-height:1.15;
+    overflow-wrap:anywhere;
+  }
+  #tab-overview .overview-metric .money-metric{
+    font-size:11px!important;
+  }
+  #tab-overview .overview-metric small{
+    font-size:8px!important;
+  }
+  #tab-overview .overview-fill-card{
+    width:100%!important;
+    grid-column:1/-1!important;
+  }
+  #tab-overview .fill-metrics{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  #tab-overview .fill-metrics>div{
+    padding:9px 5px!important;
+  }
+  #tab-overview .fill-metrics span{font-size:9px!important}
+  #tab-overview .fill-metrics b{font-size:18px!important}
+}
+</style>
+
 </head>
 <body>
 <div class="wrap">
