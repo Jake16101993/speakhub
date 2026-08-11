@@ -64,6 +64,29 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 }
 </style>
 
+
+<style>
+.topic-admin-note{
+  margin-top:12px;
+  padding:10px 12px;
+  border-radius:10px;
+  background:#f5faf8;
+  border:1px solid #dbe9e3;
+  color:#5d6964;
+  font-size:12px;
+}
+.topic-just-updated{
+  display:inline-flex;
+  margin-left:6px;
+  padding:3px 6px;
+  border-radius:999px;
+  background:#e8f0ff;
+  color:#385aa8;
+  font-size:10px;
+  font-weight:850;
+}
+</style>
+
 </head>
 <body>
 <div class="wrap">
@@ -142,8 +165,16 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
             <h3 style="margin:0">Theo dõi Topic</h3>
             <div class="muted" style="font-size:12px;margin-top:4px">Các session sắp tới · đã upload / chưa upload · tên topic</div>
           </div>
-          <button class="btn secondary" onclick="renderTopicStatus()">↻ Làm mới bảng</button>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="topicStatusFilter" onchange="renderTopicStatus()" style="width:auto;min-width:150px">
+              <option value="ALL">Tất cả</option>
+              <option value="MISSING">Chưa upload</option>
+              <option value="UPLOADED">Đã upload</option>
+            </select>
+            <button class="btn secondary" onclick="renderTopicStatus()">↻ Làm mới bảng</button>
+          </div>
         </div>
+        <div class="topic-admin-note">Mặc định chọn <b>session gần nhất sắp diễn ra</b>. Topic chỉ áp dụng cho đúng ngày/giờ đã chọn.</div>
         <div id="topicStatusSummary" class="topic-status-summary" style="margin-top:14px"></div>
         <div id="topicStatusTable" class="topic-table-wrap"></div>
       </div>
@@ -209,10 +240,22 @@ async function loadSessions(){
     (d.teachers||[]).map(x=>`<option value="${x.id}" data-country="${x.country||''}">${x.full_name}</option>`).join('');
   syncTeacherCountry();
 
-  document.getElementById('topicSession').innerHTML=(d.sessions||[]).map(x=>`<option
+  const todayKey=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'});
+  const topicSessions=(d.sessions||[])
+    .filter(x=>String(x.session_date||'')>=todayKey && String(x.status||'').toUpperCase()!=='CANCELLED')
+    .sort((a,b)=>`${a.session_date} ${a.starts_at}`.localeCompare(`${b.session_date} ${b.starts_at}`));
+
+  document.getElementById('topicSession').innerHTML=topicSessions.map(x=>`<option
     value="${x.id}"
     data-title="${String(x.topic_title||'').replace(/"/g,'&quot;')}"
+    data-date="${x.session_date}"
   >${x.session_date} · ${x.starts_at.slice(0,5)} · ${x.program_name}${x.topic_storage_path?' · ✓ Topic':''}</option>`).join('');
+
+  // Always default to the nearest upcoming lesson, not a far-future recurring row.
+  if(topicSessions.length){
+    document.getElementById('topicSession').value=topicSessions[0].id;
+  }
+
   syncTopicTitleFromSession();
   renderTopicStatus();
 
@@ -298,7 +341,7 @@ function renderTopicStatus(){
   const today=new Date();
   const todayKey=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
-  const rows=(cache.sessions||[])
+  const allRows=(cache.sessions||[])
     .filter(x=>String(x.session_date||'')>=todayKey && String(x.status||'').toUpperCase()!=='CANCELLED')
     .sort((a,b)=>{
       const ak=`${a.session_date} ${a.starts_at}`;
@@ -306,11 +349,18 @@ function renderTopicStatus(){
       return ak.localeCompare(bk);
     });
 
-  const uploaded=rows.filter(x=>String(x.topic_storage_path||'').trim()).length;
-  const missing=rows.length-uploaded;
+  const uploaded=allRows.filter(x=>String(x.topic_storage_path||'').trim()).length;
+  const missing=allRows.length-uploaded;
+  const filter=document.getElementById('topicStatusFilter')?.value||'ALL';
+  const rows=allRows.filter(x=>{
+    const has=Boolean(String(x.topic_storage_path||'').trim());
+    if(filter==='UPLOADED') return has;
+    if(filter==='MISSING') return !has;
+    return true;
+  });
 
   summary.innerHTML=`
-    <div class="topic-mini-stat"><span>Session sắp tới</span><b>${rows.length}</b></div>
+    <div class="topic-mini-stat"><span>Session sắp tới</span><b>${allRows.length}</b></div>
     <div class="topic-mini-stat"><span>Đã upload</span><b>${uploaded}</b></div>
     <div class="topic-mini-stat"><span>Chưa upload</span><b>${missing}</b></div>`;
 
@@ -327,7 +377,7 @@ function renderTopicStatus(){
       x.program_name||'',
       x.teacher_name||'',
       x.topic_storage_path
-        ? '<span class="topic-status-ok">✓ Đã upload</span>'
+        ? `<span class="topic-status-ok">✓ Đã upload</span>${String(window.lastUploadedTopicSessionId||'')===String(x.id)?'<span class="topic-just-updated">Vừa upload</span>':''}`
         : '<span class="topic-status-missing">● Chưa upload</span>',
       x.topic_title
         ? `<div class="topic-title-cell">${x.topic_title}</div>`
@@ -343,11 +393,14 @@ async function uploadTopic(){
   if(!file){msg.innerHTML='<div class="error">Chọn PDF trước.</div>';return}
   const fd=new FormData();fd.append('session_id',topicSession.value);fd.append('title',topicTitle.value.trim());fd.append('file',file);
   try{
+    const selectedSessionId=document.getElementById('topicSession').value;
     const result=await api('/api/admin?action=topic-upload',{method:'POST',body:fd});
     const count=Number(result.updated_session_count||1);
-    msg.innerHTML=`<div class="ok">Upload topic thành công · đã đồng bộ vào ${count} session liên quan.</div>`;
+    window.lastUploadedTopicSessionId=selectedSessionId;
+    msg.innerHTML=`<div class="ok">Upload topic thành công · ${result.topic_title||''} · đã đồng bộ vào ${count} session liên quan.</div>`;
     document.getElementById('topicFile').value='';
     await loadSessions();
+    document.getElementById('topicStatusFilter').value='UPLOADED';
     renderTopicStatus();
   }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
 }
