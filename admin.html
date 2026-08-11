@@ -196,7 +196,17 @@ button.primary.ui-button-busy::after{
 }
 </style>
 
-</head>
+<style>
+@media(max-width:560px){
+  #tab-overview .grid4,#tab-overview .overview-analytics-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+  #tab-overview .card.stat,#tab-overview .overview-metric{min-width:0!important;padding:10px 9px!important}
+  #tab-overview .card.stat span,#tab-overview .overview-metric span{font-size:10px!important}
+  #tab-overview .card.stat b,#tab-overview .overview-metric b{font-size:19px!important;overflow-wrap:anywhere}
+  #tab-overview .overview-metric .money-metric{font-size:12px!important}
+  #tab-overview .overview-fill-card{grid-column:1/-1!important;width:100%!important}
+  #tab-overview .fill-metrics{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important}
+}
+</style></head>
 <body>
 <div class="wrap">
   <div class="top">
@@ -374,7 +384,8 @@ async function loadOverview(){
       <div class="card stat"><span class="muted">Open sessions</span><b>${d.counts.open_sessions}</b></div>
     </div>
     <div class="overview-analytics-grid">
-      <div class="card overview-metric"><span>Sessions tuần hiện tại</span><b>${Number(a.sessions_this_week||0)}</b><small>${a.ranges?.current_from||''} → ${a.ranges?.current_to||''}</small></div>
+      <div class="card overview-metric"><span>Sessions tuần hiện tại</span><b>${Number(a.sessions_this_week||0)}</b><small>${a.ranges?.current_from||''} → ${a.ranges?.current_to||''}</small></div><div class="card overview-metric"><span>Topic tuần này</span><b>${Number(a.topics_this_week||0)} / ${Number(a.sessions_this_week||0)}</b><small>Đã upload / Tổng session</small></div>
+      <div class="card overview-metric"><span>Học viên active</span><b>${Number(a.active_students||0)}</b><small>Có lịch học sắp tới</small></div>
       <div class="card overview-metric"><span>Tests trong tuần</span><b>${Number(a.tests_this_week?.placement||0)} / ${Number(a.tests_this_week?.progress||0)}</b><small>Xếp lớp / Tiến bộ</small></div>
       <div class="card overview-metric"><span>Tests toàn bộ</span><b>${Number(a.tests_all?.placement||0)} / ${Number(a.tests_all?.progress||0)}</b><small>Xếp lớp / Tiến bộ</small></div>
       <div class="card overview-metric"><span>Paid tuần / tháng</span><b class="money-metric">${money(a.paid_amount?.week)} / ${money(a.paid_amount?.month)}</b><small>Đã PAID</small></div>
