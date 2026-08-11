@@ -545,6 +545,13 @@ async function handleManualBookings(request){
     const unitPrice=Math.round(amount/count);
     const orderCode=`MANUAL-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
+    // Manual-transfer orders follow the exact same customer reschedule rule
+    // as normal paid orders:
+    // 1–3 sessions  -> 1 change
+    // 4–7 sessions  -> 2 changes
+    // 8+ sessions   -> 3 changes
+    const rescheduleLimit=count<4?1:(count<8?2:3);
+
     const {data:order,error:oErr}=await supabase.from('orders').insert({
       order_code:orderCode,
       user_id:customerId,
@@ -553,10 +560,7 @@ async function handleManualBookings(request){
       original_total:amount,
       discount_amount:0,
       total_amount:amount,
-      // Keep the DB column inside the normal customer constraint.
-      // Admin manual rescheduling does NOT use this counter; the dedicated
-      // admin endpoint allows unlimited moves independently.
-      reschedule_limit:2,
+      reschedule_limit:rescheduleLimit,
       reschedule_used:0,
       payment_status:'PAID',
       order_status:'CONFIRMED',
@@ -585,6 +589,7 @@ async function handleManualBookings(request){
       booking_status:'CONFIRMED',
       booking_count:(bookings||[]).length,
       booking_ids:(bookings||[]).map(x=>x.id),
+      reschedule_limit:rescheduleLimit,
       total_amount:amount,
       paid_date:paidDate,
       order_id:order.id,
