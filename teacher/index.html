@@ -722,7 +722,12 @@ async function openTeacherTopicModal(){
 
     if(!res.ok){
       const err=await res.json().catch(()=>({}));
-      throw new Error(err.details||err.error||'TOPIC_OPEN_FAILED');
+      const code=err.error||'TOPIC_OPEN_FAILED';
+      const friendly={
+        TOPIC_FILE_NOT_FOUND:'Topic PDF không còn trong hệ thống. Vui lòng báo SpeakHub upload lại file.',
+        TOPIC_NOT_READY:'Topic PDF chưa được upload.'
+      };
+      throw new Error(err.details||friendly[code]||code);
     }
 
     const blob=await res.blob();
