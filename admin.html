@@ -24,6 +24,46 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <!-- SPEAKHUB ADMIN RECURRING SESSION 2026-08-09 -->
 <!-- SPEAKHUB ADMIN PROGRAM + TEACHER FIX 2026-08-09 -->
 <!-- SPEAKHUB ADMIN DUPLICATE-SAFE SESSION FIX -->
+
+<style>
+/* ===== V16 Admin topic status ===== */
+.topic-status-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  margin-bottom:12px;
+}
+.topic-mini-stat{
+  padding:12px 14px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#fff;
+}
+.topic-mini-stat span{display:block;font-size:11px;color:var(--muted)}
+.topic-mini-stat b{display:block;margin-top:3px;font-size:22px;color:var(--gd)}
+.topic-status-ok{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:4px 7px;border-radius:999px;
+  background:#eaf7f1;color:#075b43;font-size:11px;font-weight:850;
+  white-space:nowrap;
+}
+.topic-status-missing{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:4px 7px;border-radius:999px;
+  background:#fff1ed;color:#b5422d;font-size:11px;font-weight:850;
+  white-space:nowrap;
+}
+.topic-title-cell{font-weight:700;max-width:320px}
+.topic-none{color:#9aa3a0;font-style:italic;font-weight:500}
+.topic-table-wrap{overflow:auto}
+.topic-table-wrap table{min-width:760px}
+@media(max-width:760px){
+  .topic-status-summary{grid-template-columns:1fr 1fr 1fr}
+  .topic-mini-stat{padding:9px}
+  .topic-mini-stat b{font-size:18px}
+}
+</style>
+
 </head>
 <body>
 <div class="wrap">
@@ -86,7 +126,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="card">
         <h3>Upload topic PDF</h3>
         <div class="row2">
-          <select id="topicSession"></select>
+          <select id="topicSession" onchange="syncTopicTitleFromSession()"></select>
           <input id="topicTitle" placeholder="Topic title">
         </div>
         <div class="row2" style="margin-top:10px">
@@ -94,6 +134,18 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
           <button class="btn primary" onclick="uploadTopic()">Upload & gắn vào session</button>
         </div>
         <div id="topicMsg"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div>
+            <h3 style="margin:0">Theo dõi Topic</h3>
+            <div class="muted" style="font-size:12px;margin-top:4px">Các session sắp tới · đã upload / chưa upload · tên topic</div>
+          </div>
+          <button class="btn secondary" onclick="renderTopicStatus()">↻ Làm mới bảng</button>
+        </div>
+        <div id="topicStatusSummary" class="topic-status-summary" style="margin-top:14px"></div>
+        <div id="topicStatusTable" class="topic-table-wrap"></div>
       </div>
     </section>
   </main>
@@ -157,7 +209,13 @@ async function loadSessions(){
     (d.teachers||[]).map(x=>`<option value="${x.id}" data-country="${x.country||''}">${x.full_name}</option>`).join('');
   syncTeacherCountry();
 
-  document.getElementById('topicSession').innerHTML=(d.sessions||[]).map(x=>`<option value="${x.id}">${x.session_date} · ${x.starts_at.slice(0,5)} · ${x.program_name}</option>`).join('');
+  document.getElementById('topicSession').innerHTML=(d.sessions||[]).map(x=>`<option
+    value="${x.id}"
+    data-title="${String(x.topic_title||'').replace(/"/g,'&quot;')}"
+  >${x.session_date} · ${x.starts_at.slice(0,5)} · ${x.program_name}${x.topic_storage_path?' · ✓ Topic':''}</option>`).join('');
+  syncTopicTitleFromSession();
+  renderTopicStatus();
+
   document.getElementById('sessionsTable').innerHTML=table(['Ngày','Giờ','Lớp','Loại','GV','Chỗ','Status'],d.sessions.map(x=>[
     x.session_date,
     `${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,
@@ -223,14 +281,74 @@ async function loadBookings(){
     x.full_name||'',x.phone,x.session_date,`${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,x.program_name,`<span class="badge">${x.payment_status}</span>`
   ]));
 }
+
+function syncTopicTitleFromSession(){
+  const sel=document.getElementById('topicSession');
+  const opt=sel?.selectedOptions?.[0];
+  if(!opt)return;
+  const current=String(opt.dataset.title||'').trim();
+  document.getElementById('topicTitle').value=current;
+}
+
+function renderTopicStatus(){
+  const summary=document.getElementById('topicStatusSummary');
+  const host=document.getElementById('topicStatusTable');
+  if(!summary||!host)return;
+
+  const today=new Date();
+  const todayKey=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  const rows=(cache.sessions||[])
+    .filter(x=>String(x.session_date||'')>=todayKey && String(x.status||'').toUpperCase()!=='CANCELLED')
+    .sort((a,b)=>{
+      const ak=`${a.session_date} ${a.starts_at}`;
+      const bk=`${b.session_date} ${b.starts_at}`;
+      return ak.localeCompare(bk);
+    });
+
+  const uploaded=rows.filter(x=>String(x.topic_storage_path||'').trim()).length;
+  const missing=rows.length-uploaded;
+
+  summary.innerHTML=`
+    <div class="topic-mini-stat"><span>Session sắp tới</span><b>${rows.length}</b></div>
+    <div class="topic-mini-stat"><span>Đã upload</span><b>${uploaded}</b></div>
+    <div class="topic-mini-stat"><span>Chưa upload</span><b>${missing}</b></div>`;
+
+  if(!rows.length){
+    host.innerHTML='<div class="muted" style="padding:16px 0">Không có session sắp tới.</div>';
+    return;
+  }
+
+  host.innerHTML=table(
+    ['Ngày','Giờ','Lớp','Giáo viên','Trạng thái Topic','Tên Topic'],
+    rows.map(x=>[
+      x.session_date,
+      `${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)}`,
+      x.program_name||'',
+      x.teacher_name||'',
+      x.topic_storage_path
+        ? '<span class="topic-status-ok">✓ Đã upload</span>'
+        : '<span class="topic-status-missing">● Chưa upload</span>',
+      x.topic_title
+        ? `<div class="topic-title-cell">${x.topic_title}</div>`
+        : '<span class="topic-none">Chưa có topic</span>'
+    ])
+  );
+}
+
+
 async function uploadTopic(){
   const msg=document.getElementById('topicMsg');msg.innerHTML='';
   const file=document.getElementById('topicFile').files[0];
   if(!file){msg.innerHTML='<div class="error">Chọn PDF trước.</div>';return}
   const fd=new FormData();fd.append('session_id',topicSession.value);fd.append('title',topicTitle.value.trim());fd.append('file',file);
   try{
-    await api('/api/admin?action=topic-upload',{method:'POST',body:fd});
-    msg.innerHTML='<div class="ok">Upload topic thành công.</div>';document.getElementById('topicFile').value='';await loadSessions();
+    const result=await api('/api/admin?action=topic-upload',{method:'POST',body:fd});
+    const count=Number(result.updated_session_count||1);
+    msg.innerHTML=`<div class="ok">Upload topic thành công · đã đồng bộ vào ${count} session liên quan.</div>`;
+    document.getElementById('topicFile').value='';
+    await loadSessions();
+    renderTopicStatus();
   }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
 }
 function table(headers,rows){return `<table><thead><tr>${headers.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(x=>`<td>${x??''}</td>`).join('')}</tr>`).join('')}</tbody></table>`}
