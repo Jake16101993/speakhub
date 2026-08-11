@@ -87,6 +87,51 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 }
 </style>
 
+
+<style>
+/* ===== Global button click feedback ===== */
+button{position:relative}
+button.ui-button-busy{
+  cursor:wait!important;
+}
+button.ui-button-busy::after{
+  content:"";
+  position:absolute;
+  width:15px;height:15px;
+  left:50%;top:50%;
+  margin:-7.5px 0 0 -7.5px;
+  border:2px solid currentColor;
+  border-right-color:transparent;
+  border-radius:50%;
+  animation:uiBtnSpin .65s linear infinite;
+}
+button.ui-button-busy > *{visibility:hidden!important}
+button.ui-button-busy{
+  color:transparent!important;
+}
+button.ui-button-busy::after{
+  color:#17815f;
+}
+.btn.primary.ui-button-busy::after,
+button.primary.ui-button-busy::after{
+  color:#fff;
+  border-color:#fff;
+  border-right-color:transparent;
+}
+@keyframes uiBtnSpin{to{transform:rotate(360deg)}}
+
+.topic-delete-btn{
+  border:1px solid #efc5bd;
+  background:#fff5f2;
+  color:#b53d2b;
+  border-radius:9px;
+  padding:6px 10px;
+  font-weight:800;
+  cursor:pointer;
+  white-space:nowrap;
+}
+</style>
+
 </head>
 <body>
 <div class="wrap">
@@ -182,6 +227,34 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </main>
 </div>
 <script>
+
+function setButtonBusy(btn,busy=true){
+  if(!btn) return ()=>{};
+  if(busy){
+    btn.classList.add('ui-button-busy');
+    btn.dataset.wasDisabled=btn.disabled?'1':'0';
+    btn.disabled=true;
+    return ()=>{
+      btn.classList.remove('ui-button-busy');
+      if(btn.dataset.wasDisabled!=='1') btn.disabled=false;
+      delete btn.dataset.wasDisabled;
+    };
+  }
+  btn.classList.remove('ui-button-busy');
+  btn.disabled=false;
+  return ()=>{};
+}
+
+// Every button gives immediate visual feedback, even for fast synchronous actions.
+// Long async actions can call setButtonBusy() themselves and keep the spinner active.
+document.addEventListener('click',e=>{
+  const btn=e.target.closest?.('button');
+  if(!btn || btn.disabled || btn.classList.contains('ui-button-busy')) return;
+  btn.classList.add('ui-button-busy');
+  setTimeout(()=>btn?.classList?.remove('ui-button-busy'),550);
+},true);
+
+
 let token=localStorage.getItem('speakhub_admin_token')||'';
 let cache={sessions:[],programs:[],rooms:[]};
 
@@ -333,6 +406,31 @@ function syncTopicTitleFromSession(){
   document.getElementById('topicTitle').value=current;
 }
 
+
+function logicalTopicRows(rows){
+  const map=new Map();
+
+  (rows||[]).forEach(x=>{
+    const key=[
+      x.session_date||'',
+      String(x.starts_at||'').slice(0,5),
+      String(x.ends_at||'').slice(0,5),
+      x.program_name||'',
+      x.teacher_id||x.teacher_name||''
+    ].join('|');
+
+    const prev=map.get(key);
+
+    // Prefer the duplicate row that actually has topic data.
+    if(!prev || (!prev.topic_storage_path && x.topic_storage_path)){
+      map.set(key,x);
+    }
+  });
+
+  return [...map.values()];
+}
+
+
 function renderTopicStatus(){
   const summary=document.getElementById('topicStatusSummary');
   const host=document.getElementById('topicStatusTable');
@@ -341,13 +439,14 @@ function renderTopicStatus(){
   const today=new Date();
   const todayKey=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
-  const allRows=(cache.sessions||[])
-    .filter(x=>String(x.session_date||'')>=todayKey && String(x.status||'').toUpperCase()!=='CANCELLED')
-    .sort((a,b)=>{
-      const ak=`${a.session_date} ${a.starts_at}`;
-      const bk=`${b.session_date} ${b.starts_at}`;
-      return ak.localeCompare(bk);
-    });
+  const allRows=logicalTopicRows(
+    (cache.sessions||[])
+      .filter(x=>String(x.session_date||'')>=todayKey && String(x.status||'').toUpperCase()!=='CANCELLED')
+  ).sort((a,b)=>{
+    const ak=`${a.session_date} ${a.starts_at}`;
+    const bk=`${b.session_date} ${b.starts_at}`;
+    return ak.localeCompare(bk);
+  });
 
   const uploaded=allRows.filter(x=>String(x.topic_storage_path||'').trim()).length;
   const missing=allRows.length-uploaded;
@@ -370,7 +469,7 @@ function renderTopicStatus(){
   }
 
   host.innerHTML=table(
-    ['Ngày','Giờ','Lớp','Giáo viên','Trạng thái Topic','Tên Topic'],
+    ['Ngày','Giờ','Lớp','Giáo viên','Trạng thái Topic','Vocabulary','Tên Topic','Thao tác'],
     rows.map(x=>[
       x.session_date,
       `${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)}`,
@@ -379,11 +478,42 @@ function renderTopicStatus(){
       x.topic_storage_path
         ? `<span class="topic-status-ok">✓ Đã upload</span>${String(window.lastUploadedTopicSessionId||'')===String(x.id)?'<span class="topic-just-updated">Vừa upload</span>':''}`
         : '<span class="topic-status-missing">● Chưa upload</span>',
+      Array.isArray(x.topic_vocabulary) && x.topic_vocabulary.length
+        ? `<span class="topic-status-ok">✓ ${x.topic_vocabulary.length} từ</span>`
+        : '<span class="topic-status-missing">● Chưa có</span>',
       x.topic_title
         ? `<div class="topic-title-cell">${x.topic_title}</div>`
-        : '<span class="topic-none">Chưa có topic</span>'
+        : '<span class="topic-none">Chưa có topic</span>',
+      x.topic_storage_path
+        ? `<button class="topic-delete-btn" onclick="deleteTopic('${x.id}',this)">Xoá</button>`
+        : ''
     ])
   );
+}
+
+
+
+async function deleteTopic(sessionId,btn){
+  if(!confirm('Xoá topic và vocabulary của session này?')) return;
+
+  const stop=setButtonBusy(btn,true);
+  try{
+    const result=await api('/api/admin?action=topic-delete',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:sessionId})
+    });
+
+    document.getElementById('topicMsg').innerHTML=
+      `<div class="ok">Đã xoá topic khỏi ${Number(result.deleted_session_count||1)} session liên quan.</div>`;
+
+    await loadSessions();
+    renderTopicStatus();
+  }catch(e){
+    document.getElementById('topicMsg').innerHTML=`<div class="error">${e.message}</div>`;
+  }finally{
+    stop();
+  }
 }
 
 
@@ -397,12 +527,13 @@ async function uploadTopic(){
     const result=await api('/api/admin?action=topic-upload',{method:'POST',body:fd});
     const count=Number(result.updated_session_count||1);
     window.lastUploadedTopicSessionId=selectedSessionId;
-    msg.innerHTML=`<div class="ok">Upload topic thành công · ${result.topic_title||''} · đã đồng bộ vào ${count} session liên quan.</div>`;
+    msg.innerHTML=`<div class="ok">Upload topic thành công · ${result.topic_title||''} · Vocabulary ${Number(result.vocabulary_count||0)}/10 · đã đồng bộ vào ${count} session liên quan.</div>`;
     document.getElementById('topicFile').value='';
     await loadSessions();
     document.getElementById('topicStatusFilter').value='UPLOADED';
     renderTopicStatus();
   }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
+  finally{stop();}
 }
 function table(headers,rows){return `<table><thead><tr>${headers.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(x=>`<td>${x??''}</td>`).join('')}</tr>`).join('')}</tbody></table>`}
 function fmt(x){return x?new Date(x).toLocaleString('vi-VN'):''}
