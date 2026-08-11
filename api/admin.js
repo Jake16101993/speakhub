@@ -342,7 +342,10 @@ async function handleTopicUpload(request){
 
   const {data:session,error:sErr}=await supabase
     .from('class_sessions')
-    .select('session_date,programs(name)')
+    .select(`
+      id,program_id,teacher_id,session_date,starts_at,ends_at,
+      programs(name)
+    `)
     .eq('id',sessionId)
     .maybeSingle();
 
@@ -360,17 +363,40 @@ async function handleTopicUpload(request){
 
   if(uErr) throw uErr;
 
-  const {error:updateErr}=await supabase
+  const topicTitle=title||file.name.replace(/\.pdf$/i,'');
+
+  // Important: older recurring data may contain more than one physical
+  // class_sessions row for the same logical lesson. A customer's paid booking
+  // can point to a different duplicate row than the one selected in Admin.
+  // Propagate the topic to every equivalent logical session.
+  let q=supabase
     .from('class_sessions')
     .update({
-      topic_title:title||file.name.replace(/\.pdf$/i,''),
+      topic_title:topicTitle,
       topic_storage_path:path
     })
-    .eq('id',sessionId);
+    .eq('program_id',session.program_id)
+    .eq('session_date',session.session_date)
+    .eq('starts_at',session.starts_at)
+    .eq('ends_at',session.ends_at);
+
+  if(session.teacher_id){
+    q=q.eq('teacher_id',session.teacher_id);
+  }else{
+    q=q.is('teacher_id',null);
+  }
+
+  const {data:updated,error:updateErr}=await q.select('id');
 
   if(updateErr) throw updateErr;
 
-  return Response.json({success:true,path});
+  return Response.json({
+    success:true,
+    path,
+    topic_title:topicTitle,
+    updated_session_count:(updated||[]).length,
+    updated_session_ids:(updated||[]).map(x=>x.id)
+  });
 }
 
 
