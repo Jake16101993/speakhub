@@ -213,6 +213,58 @@ button.primary.ui-button-busy::after{
 .manual-reschedule{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.manual-reschedule select{min-width:0}
 @media(max-width:700px){.manual-booking-card{grid-template-columns:1fr}.manual-reschedule{grid-template-columns:1fr}.manual-reschedule .btn{width:100%}}
 </style>
+
+<style>
+.manual-session-head{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px
+}
+.manual-session-head label{margin:0}
+#manualSelectedCount{
+  font-size:11px;font-weight:850;color:#0d6a50;background:#eaf7f1;border-radius:999px;padding:4px 8px
+}
+.manual-session-picker{
+  max-height:320px;overflow:auto;border:1px solid #dce6e1;border-radius:13px;background:#fbfdfc;padding:6px
+}
+.manual-session-option{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;
+  padding:10px;border-radius:10px;cursor:pointer
+}
+.manual-session-option:hover{background:#f0f8f5}
+.manual-session-option input{width:18px;height:18px}
+.manual-session-option-main{min-width:0}
+.manual-session-option-main b{display:block;font-size:12px;color:#15241f}
+.manual-session-option-main span{display:block;margin-top:2px;font-size:10px;color:#6b7872;white-space:normal}
+.manual-session-seat{font-size:10px;font-weight:850;color:#0c6d52;white-space:nowrap}
+.manual-session-option.full{opacity:.5;cursor:not-allowed}
+.manual-order-card{
+  border:1px solid #dce6e1;border-radius:14px;padding:13px;margin-bottom:11px;background:#fff
+}
+.manual-order-head{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;padding-bottom:10px;border-bottom:1px solid #edf1ef
+}
+.manual-order-person b{display:block;color:#0d644c;font-size:14px}
+.manual-order-person span{display:block;margin-top:2px;font-size:11px;color:#53615c}
+.manual-order-payment{text-align:right}
+.manual-order-payment b{display:block;font-size:13px;color:#16231f}
+.manual-order-payment span{display:block;margin-top:2px;font-size:10px;color:#6e7a75}
+.manual-order-sessions{display:grid;gap:8px;margin-top:10px}
+.manual-order-session{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.9fr) auto;gap:8px;align-items:center;
+  padding:9px;background:#f8fbfa;border-radius:10px
+}
+.manual-order-session-info b{display:block;font-size:11px}
+.manual-order-session-info span{display:block;margin-top:2px;font-size:10px;color:#6a7771}
+.manual-order-session select{min-width:0}
+@media(max-width:700px){
+  .manual-session-option{grid-template-columns:auto minmax(0,1fr)}
+  .manual-session-seat{grid-column:2}
+  .manual-order-head{grid-template-columns:1fr}
+  .manual-order-payment{text-align:left}
+  .manual-order-session{grid-template-columns:1fr}
+  .manual-order-session .btn{width:100%}
+}
+</style>
+
 </head>
 <body>
 <div class="wrap">
@@ -287,11 +339,28 @@ button.primary.ui-button-busy::after{
             <input id="manualPhone" inputmode="numeric" placeholder="09xxxxxxxx">
           </div>
         </div>
-        <div style="margin-top:10px">
-          <label>Session</label>
-          <select id="manualSession"><option value="">Đang tải session...</option></select>
+        <div class="row2" style="margin-top:10px">
+          <div>
+            <label>Số tiền đã nhận</label>
+            <input id="manualAmount" type="number" min="0" step="1000" inputmode="numeric" placeholder="Ví dụ: 396000">
+          </div>
+          <div>
+            <label>Ngày thanh toán thành công</label>
+            <input id="manualPaidDate" type="date">
+          </div>
         </div>
-        <button class="btn primary" style="width:100%;margin-top:12px" onclick="addManualBooking()">+ Thêm học viên vào session</button>
+
+        <div style="margin-top:12px">
+          <div class="manual-session-head">
+            <label>Chọn session</label>
+            <span id="manualSelectedCount">0 buổi đã chọn</span>
+          </div>
+          <div id="manualSessionPicker" class="manual-session-picker">
+            <div class="muted" style="padding:14px">Đang tải session...</div>
+          </div>
+        </div>
+
+        <button class="btn primary" style="width:100%;margin-top:12px" onclick="addManualBooking()">+ Thêm học viên vào các session đã chọn</button>
         <div id="manualMsg"></div>
       </div>
 
@@ -570,63 +639,94 @@ function getManualSessionsFromCache(){
     }));
 }
 
+function updateManualSelectedCount(){
+  const count=document.querySelectorAll('#manualSessionPicker input[type="checkbox"]:checked').length;
+  const host=document.getElementById('manualSelectedCount');
+  if(host) host.textContent=`${count} buổi đã chọn`;
+}
+
 function fillManualSessionDropdown(sessions){
-  const sel=document.getElementById('manualSession');
-  if(!sel)return;
-  sel.innerHTML=(sessions||[]).map(x=>
-    `<option value="${x.id}">${x.session_date} · ${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)} · ${adminEscapeHtml(x.program_name||'')} · ${Number(x.booked_count||0)}/${Number(x.capacity||0)}</option>`
-  ).join('') || '<option value="">Không có session sắp tới</option>';
+  const host=document.getElementById('manualSessionPicker');
+  if(!host)return;
+
+  host.innerHTML=(sessions||[]).map(x=>{
+    const booked=Number(x.booked_count||0), cap=Number(x.capacity||0);
+    const full=cap>0 && booked>=cap;
+    return `<label class="manual-session-option ${full?'full':''}">
+      <input type="checkbox" class="manual-session-check" value="${x.id}" ${full?'disabled':''} onchange="updateManualSelectedCount()">
+      <span class="manual-session-option-main">
+        <b>${x.session_date} · ${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)} · ${adminEscapeHtml(x.program_name||'')}</b>
+        <span>${adminEscapeHtml(x.teacher_name||'')}${x.room_name?` · ${adminEscapeHtml(x.room_name)}`:''}</span>
+      </span>
+      <span class="manual-session-seat">${booked}/${cap}${full?' · FULL':''}</span>
+    </label>`;
+  }).join('') || '<div class="muted" style="padding:14px">Không có session sắp tới.</div>';
+
+  updateManualSelectedCount();
 }
 
 async function loadManual(){
   const box=document.getElementById('manualBookings');
 
   try{
-    // Sessions tab is already the proven source of truth in Admin.
-    // If cache is not ready (e.g. user opens this tab immediately), load it first.
     if(!Array.isArray(cache.sessions) || !cache.sessions.length){
-      try{ await loadSessions(); }catch(_){}
+      try{await loadSessions();}catch(_){}
     }
 
     const cachedSessions=getManualSessionsFromCache();
     fillManualSessionDropdown(cachedSessions);
 
-    // Manual-booking history is loaded separately. A failure here must NOT
-    // blank the session dropdown.
-    let d={bookings:[],sessions:[]};
+    // Default paid date = today in Vietnam.
+    const paidDate=document.getElementById('manualPaidDate');
+    if(paidDate && !paidDate.value){
+      paidDate.value=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'});
+    }
+
+    let d={orders:[],sessions:[]};
     try{
       d=await api('/api/admin?action=manual-bookings');
     }catch(e){
-      if(box){
-        box.innerHTML=`<div class="error">Không tải được danh sách booking thủ công: ${adminEscapeHtml(e.message)}</div>`;
-      }
+      if(box) box.innerHTML=`<div class="error">Không tải được booking thủ công: ${adminEscapeHtml(e.message)}</div>`;
       return;
     }
 
-    // Prefer backend sessions if returned; otherwise keep the working Admin cache.
-    const sessions=(d.sessions||[]).length ? d.sessions : cachedSessions;
+    const sessions=(d.sessions||[]).length?d.sessions:cachedSessions;
     if((d.sessions||[]).length) fillManualSessionDropdown(sessions);
 
-    const bookings=d.bookings||[];
+    const orders=d.orders||[];
     if(!box)return;
 
-    if(!bookings.length){
+    if(!orders.length){
       box.innerHTML='<div class="muted" style="padding:18px;text-align:center">Chưa có booking thủ công.</div>';
       return;
     }
 
-    box.innerHTML=bookings.map(b=>`
-      <div class="manual-booking-card">
-        <div class="manual-booking-main">
-          <b>${adminEscapeHtml(b.full_name||'')}</b>
-          <span>${adminEscapeHtml(b.phone||'')}</span>
-          <small>${b.session_date} · ${String(b.starts_at||'').slice(0,5)}–${String(b.ends_at||'').slice(0,5)} · ${adminEscapeHtml(b.program_name||'')}</small>
+    box.innerHTML=orders.map(o=>`
+      <div class="manual-order-card">
+        <div class="manual-order-head">
+          <div class="manual-order-person">
+            <b>${adminEscapeHtml(o.full_name||'')}</b>
+            <span>${adminEscapeHtml(o.phone||'')} · ${o.bookings.length} buổi</span>
+          </div>
+          <div class="manual-order-payment">
+            <b>${new Intl.NumberFormat('vi-VN').format(Number(o.total_amount||0))}đ</b>
+            <span>PAID · ${o.paid_date||''}</span>
+          </div>
         </div>
-        <div class="manual-reschedule">
-          <select id="move-${b.booking_id}">
-            ${sessions.map(s=>`<option value="${s.id}" ${s.id===b.session_id?'selected':''}>${s.session_date} · ${String(s.starts_at||'').slice(0,5)} · ${adminEscapeHtml(s.program_name||'')} · ${Number(s.booked_count||0)}/${Number(s.capacity||0)}</option>`).join('')}
-          </select>
-          <button class="btn" onclick="moveManualBooking('${b.booking_id}')">Đổi buổi học</button>
+
+        <div class="manual-order-sessions">
+          ${o.bookings.map(b=>`
+            <div class="manual-order-session">
+              <div class="manual-order-session-info">
+                <b>${b.session_date} · ${String(b.starts_at||'').slice(0,5)}–${String(b.ends_at||'').slice(0,5)} · ${adminEscapeHtml(b.program_name||'')}</b>
+                <span>Booking ${String(b.booking_id).slice(0,8)}…</span>
+              </div>
+              <select id="move-${b.booking_id}">
+                ${sessions.map(s=>`<option value="${s.id}" ${s.id===b.session_id?'selected':''}>${s.session_date} · ${String(s.starts_at||'').slice(0,5)} · ${adminEscapeHtml(s.program_name||'')} · ${Number(s.booked_count||0)}/${Number(s.capacity||0)}</option>`).join('')}
+              </select>
+              <button class="btn" onclick="moveManualBooking('${b.booking_id}')">Đổi buổi này</button>
+            </div>
+          `).join('')}
         </div>
       </div>
     `).join('');
@@ -637,6 +737,10 @@ async function loadManual(){
 
 async function addManualBooking(){
   const msg=document.getElementById('manualMsg');msg.innerHTML='';
+
+  const selected=[...document.querySelectorAll('#manualSessionPicker input.manual-session-check:checked')]
+    .map(x=>x.value);
+
   try{
     const result=await api('/api/admin?action=manual-bookings',{
       method:'POST',
@@ -644,19 +748,25 @@ async function addManualBooking(){
       body:JSON.stringify({
         full_name:document.getElementById('manualName').value,
         phone:document.getElementById('manualPhone').value,
-        session_id:document.getElementById('manualSession').value
+        session_ids:selected,
+        amount:Number(document.getElementById('manualAmount').value||0),
+        paid_date:document.getElementById('manualPaidDate').value
       })
     });
-    msg.innerHTML='<div class="ok">Đã thêm học viên · trạng thái PAID · booking CONFIRMED.</div>';
+
+    msg.innerHTML=`<div class="ok">Đã thêm ${Number(result.booking_count||selected.length)} buổi · ${new Intl.NumberFormat('vi-VN').format(Number(result.total_amount||0))}đ · PAID · booking CONFIRMED.</div>`;
+
     document.getElementById('manualName').value='';
     document.getElementById('manualPhone').value='';
+    document.getElementById('manualAmount').value='';
+
     await Promise.all([
-      loadManual(),
       loadCustomers(),
       loadBookings(),
       loadOverview(),
       loadSessions()
     ]);
+    await loadManual();
   }catch(e){
     msg.innerHTML=`<div class="error">${adminEscapeHtml(e.message)}</div>`;
   }
