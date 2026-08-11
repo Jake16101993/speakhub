@@ -426,6 +426,34 @@ html,body{max-width:100%;overflow-x:hidden!important}
 .teacher-resource-button:not(:disabled):active{transform:scale(.985)}
 .teacher-resource-button:not(:disabled) .teacher-resource-label{color:#0b7557!important}
 </style>
+
+<style>
+button{position:relative}
+button.ui-button-busy{cursor:wait!important;color:transparent!important}
+button.ui-button-busy::after{
+  content:"";position:absolute;width:15px;height:15px;left:50%;top:50%;margin:-7.5px 0 0 -7.5px;
+  border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:uiBtnSpin .65s linear infinite;color:#17815f
+}
+button.primary.ui-button-busy::after,.btn.primary.ui-button-busy::after{color:#fff;border-color:#fff;border-right-color:transparent}
+@keyframes uiBtnSpin{to{transform:rotate(360deg)}}
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<style>
+#teacherTopicModal .teacher-modal-sheet{overflow:hidden!important;display:flex;flex-direction:column;height:min(92vh,920px)}
+#teacherTopicModal .teacher-modal-body{min-height:0;flex:1;overflow:hidden;padding:8px!important}
+.teacher-pdf-scroll{height:100%;overflow-y:auto!important;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;background:#eef2f0;border-radius:10px;padding:8px}
+.teacher-pdf-pages{display:flex;flex-direction:column;align-items:center;gap:10px;min-height:100%}
+.teacher-pdf-page{display:block;max-width:100%;height:auto!important;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.10);border-radius:4px}
+@media(max-width:700px){
+ #teacherTopicModal.teacher-modal{align-items:flex-end!important;padding:0!important}
+ #teacherTopicModal .teacher-modal-sheet{height:94vh!important;max-height:94vh!important;width:100%!important;border-radius:18px 18px 0 0!important}
+ #teacherTopicModal .teacher-modal-body{padding:6px!important}
+ .teacher-pdf-scroll{padding:5px}
+}
+</style>
+
 </head>
 <body>
 <div id="loginView" class="shell">
@@ -529,6 +557,63 @@ html,body{max-width:100%;overflow-x:hidden!important}
 <div id="toast" class="toast">Saved</div>
 
 <script>
+
+(function installFetchAwareButtonBusy(){
+  if(window.__speakHubFetchBusyInstalled) return;
+  window.__speakHubFetchBusyInstalled=true;
+
+  const nativeFetch=window.fetch.bind(window);
+  let clickedButton=null;
+
+  function start(btn){
+    if(!btn || btn.disabled) return;
+    btn.classList.add('ui-button-busy');
+    btn.dataset.busyFetchCount=btn.dataset.busyFetchCount||'0';
+  }
+  function finish(btn){
+    if(!btn) return;
+    const n=Number(btn.dataset.busyFetchCount||0);
+    if(n<=0){
+      btn.classList.remove('ui-button-busy');
+      delete btn.dataset.busyFetchCount;
+    }
+  }
+
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest?.('button');
+    if(!btn || btn.disabled) return;
+    clickedButton=btn;
+    start(btn);
+    setTimeout(()=>{
+      if(Number(btn.dataset.busyFetchCount||0)===0) finish(btn);
+      if(clickedButton===btn) clickedButton=null;
+    },180);
+  },true);
+
+  window.fetch=function(...args){
+    const btn=clickedButton;
+    if(btn){
+      start(btn);
+      btn.dataset.busyFetchCount=String(Number(btn.dataset.busyFetchCount||0)+1);
+    }
+    let result;
+    try{ result=nativeFetch(...args); }
+    catch(err){
+      if(btn){
+        btn.dataset.busyFetchCount=String(Math.max(0,Number(btn.dataset.busyFetchCount||0)-1));
+        finish(btn);
+      }
+      throw err;
+    }
+    return Promise.resolve(result).finally(()=>{
+      if(btn){
+        btn.dataset.busyFetchCount=String(Math.max(0,Number(btn.dataset.busyFetchCount||0)-1));
+        setTimeout(()=>finish(btn),80);
+      }
+    });
+  };
+})();
+
 const API='/api/teacher';
 let teacherToken=localStorage.getItem('speakhub_teacher_token')||'';
 let teacherProfile=null;
@@ -716,24 +801,40 @@ async function openTeacherTopicModal(){
 
   try{
     const res=await fetch(`/api/teacher?action=topic-open&session_id=${encodeURIComponent(currentSession.id)}`,{
-      headers:{Authorization:`Bearer ${teacherToken}`},
-      cache:'no-store'
+      headers:{Authorization:`Bearer ${teacherToken}`},cache:'no-store'
     });
-
     if(!res.ok){
       const err=await res.json().catch(()=>({}));
-      const code=err.error||'TOPIC_OPEN_FAILED';
-      const friendly={
-        TOPIC_FILE_NOT_FOUND:'Topic PDF không còn trong hệ thống. Vui lòng báo SpeakHub upload lại file.',
-        TOPIC_NOT_READY:'Topic PDF chưa được upload.'
-      };
-      throw new Error(err.details||friendly[code]||code);
+      throw new Error(err.details||err.error||'TOPIC_OPEN_FAILED');
     }
 
-    const blob=await res.blob();
-    const objectUrl=URL.createObjectURL(blob);
-    body.innerHTML=`<iframe class="teacher-topic-frame" src="${objectUrl}" title="Topic PDF"></iframe>`;
-    body.dataset.objectUrl=objectUrl;
+    if(!window.pdfjsLib) throw new Error('PDF viewer is not ready.');
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const bytes=await res.arrayBuffer();
+    const pdf=await window.pdfjsLib.getDocument({data:bytes}).promise;
+
+    body.innerHTML=`<div class="teacher-pdf-scroll"><div id="teacherPdfPages" class="teacher-pdf-pages"></div></div>`;
+    const pages=document.getElementById('teacherPdfPages');
+    const scroll=body.querySelector('.teacher-pdf-scroll');
+    const available=Math.max(280,(scroll?.clientWidth||window.innerWidth)-16);
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+
+    for(let pageNo=1;pageNo<=pdf.numPages;pageNo++){
+      const page=await pdf.getPage(pageNo);
+      const natural=page.getViewport({scale:1});
+      const scale=available/natural.width;
+      const viewport=page.getViewport({scale});
+      const canvas=document.createElement('canvas');
+      canvas.className='teacher-pdf-page';
+      canvas.width=Math.floor(viewport.width*dpr);
+      canvas.height=Math.floor(viewport.height*dpr);
+      canvas.style.width=`${Math.floor(viewport.width)}px`;
+      canvas.style.height=`${Math.floor(viewport.height)}px`;
+      pages.appendChild(canvas);
+      const ctx=canvas.getContext('2d',{alpha:false});
+      await page.render({canvasContext:ctx,viewport,transform:dpr!==1?[dpr,0,0,dpr,0,0]:null}).promise;
+    }
   }catch(e){
     body.innerHTML=`<div class="teacher-modal-empty">${escapeHtml(e.message)}</div>`;
   }
