@@ -7,6 +7,18 @@ const supabase=createClient(
   {auth:{persistSession:false,autoRefreshToken:false}}
 );
 
+function requestUrl(request){
+  const raw=request?.url||'/api/teacher';
+  if(/^https?:\/\//i.test(raw)) return new URL(raw);
+  const host=request?.headers?.get?.('host')
+    || request?.headers?.host
+    || 'speakhub.vn';
+  const proto=request?.headers?.get?.('x-forwarded-proto')
+    || request?.headers?.['x-forwarded-proto']
+    || 'https';
+  return new URL(raw, `${proto}://${host}`);
+}
+
 function secret(){
   // Prefer a dedicated teacher secret, then reuse the existing admin secret.
   // Final fallback keeps Teacher login working on the current deployment
@@ -278,7 +290,7 @@ async function attendance(request){
 
 export default async function handler(request){
   try{
-    const url=new URL(request.url);
+    const url=requestUrl(request);
     const action=url.searchParams.get('action')||'';
 
     if(action==='login') return await login(request);
@@ -293,7 +305,7 @@ export default async function handler(request){
     return Response.json({
       error:'TEACHER_API_ERROR',
       details:err?.message||String(err),
-      action:(new URL(request.url)).searchParams.get('action')||''
+      action:requestUrl(request).searchParams.get('action')||''
     },{status:500});
   }
 }
