@@ -310,25 +310,21 @@ async function sessionDetail(request,url){
   const orderIds=[...new Set((bookingRows||[]).map(b=>b.order_id).filter(Boolean))];
   const userIds=[...new Set((bookingRows||[]).map(b=>b.user_id).filter(Boolean))];
 
-  let orders=[];
-  if(orderIds.length){
-    const {data,error}=await supabase
-      .from('orders')
-      .select('id,payment_status,order_status')
-      .in('id',orderIds);
-    if(error) throw error;
-    orders=data||[];
-  }
+  // Orders and customer profiles are independent: fetch them in parallel.
+  const [ordersResult,customersResult]=await Promise.all([
+    orderIds.length
+      ? supabase.from('orders').select('id,payment_status,order_status').in('id',orderIds)
+      : Promise.resolve({data:[],error:null}),
+    userIds.length
+      ? supabase.from('customers').select('id,full_name,phone').in('id',userIds)
+      : Promise.resolve({data:[],error:null})
+  ]);
 
-  let customers=[];
-  if(userIds.length){
-    const {data,error}=await supabase
-      .from('customers')
-      .select('id,full_name,phone')
-      .in('id',userIds);
-    if(error) throw error;
-    customers=data||[];
-  }
+  if(ordersResult.error) throw ordersResult.error;
+  if(customersResult.error) throw customersResult.error;
+
+  const orders=ordersResult.data||[];
+  const customers=customersResult.data||[];
 
   const orderMap=new Map(orders.map(o=>[o.id,o]));
   const customerMap=new Map(customers.map(c=>[c.id,c]));
