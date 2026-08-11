@@ -19,6 +19,25 @@ function requestUrl(request){
   return new URL(raw, `${proto}://${host}`);
 }
 
+
+const TEACHER_CACHE_TTL_MS = 10 * 60 * 1000;
+const teacherAccountCache = new Map();
+const teacherProfileCache = new Map();
+
+function cacheGet(map,key){
+  const item=map.get(key);
+  if(!item) return null;
+  if(Date.now()-item.at>TEACHER_CACHE_TTL_MS){
+    map.delete(key);
+    return null;
+  }
+  return item.value;
+}
+function cacheSet(map,key,value){
+  map.set(key,{value,at:Date.now()});
+  return value;
+}
+
 function secret(){
   // Prefer a dedicated teacher secret, then reuse the existing admin secret.
   // Final fallback keeps Teacher login working on the current deployment
@@ -58,6 +77,10 @@ function readTeacherToken(request){
 }
 
 async function resolveTeacherId(teacherName){
+  const key=String(teacherName||'').trim().toLowerCase();
+  const cached=cacheGet(teacherProfileCache,key);
+  if(cached) return cached;
+
   const {data,error}=await supabase
     .from('teachers')
     .select('id,full_name,country,is_active')
@@ -66,12 +89,17 @@ async function resolveTeacherId(teacherName){
     .maybeSingle();
 
   if(error) throw error;
+  if(data) cacheSet(teacherProfileCache,key,data);
   return data||null;
 }
 
 async function requireTeacher(request){
   const token=readTeacherToken(request);
   if(!token) return {error:'UNAUTHORIZED',status:401};
+
+  const cacheKey=String(token.teacher_account_id||'');
+  const cached=cacheGet(teacherAccountCache,cacheKey);
+  if(cached) return {account:cached};
 
   const {data,error}=await supabase
     .from('teacher_accounts')
@@ -82,6 +110,7 @@ async function requireTeacher(request){
 
   if(error) throw error;
   if(!data) return {error:'UNAUTHORIZED',status:401};
+  cacheSet(teacherAccountCache,cacheKey,data);
   return {account:data};
 }
 function todayISO(){

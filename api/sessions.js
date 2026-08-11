@@ -138,7 +138,6 @@ export default {
 
       const supabaseUrl = process.env.SUPABASE_URL;
       const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-      const secretKey = process.env.SUPABASE_SECRET_KEY;
 
       if (!supabaseUrl || !publishableKey) {
         return Response.json(
@@ -147,16 +146,10 @@ export default {
         );
       }
 
-      // If an existing DB row is manually changed to is_recurring=true,
-      // this automatically creates the missing weekly bookable sessions.
-      if(secretKey){
-        try{
-          await materializeRecurringSessions(supabaseUrl,secretKey);
-        }catch(e){
-          console.error('Recurring session expansion failed:',e);
-        }
-      }
-
+      // PERFORMANCE:
+      // Do not materialize recurring sessions during public reads.
+      // Recurring rows must be generated when admin creates/updates the schedule,
+      // not every time a user opens the booking calendar.
       const response = await fetch(
         `${supabaseUrl}/rest/v1/rpc/get_public_sessions`,
         {
