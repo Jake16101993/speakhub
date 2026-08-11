@@ -237,7 +237,7 @@ button.primary.ui-button-busy::after{
       <button class="tab" onclick="showTab('customers',this)">Customers</button>
       <button class="tab" onclick="showTab('bookings',this)">Bookings</button>
       <button class="tab" onclick="showTab('topics',this)">Topics</button>
-      <button class="tab" onclick="showTab('manual',this);loadManual()">Thêm thủ công</button>
+      <button class="tab" onclick="showTab('manual',this);setTimeout(loadManual,0)">Thêm thủ công</button>
     </div>
 
     <section id="tab-overview"></section>
@@ -542,6 +542,15 @@ async function loadBookings(){
 
 
 
+function adminEscapeHtml(value){
+  return String(value??'')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#039;');
+}
+
 function getManualSessionsFromCache(){
   const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'});
   return (cache.sessions||[])
@@ -565,7 +574,7 @@ function fillManualSessionDropdown(sessions){
   const sel=document.getElementById('manualSession');
   if(!sel)return;
   sel.innerHTML=(sessions||[]).map(x=>
-    `<option value="${x.id}">${x.session_date} · ${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)} · ${escapeHtml(x.program_name||'')} · ${Number(x.booked_count||0)}/${Number(x.capacity||0)}</option>`
+    `<option value="${x.id}">${x.session_date} · ${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)} · ${adminEscapeHtml(x.program_name||'')} · ${Number(x.booked_count||0)}/${Number(x.capacity||0)}</option>`
   ).join('') || '<option value="">Không có session sắp tới</option>';
 }
 
@@ -589,7 +598,7 @@ async function loadManual(){
       d=await api('/api/admin?action=manual-bookings');
     }catch(e){
       if(box){
-        box.innerHTML=`<div class="error">Không tải được danh sách booking thủ công: ${escapeHtml(e.message)}</div>`;
+        box.innerHTML=`<div class="error">Không tải được danh sách booking thủ công: ${adminEscapeHtml(e.message)}</div>`;
       }
       return;
     }
@@ -609,20 +618,20 @@ async function loadManual(){
     box.innerHTML=bookings.map(b=>`
       <div class="manual-booking-card">
         <div class="manual-booking-main">
-          <b>${escapeHtml(b.full_name||'')}</b>
-          <span>${escapeHtml(b.phone||'')}</span>
-          <small>${b.session_date} · ${String(b.starts_at||'').slice(0,5)}–${String(b.ends_at||'').slice(0,5)} · ${escapeHtml(b.program_name||'')}</small>
+          <b>${adminEscapeHtml(b.full_name||'')}</b>
+          <span>${adminEscapeHtml(b.phone||'')}</span>
+          <small>${b.session_date} · ${String(b.starts_at||'').slice(0,5)}–${String(b.ends_at||'').slice(0,5)} · ${adminEscapeHtml(b.program_name||'')}</small>
         </div>
         <div class="manual-reschedule">
           <select id="move-${b.booking_id}">
-            ${sessions.map(s=>`<option value="${s.id}" ${s.id===b.session_id?'selected':''}>${s.session_date} · ${String(s.starts_at||'').slice(0,5)} · ${escapeHtml(s.program_name||'')} · ${Number(s.booked_count||0)}/${Number(s.capacity||0)}</option>`).join('')}
+            ${sessions.map(s=>`<option value="${s.id}" ${s.id===b.session_id?'selected':''}>${s.session_date} · ${String(s.starts_at||'').slice(0,5)} · ${adminEscapeHtml(s.program_name||'')} · ${Number(s.booked_count||0)}/${Number(s.capacity||0)}</option>`).join('')}
           </select>
           <button class="btn" onclick="moveManualBooking('${b.booking_id}')">Đổi buổi học</button>
         </div>
       </div>
     `).join('');
   }catch(e){
-    if(box) box.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;
+    if(box) box.innerHTML=`<div class="error">${adminEscapeHtml(e.message)}</div>`;
   }
 }
 
@@ -638,10 +647,18 @@ async function addManualBooking(){
         session_id:document.getElementById('manualSession').value
       })
     });
-    msg.innerHTML='<div class="ok">Đã thêm học viên vào session và đánh dấu thanh toán thủ công.</div>';
-    await Promise.all([loadManual(),loadBookings(),loadOverview(),loadSessions()]);
+    msg.innerHTML='<div class="ok">Đã thêm học viên · trạng thái PAID · booking CONFIRMED.</div>';
+    document.getElementById('manualName').value='';
+    document.getElementById('manualPhone').value='';
+    await Promise.all([
+      loadManual(),
+      loadCustomers(),
+      loadBookings(),
+      loadOverview(),
+      loadSessions()
+    ]);
   }catch(e){
-    msg.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;
+    msg.innerHTML=`<div class="error">${adminEscapeHtml(e.message)}</div>`;
   }
 }
 
@@ -654,7 +671,13 @@ async function moveManualBooking(bookingId){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({booking_id:bookingId,session_id:sessionId})
     });
-    await Promise.all([loadManual(),loadBookings(),loadOverview(),loadSessions()]);
+    await Promise.all([
+      loadManual(),
+      loadCustomers(),
+      loadBookings(),
+      loadOverview(),
+      loadSessions()
+    ]);
   }catch(e){
     alert(e.message);
   }
