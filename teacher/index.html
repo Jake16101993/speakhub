@@ -189,209 +189,77 @@ button,input{font:inherit}
 </style>
 
 <style>
-/* ===== V9 Teacher Portal — English + Mobile Fit ===== */
-html,body{
-  max-width:100%;
-  overflow-x:hidden !important;
+/* ===== V10 Teacher Portal: desktop compact + mobile fit ===== */
+html,body{max-width:100%;overflow-x:hidden!important}
+#loginView.shell{max-width:100%;padding:20px}
+.login-wrap{
+  width:min(100%,520px)!important;
+  max-width:520px!important;
+  margin:8vh auto 0!important;
 }
-.shell{
-  width:100%;
-  max-width:1180px;
-}
-.card,
-.hero,
-.layout,
-.section-card,
-.session-detail-head,
-.roster{
-  min-width:0 !important;
-  max-width:100% !important;
-}
-.date-strip{
-  width:100%;
-  min-width:0;
-}
-.session,
-.student{
-  min-width:0;
-}
-.session-main,
-.student-name{
-  min-width:0;
-}
-.session-main b,
-.session-main span,
-.student-name b,
-.student-name span{
-  overflow-wrap:anywhere;
-}
-.meta-grid{
-  min-width:0;
-}
-.meta{
-  min-width:0;
-}
-.meta b{
-  overflow-wrap:anywhere;
-}
+#appView.shell{width:100%;max-width:1180px;margin:0 auto}
+#appView .card,#appView .hero,#appView .layout,#appView .section-card,
+#appView .session-detail-head,#appView .roster{min-width:0;max-width:100%}
+.session-main,.student-name,.meta{min-width:0}
+.session-main b,.session-main span,.student-name b,.student-name span,.meta b{overflow-wrap:anywhere}
 
 @media(max-width:700px){
-  .shell{
-    padding:10px !important;
-  }
-  .topbar{
-    align-items:flex-start;
-    gap:8px;
-  }
-  .topbar > div:last-child{
-    gap:6px !important;
-  }
-  .teacher-chip{
-    max-width:150px;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
-  .btn{
-    padding:9px 11px;
-  }
+  #loginView.shell,#appView.shell{padding:10px!important}
+  .login-wrap{margin:4vh auto 0!important;padding:20px!important}
 
-  .hero{
-    padding:15px !important;
-    margin-bottom:12px;
-  }
-  .hero h1{
-    font-size:22px !important;
-  }
-  .stats{
-    width:100%;
-    display:grid !important;
-    grid-template-columns:repeat(3,minmax(0,1fr));
-  }
-  .stat{
-    min-width:0 !important;
-    padding:8px 5px !important;
-  }
-  .stat b{
-    font-size:18px;
-  }
-  .stat span{
-    font-size:9px;
-    line-height:1.2;
-  }
+  .topbar{align-items:flex-start;gap:8px}
+  .topbar>div:last-child{gap:6px!important}
+  .teacher-chip{max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btn{padding:9px 10px}
 
-  .section-card{
-    padding:13px !important;
-  }
-  .section-head{
-    align-items:center;
-  }
-  .section-head h2{
-    font-size:18px;
-  }
+  .hero{padding:14px!important;margin-bottom:12px;align-items:flex-start!important}
+  .hero h1{font-size:22px!important}
+  .stats{width:100%;display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .stat{min-width:0!important;padding:8px 4px!important}
+  .stat b{font-size:18px}
+  .stat span{font-size:9px;line-height:1.15}
+
+  .layout{grid-template-columns:1fr!important}
+  .section-card{padding:12px!important}
+  .section-head h2{font-size:17px}
 
   .date-strip{
-    display:grid !important;
-    grid-template-columns:repeat(7,minmax(0,1fr)) !important;
-    gap:4px !important;
-    overflow:visible !important;
+    width:100%!important;
+    display:grid!important;
+    grid-template-columns:repeat(7,minmax(0,1fr))!important;
+    gap:4px!important;
+    overflow:visible!important;
   }
-  .day-pill{
-    min-width:0 !important;
-    width:100%;
-    padding:7px 2px !important;
-    border-radius:9px;
-  }
-  .day-pill b{
-    font-size:9px !important;
-    white-space:nowrap;
-  }
-  .day-pill span{
-    font-size:8px !important;
-    white-space:nowrap;
-  }
+  .day-pill{min-width:0!important;width:100%!important;padding:7px 1px!important;border-radius:9px}
+  .day-pill b{font-size:8.5px!important;white-space:nowrap}
+  .day-pill span{font-size:7.5px!important;white-space:nowrap}
 
   .session{
-    grid-template-columns:58px minmax(0,1fr) auto !important;
-    gap:8px !important;
-    padding:10px !important;
+    width:100%!important;
+    grid-template-columns:56px minmax(0,1fr) 42px!important;
+    gap:7px!important;padding:10px!important
   }
-  .session-time{
-    font-size:13px !important;
-  }
-  .session-main b{
-    font-size:13px !important;
-  }
-  .session-main span{
-    font-size:10px !important;
-  }
-  .session-count{
-    grid-column:auto !important;
-    justify-self:auto !important;
-    min-width:42px !important;
-    padding:6px 5px !important;
-    font-size:9px !important;
-  }
+  .session-time{font-size:12px!important}
+  .session-main b{font-size:13px!important}
+  .session-main span{font-size:10px!important}
+  .session-count{min-width:0!important;width:42px!important;padding:6px 3px!important;font-size:9px!important}
 
-  .session-detail-head{
-    padding:13px !important;
-  }
-  .session-detail-head h1{
-    font-size:21px !important;
-  }
-  .meta-grid{
-    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
-    gap:6px !important;
-  }
-  .meta{
-    padding:8px !important;
-  }
-  .meta b{
-    font-size:11px !important;
-  }
+  .session-detail-head,.roster{padding:12px!important}
+  .session-detail-head h1{font-size:21px!important}
+  .meta-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important}
+  .meta{padding:8px!important}
+  .meta b{font-size:11px!important}
 
-  .roster{
-    padding:13px !important;
-  }
-  .roster-head{
-    align-items:flex-start;
-  }
-  .roster-head h2{
-    font-size:18px;
-  }
-  .student{
-    grid-template-columns:34px minmax(0,1fr) 34px !important;
-    gap:8px !important;
-    padding:9px !important;
-  }
-  .avatar{
-    width:34px !important;
-    height:34px !important;
-  }
-  .attendance-check{
-    width:32px !important;
-    height:32px !important;
-  }
+  .roster-head{align-items:flex-start}
+  .roster-head h2{font-size:18px}
+  .student{grid-template-columns:34px minmax(0,1fr) 32px!important;gap:8px!important;padding:9px!important}
+  .avatar{width:34px!important;height:34px!important}
+  .attendance-check{width:32px!important;height:32px!important}
 }
-
 @media(max-width:390px){
-  .logo{
-    font-size:20px !important;
-  }
-  .teacher-chip{
-    max-width:120px;
-    font-size:11px;
-  }
-  .topbar .btn{
-    font-size:11px;
-    padding:8px 9px;
-  }
-  .day-pill b{
-    font-size:8px !important;
-  }
-  .day-pill span{
-    font-size:7.5px !important;
-  }
+  .logo{font-size:20px!important}
+  .teacher-chip{max-width:110px;font-size:11px}
+  .topbar .btn{font-size:11px;padding:8px}
 }
 </style>
 
@@ -405,7 +273,7 @@ html,body{
 
     <div class="field">
       <label>Username</label>
-      <input id="username" autocomplete="username" placeholder="Ví dụ: cyndy">
+      <input id="username" autocomplete="username" placeholder="e.g. cyndy">
     </div>
     <div class="field">
       <label>Password</label>
@@ -468,7 +336,7 @@ html,body{
           <div class="meta"><span>Date</span><b id="detailDate">-</b></div>
           <div class="meta"><span>Time</span><b id="detailTime">-</b></div>
           <div class="meta"><span>Room</span><b id="detailRoom">-</b></div>
-          <div class="meta"><span>Class size</span><b id="detailCount">0 học viên</b></div>
+          <div class="meta"><span>Class size</span><b id="detailCount">0 students</b></div>
         </div>
       </div>
     </section>
@@ -479,7 +347,7 @@ html,body{
           <h2>Student Attendance</h2>
           <div class="muted" style="font-size:12px">Tick ✓ for students who are present. Changes are saved instantly.</div>
         </div>
-        <span id="attendanceSummary" class="badge">0 / 0 present</span>
+        <span id="attendanceSummary" class="badge">0 / 0 có mặt</span>
       </div>
       <div id="studentList" class="student-list"></div>
       <div id="saveState" class="save-state"></div>
@@ -487,7 +355,7 @@ html,body{
   </div>
 </div>
 
-<div id="toast" class="toast">Đã lưu</div>
+<div id="toast" class="toast">Saved</div>
 
 <script>
 const API='/api/teacher';
@@ -518,9 +386,9 @@ async function api(url,opts={}){
   const data=await res.json().catch(()=>({}));
   if(res.status===401){
     logoutTeacher();
-    throw new Error('Phiên đăng nhập đã hết hạn.');
+    throw new Error('Your session has expired. Please sign in again.');
   }
-  if(!res.ok) throw new Error(data.error||data.details||'Có lỗi xảy ra.');
+  if(!res.ok) throw new Error(data.details||data.error||'Something went wrong.');
   return data;
 }
 
@@ -537,7 +405,7 @@ async function loginTeacher(){
       body:JSON.stringify({username,password})
     });
     const data=await res.json().catch(()=>({}));
-    if(!res.ok) throw new Error(data.error==='INVALID_LOGIN'?'Sai tài khoản hoặc mật khẩu.':data.error||'Không đăng nhập được.');
+    if(!res.ok) throw new Error(data.error==='INVALID_LOGIN'?'Incorrect username or password.':(data.details||data.error||'Unable to sign in.'));
     teacherToken=data.token;
     teacherProfile=data.teacher;
     localStorage.setItem('speakhub_teacher_token',teacherToken);
@@ -638,7 +506,7 @@ function renderToday(){
   const items=schedule.filter(s=>s.session_date===today);
   const host=document.getElementById('todayBox');
   if(!items.length){
-    host.innerHTML='<h3>No classes today</h3><div class="muted" style="font-size:12px">Check another day in this week's schedule.</div>';
+    host.innerHTML=`<h3>No classes today</h3><div class="muted" style="font-size:12px">Check another day in this week's schedule.</div>`;
     return;
   }
   host.innerHTML=`<h3>${items.length} classes today</h3>`+items.map(s=>`
@@ -658,7 +526,7 @@ async function openSession(id){
     document.getElementById('detailDate').textContent=fmtDateLong(currentSession.session_date);
     document.getElementById('detailTime').textContent=`${time24(currentSession.starts_at)} – ${time24(currentSession.ends_at)}`;
     document.getElementById('detailRoom').textContent=currentSession.room_name||'Room not assigned';
-    document.getElementById('detailCount').textContent=`${data.students.length} học viên`;
+    document.getElementById('detailCount').textContent=`${data.students.length} students`;
     renderStudents(data.students||[]);
   }catch(e){
     toast(e.message);
@@ -678,12 +546,12 @@ function renderStudents(students){
   }
   host.innerHTML=students.map(s=>{
     const present=s.status==='ATTENDED';
-    const initial=(s.full_name||'H').trim().charAt(0).toUpperCase();
+    const initial=(s.full_name||'S').trim().charAt(0).toUpperCase();
     return `<div class="student ${present?'present':''}" id="student-${s.booking_id}">
       <div class="avatar">${initial}</div>
       <div class="student-name">
         <b>${escapeHtml(s.full_name||'Student')}</b>
-        <span>${present?'Attendance saved':'Not marked'}</span>
+        <span>${present?'Present':'Not marked'}</span>
       </div>
       <button class="attendance-check" onclick="toggleAttendance('${s.booking_id}',${present?'false':'true'})">✓</button>
     </div>`;
