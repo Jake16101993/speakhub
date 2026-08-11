@@ -182,7 +182,9 @@ export default {
         {
           status: 200,
           headers: {
-            'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
+            // Seat availability must always be fresh.
+            // A PENDING hold created on another device should be visible immediately.
+            'Cache-Control': 'no-store, no-cache, must-revalidate'
           }
         }
       );
