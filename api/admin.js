@@ -92,7 +92,7 @@ async function handleSessions(request){
       supabase.from('teachers').select('id,full_name,country,is_active').eq('is_active',true).order('full_name'),
       supabase.from('class_sessions').select(`
         id,session_date,session_period,starts_at,ends_at,capacity,status,is_recurring,recurrence_source_id,
-        teacher_id,topic_title,topic_storage_path,
+        teacher_id,topic_title,topic_storage_path,topic_vocabulary,
         programs(name),rooms(name),teachers(full_name,country)
       `).order('session_date',{ascending:false}).limit(200)
     ]);
@@ -343,48 +343,107 @@ function parseOpenAIJson(text){
     .trim());
 }
 
+function topicVocabularySchema(){
+  return {
+    type:'object',
+    additionalProperties:false,
+    properties:{
+      items:{
+        type:'array',
+        minItems:10,
+        maxItems:10,
+        items:{
+          type:'object',
+          additionalProperties:false,
+          properties:{
+            word:{type:'string'},
+            part_of_speech:{type:'string'},
+            pronunciation:{type:'string'},
+            vietnamese:{type:'string'},
+            example:{type:'string'}
+          },
+          required:['word','part_of_speech','pronunciation','vietnamese','example']
+        }
+      }
+    },
+    required:['items']
+  };
+}
+
 async function generateTopicVocabulary(topic,program){
-  const key=process.env.OPENAI_API_KEY;
-  if(!key) throw new Error('OPENAI_API_KEY_MISSING');
+  if(!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY_MISSING');
 
-  const model=process.env.OPENAI_PLACEMENT_MODEL || 'gpt-5-mini';
-  const prompt=`You create practical vocabulary for an offline English speaking club in Vietnam.
+  const prompt=`Create practical vocabulary for an OFFLINE English speaking club in Vietnam.
 
-Class: ${program}
-Topic: ${topic}
+CLASS: ${program}
+TOPIC: ${topic}
 
-Return exactly 10 useful vocabulary items that students can actively use in discussion.
-Adapt difficulty to the class name:
-- Kid Starter: very simple everyday words/short phrases.
-- Kid Communicator: simple but expressive speaking vocabulary.
-- Adult Beginner: common, practical conversational English.
-- Adult Intermediate: natural discussion vocabulary, useful collocations and phrases, but not overly academic.
+Create exactly 10 useful words, phrases, or collocations that students can actively use while discussing this topic.
 
-For each item provide:
-- word: English word, phrase, or collocation
-- part_of_speech: short label such as noun, verb, adjective, phrase, collocation
-- pronunciation: simple IPA when useful; otherwise empty string
+Difficulty:
+- Kid Starter: very simple everyday English.
+- Kid Communicator: simple, expressive speaking vocabulary.
+- Adult Beginner: common practical conversational English.
+- Adult Intermediate: natural discussion vocabulary and useful collocations, not academic or overly difficult.
+
+For every item:
+- word: useful English word/phrase/collocation
+- part_of_speech: short English label
+- pronunciation: simple IPA if useful, otherwise empty string
 - vietnamese: concise Vietnamese meaning
-- example: one natural English example sentence directly related to the topic
+- example: one natural English sentence related directly to the topic
 
-Avoid obscure vocabulary. Avoid duplicate meanings. Make the list immediately useful for speaking.
-Return ONLY valid JSON in this exact shape:
-{"items":[{"word":"","part_of_speech":"","pronunciation":"","vietnamese":"","example":""}]}`;
+Avoid obscure words and duplicate meanings.`;
 
-  const response=await fetch('https://api.openai.com/v1/responses',{
+  const resp=await fetch('https://api.openai.com/v1/responses',{
     method:'POST',
     headers:{
-      authorization:`Bearer ${key}`,
-      'content-type':'application/json'
+      Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type':'application/json'
     },
-    body:JSON.stringify({model,input:prompt,max_output_tokens:1800})
+    body:JSON.stringify({
+      model:process.env.OPENAI_PLACEMENT_MODEL||'gpt-5-mini',
+      store:false,
+      input:[
+        {
+          role:'developer',
+          content:[{
+            type:'input_text',
+            text:'Return only the requested structured SpeakHub vocabulary list. Vietnamese meanings must be natural and concise.'
+          }]
+        },
+        {
+          role:'user',
+          content:[{type:'input_text',text:prompt}]
+        }
+      ],
+      text:{
+        format:{
+          type:'json_schema',
+          name:'speakhub_topic_vocabulary',
+          strict:true,
+          schema:topicVocabularySchema()
+        }
+      }
+    })
   });
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok) throw new Error(data?.error?.message||'OPENAI_VOCABULARY_FAILED');
 
-  const parsed=parseOpenAIJson(extractOpenAIOutputText(data));
-  const items=Array.isArray(parsed?.items)?parsed.items.slice(0,10):[];
-  if(!items.length) throw new Error('VOCABULARY_EMPTY');
+  const data=await resp.json().catch(()=>({}));
+  if(!resp.ok){
+    console.error('OpenAI vocabulary generation error',data);
+    throw new Error(data?.error?.message||'OPENAI_VOCABULARY_FAILED');
+  }
+
+  let parsed;
+  try{
+    parsed=JSON.parse(extractResponseText(data));
+  }catch(err){
+    console.error('Vocabulary structured output parse error',data);
+    throw new Error('VOCABULARY_RESULT_INVALID');
+  }
+
+  const items=Array.isArray(parsed?.items)?parsed.items:[];
+  if(items.length!==10) throw new Error('VOCABULARY_COUNT_INVALID');
   return items;
 }
 
@@ -420,7 +479,25 @@ async function handleTopicUpload(request){
     return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
   }
 
-  const path=`${session.session_date}-${slug(session.programs?.name)}-${slug(title||file.name)}.pdf`;
+  const topicTitle=title||file.name.replace(/\.pdf$/i,'');
+
+  // Generate first. Admin only gets "success" when both topic + shared vocabulary
+  // are ready, so we never silently save an empty vocabulary list.
+  let topicVocabulary;
+  try{
+    topicVocabulary=await generateTopicVocabulary(
+      topicTitle,
+      session.programs?.name||'SpeakHub'
+    );
+  }catch(vErr){
+    console.error('topic vocabulary pre-generation failed',vErr);
+    return Response.json({
+      error:'TOPIC_VOCABULARY_GENERATION_FAILED',
+      details:String(vErr?.message||vErr)
+    },{status:502});
+  }
+
+  const path=`${session.session_date}-${slug(session.programs?.name)}-${slug(topicTitle)}.pdf`;
   const bytes=await file.arrayBuffer();
 
   const {error:uErr}=await supabase.storage
@@ -428,19 +505,6 @@ async function handleTopicUpload(request){
     .upload(path,bytes,{contentType:'application/pdf',upsert:true});
 
   if(uErr) throw uErr;
-
-  const topicTitle=title||file.name.replace(/\.pdf$/i,'');
-
-  // Generate ONCE at upload time and persist it on the session.
-  // Every student sees the exact same vocabulary; opening the modal does not call AI.
-  let topicVocabulary=[];
-  let vocabularyError='';
-  try{
-    topicVocabulary=await generateTopicVocabulary(topicTitle,session.programs?.name||'SpeakHub');
-  }catch(vErr){
-    vocabularyError=String(vErr?.message||vErr);
-    console.error('topic vocabulary pre-generation failed',vErr);
-  }
 
   // Important: older recurring data may contain duplicate physical rows.
   // Propagate topic + shared vocabulary to every equivalent logical session.
@@ -470,14 +534,67 @@ async function handleTopicUpload(request){
     success:true,
     path,
     topic_title:topicTitle,
-    vocabulary_generated:topicVocabulary.length>0,
+    vocabulary_generated:true,
     vocabulary_count:topicVocabulary.length,
-    vocabulary_error:vocabularyError||null,
+    vocabulary_error:null,
     updated_session_count:(updated||[]).length,
     updated_session_ids:(updated||[]).map(x=>x.id)
   });
 }
 
+
+
+async function handleTopicDelete(request){
+  if(request.method!=='POST'){
+    return Response.json({error:'Method not allowed'},{status:405});
+  }
+
+  const b=await request.json().catch(()=>({}));
+  const sessionId=String(b.session_id||'');
+  if(!sessionId) return Response.json({error:'SESSION_ID_REQUIRED'},{status:400});
+
+  const {data:session,error:sErr}=await supabase
+    .from('class_sessions')
+    .select('id,program_id,teacher_id,session_date,starts_at,ends_at,topic_storage_path')
+    .eq('id',sessionId)
+    .maybeSingle();
+
+  if(sErr) throw sErr;
+  if(!session) return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
+
+  const path=String(session.topic_storage_path||'').trim();
+
+  let q=supabase
+    .from('class_sessions')
+    .update({
+      topic_title:null,
+      topic_storage_path:null,
+      topic_vocabulary:[]
+    })
+    .eq('program_id',session.program_id)
+    .eq('session_date',session.session_date)
+    .eq('starts_at',session.starts_at)
+    .eq('ends_at',session.ends_at);
+
+  if(session.teacher_id) q=q.eq('teacher_id',session.teacher_id);
+  else q=q.is('teacher_id',null);
+
+  const {data:updated,error:uErr}=await q.select('id');
+  if(uErr) throw uErr;
+
+  if(path){
+    const {error:storageErr}=await supabase.storage.from('topics').remove([path]);
+    if(storageErr){
+      console.error('Topic storage delete warning',storageErr);
+    }
+  }
+
+  return Response.json({
+    success:true,
+    deleted_session_count:(updated||[]).length,
+    deleted_session_ids:(updated||[]).map(x=>x.id)
+  });
+}
 
 async function requireActiveCustomer(customerId,token){
   if(!customerId||!token) return {error:'CUSTOMER_TOKEN_REQUIRED',status:401};
@@ -1316,6 +1433,7 @@ export default {
       if(action==='customers') return await handleCustomers(request);
       if(action==='bookings') return await handleBookings(request);
       if(action==='topic-upload') return await handleTopicUpload(request);
+      if(action==='topic-delete') return await handleTopicDelete(request);
 
       return Response.json({error:'UNKNOWN_ACTION'},{status:404});
     }catch(err){
