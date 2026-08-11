@@ -206,7 +206,14 @@ button.primary.ui-button-busy::after{
   #tab-overview .overview-fill-card{grid-column:1/-1!important;width:100%!important}
   #tab-overview .fill-metrics{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important}
 }
-</style></head>
+</style>
+<style>
+.manual-booking-card{border:1px solid #dce6e1;border-radius:14px;padding:12px;margin-bottom:9px;display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,.9fr);gap:12px;align-items:center}
+.manual-booking-main{display:grid;gap:3px}.manual-booking-main b{color:#115f49}.manual-booking-main span{font-size:12px}.manual-booking-main small{color:#6b7772}
+.manual-reschedule{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}.manual-reschedule select{min-width:0}
+@media(max-width:700px){.manual-booking-card{grid-template-columns:1fr}.manual-reschedule{grid-template-columns:1fr}.manual-reschedule .btn{width:100%}}
+</style>
+</head>
 <body>
 <div class="wrap">
   <div class="top">
@@ -230,6 +237,7 @@ button.primary.ui-button-busy::after{
       <button class="tab" onclick="showTab('customers',this)">Customers</button>
       <button class="tab" onclick="showTab('bookings',this)">Bookings</button>
       <button class="tab" onclick="showTab('topics',this)">Topics</button>
+      <button class="tab" onclick="showTab('manual',this);loadManual()">Thêm thủ công</button>
     </div>
 
     <section id="tab-overview"></section>
@@ -264,7 +272,42 @@ button.primary.ui-button-busy::after{
     <section id="tab-customers" class="hidden"><div class="card"><h3>Customers</h3><div id="customersTable"></div></div></section>
     <section id="tab-bookings" class="hidden"><div class="card"><h3>Bookings đã thanh toán</h3><div id="bookingsTable"></div></div></section>
 
-    <section id="tab-topics" class="hidden">
+    
+    <section id="tab-manual" class="hidden">
+      <div class="card">
+        <h3>Thêm học viên chuyển khoản thủ công</h3>
+        <div class="muted" style="margin-bottom:12px">Dùng khi học viên chuyển khoản trực tiếp. Booking được xác nhận ngay, không cần PayOS.</div>
+        <div class="row2">
+          <div>
+            <label>Họ và tên</label>
+            <input id="manualName" placeholder="Nguyễn Văn A">
+          </div>
+          <div>
+            <label>Số điện thoại</label>
+            <input id="manualPhone" inputmode="numeric" placeholder="09xxxxxxxx">
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <label>Session</label>
+          <select id="manualSession"></select>
+        </div>
+        <button class="btn primary" style="width:100%;margin-top:12px" onclick="addManualBooking()">+ Thêm học viên vào session</button>
+        <div id="manualMsg"></div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+          <div>
+            <h3 style="margin:0">Booking thủ công</h3>
+            <div class="muted" style="font-size:12px;margin-top:4px">Admin có thể đổi buổi học không giới hạn.</div>
+          </div>
+          <button class="btn" onclick="loadManual()">↻ Làm mới</button>
+        </div>
+        <div id="manualBookings" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+<section id="tab-topics" class="hidden">
       <div class="card">
         <h3>Upload topic PDF</h3>
         <div class="row2">
@@ -495,6 +538,80 @@ async function loadBookings(){
   document.getElementById('bookingsTable').innerHTML=table(['Học viên','SĐT','Ngày','Giờ','Lớp','Thanh toán'],d.bookings.map(x=>[
     x.full_name||'',x.phone,x.session_date,`${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,x.program_name,`<span class="badge">${x.payment_status}</span>`
   ]));
+}
+
+
+async function loadManual(){
+  try{
+    const d=await api('/api/admin?action=manual-bookings');
+    const sessions=(d.sessions||[]);
+    const bookings=(d.bookings||[]);
+
+    const sessionOptions=sessions.map(x=>`<option value="${x.id}">${x.session_date} · ${String(x.starts_at).slice(0,5)}–${String(x.ends_at).slice(0,5)} · ${escapeHtml(x.program_name)} · ${x.booked_count}/${x.capacity}</option>`).join('');
+    const sel=document.getElementById('manualSession');
+    if(sel) sel.innerHTML=sessionOptions||'<option value="">Không có session sắp tới</option>';
+
+    const box=document.getElementById('manualBookings');
+    if(!box)return;
+
+    if(!bookings.length){
+      box.innerHTML='<div class="muted" style="padding:18px;text-align:center">Chưa có booking thủ công.</div>';
+      return;
+    }
+
+    box.innerHTML=bookings.map(b=>`
+      <div class="manual-booking-card">
+        <div class="manual-booking-main">
+          <b>${escapeHtml(b.full_name||'')}</b>
+          <span>${escapeHtml(b.phone||'')}</span>
+          <small>${b.session_date} · ${String(b.starts_at||'').slice(0,5)}–${String(b.ends_at||'').slice(0,5)} · ${escapeHtml(b.program_name||'')}</small>
+        </div>
+        <div class="manual-reschedule">
+          <select id="move-${b.booking_id}">
+            ${sessions.map(s=>`<option value="${s.id}" ${s.id===b.session_id?'selected':''}>${s.session_date} · ${String(s.starts_at).slice(0,5)} · ${escapeHtml(s.program_name)} · ${s.booked_count}/${s.capacity}</option>`).join('')}
+          </select>
+          <button class="btn" onclick="moveManualBooking('${b.booking_id}')">Đổi buổi học</button>
+        </div>
+      </div>
+    `).join('');
+  }catch(e){
+    const box=document.getElementById('manualBookings');
+    if(box) box.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function addManualBooking(){
+  const msg=document.getElementById('manualMsg');msg.innerHTML='';
+  try{
+    const result=await api('/api/admin?action=manual-bookings',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        full_name:document.getElementById('manualName').value,
+        phone:document.getElementById('manualPhone').value,
+        session_id:document.getElementById('manualSession').value
+      })
+    });
+    msg.innerHTML='<div class="ok">Đã thêm học viên vào session và đánh dấu thanh toán thủ công.</div>';
+    await Promise.all([loadManual(),loadBookings(),loadOverview(),loadSessions()]);
+  }catch(e){
+    msg.innerHTML=`<div class="error">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function moveManualBooking(bookingId){
+  const sessionId=document.getElementById(`move-${bookingId}`)?.value;
+  if(!sessionId)return;
+  try{
+    await api('/api/admin?action=manual-reschedule',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({booking_id:bookingId,session_id:sessionId})
+    });
+    await Promise.all([loadManual(),loadBookings(),loadOverview(),loadSessions()]);
+  }catch(e){
+    alert(e.message);
+  }
 }
 
 function syncTopicTitleFromSession(){
