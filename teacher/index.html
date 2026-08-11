@@ -187,23 +187,231 @@ button,input{font:inherit}
   .student{grid-template-columns:38px minmax(0,1fr) auto}
 }
 </style>
+
+<style>
+/* ===== V9 Teacher Portal — English + Mobile Fit ===== */
+html,body{
+  max-width:100%;
+  overflow-x:hidden !important;
+}
+.shell{
+  width:100%;
+  max-width:1180px;
+}
+.card,
+.hero,
+.layout,
+.section-card,
+.session-detail-head,
+.roster{
+  min-width:0 !important;
+  max-width:100% !important;
+}
+.date-strip{
+  width:100%;
+  min-width:0;
+}
+.session,
+.student{
+  min-width:0;
+}
+.session-main,
+.student-name{
+  min-width:0;
+}
+.session-main b,
+.session-main span,
+.student-name b,
+.student-name span{
+  overflow-wrap:anywhere;
+}
+.meta-grid{
+  min-width:0;
+}
+.meta{
+  min-width:0;
+}
+.meta b{
+  overflow-wrap:anywhere;
+}
+
+@media(max-width:700px){
+  .shell{
+    padding:10px !important;
+  }
+  .topbar{
+    align-items:flex-start;
+    gap:8px;
+  }
+  .topbar > div:last-child{
+    gap:6px !important;
+  }
+  .teacher-chip{
+    max-width:150px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .btn{
+    padding:9px 11px;
+  }
+
+  .hero{
+    padding:15px !important;
+    margin-bottom:12px;
+  }
+  .hero h1{
+    font-size:22px !important;
+  }
+  .stats{
+    width:100%;
+    display:grid !important;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+  .stat{
+    min-width:0 !important;
+    padding:8px 5px !important;
+  }
+  .stat b{
+    font-size:18px;
+  }
+  .stat span{
+    font-size:9px;
+    line-height:1.2;
+  }
+
+  .section-card{
+    padding:13px !important;
+  }
+  .section-head{
+    align-items:center;
+  }
+  .section-head h2{
+    font-size:18px;
+  }
+
+  .date-strip{
+    display:grid !important;
+    grid-template-columns:repeat(7,minmax(0,1fr)) !important;
+    gap:4px !important;
+    overflow:visible !important;
+  }
+  .day-pill{
+    min-width:0 !important;
+    width:100%;
+    padding:7px 2px !important;
+    border-radius:9px;
+  }
+  .day-pill b{
+    font-size:9px !important;
+    white-space:nowrap;
+  }
+  .day-pill span{
+    font-size:8px !important;
+    white-space:nowrap;
+  }
+
+  .session{
+    grid-template-columns:58px minmax(0,1fr) auto !important;
+    gap:8px !important;
+    padding:10px !important;
+  }
+  .session-time{
+    font-size:13px !important;
+  }
+  .session-main b{
+    font-size:13px !important;
+  }
+  .session-main span{
+    font-size:10px !important;
+  }
+  .session-count{
+    grid-column:auto !important;
+    justify-self:auto !important;
+    min-width:42px !important;
+    padding:6px 5px !important;
+    font-size:9px !important;
+  }
+
+  .session-detail-head{
+    padding:13px !important;
+  }
+  .session-detail-head h1{
+    font-size:21px !important;
+  }
+  .meta-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    gap:6px !important;
+  }
+  .meta{
+    padding:8px !important;
+  }
+  .meta b{
+    font-size:11px !important;
+  }
+
+  .roster{
+    padding:13px !important;
+  }
+  .roster-head{
+    align-items:flex-start;
+  }
+  .roster-head h2{
+    font-size:18px;
+  }
+  .student{
+    grid-template-columns:34px minmax(0,1fr) 34px !important;
+    gap:8px !important;
+    padding:9px !important;
+  }
+  .avatar{
+    width:34px !important;
+    height:34px !important;
+  }
+  .attendance-check{
+    width:32px !important;
+    height:32px !important;
+  }
+}
+
+@media(max-width:390px){
+  .logo{
+    font-size:20px !important;
+  }
+  .teacher-chip{
+    max-width:120px;
+    font-size:11px;
+  }
+  .topbar .btn{
+    font-size:11px;
+    padding:8px 9px;
+  }
+  .day-pill b{
+    font-size:8px !important;
+  }
+  .day-pill span{
+    font-size:7.5px !important;
+  }
+}
+</style>
+
 </head>
 <body>
 <div id="loginView" class="shell">
   <div class="card login-wrap">
     <div class="logo">Speak<span>Hub</span> Teacher</div>
-    <h1>Đăng nhập giáo viên</h1>
-    <div class="muted">Xem lịch dạy, topic, phòng học và điểm danh học viên ngay trong buổi học.</div>
+    <h1>Teacher Login</h1>
+    <div class="muted">View your teaching schedule, lesson topic, room, and attendance in one place.</div>
 
     <div class="field">
-      <label>Tài khoản</label>
+      <label>Username</label>
       <input id="username" autocomplete="username" placeholder="Ví dụ: cyndy">
     </div>
     <div class="field">
-      <label>Mật khẩu</label>
+      <label>Password</label>
       <input id="password" type="password" autocomplete="current-password" placeholder="••••••••">
     </div>
-    <button class="btn primary" style="width:100%;margin-top:16px" onclick="loginTeacher()">Đăng nhập</button>
+    <button class="btn primary" style="width:100%;margin-top:16px" onclick="loginTeacher()">Sign in</button>
     <div id="loginError" class="login-error hidden"></div>
   </div>
 </div>
@@ -213,7 +421,7 @@ button,input{font:inherit}
     <div class="brand"><div class="logo">Speak<span>Hub</span> Teacher</div></div>
     <div style="display:flex;gap:8px;align-items:center">
       <div class="teacher-chip">👩‍🏫 <b id="teacherName">Teacher</b></div>
-      <button class="btn secondary" onclick="logoutTeacher()">Đăng xuất</button>
+      <button class="btn secondary" onclick="logoutTeacher()">Sign out</button>
     </div>
   </div>
 
@@ -221,46 +429,46 @@ button,input{font:inherit}
     <section class="card hero">
       <div>
         <span class="badge">Teacher Dashboard</span>
-        <h1>Lịch dạy của bạn</h1>
-        <div class="muted">Chọn một buổi học để xem topic, phòng và điểm danh học viên.</div>
+        <h1>Your Teaching Schedule</h1>
+        <div class="muted">Current week only · select a session to view the topic, room, and attendance.</div>
       </div>
       <div class="stats">
-        <div class="stat"><b id="statToday">0</b><span>Buổi hôm nay</span></div>
-        <div class="stat"><b id="statWeek">0</b><span>Buổi tuần này</span></div>
-        <div class="stat"><b id="statStudents">0</b><span>Lượt học viên</span></div>
+        <div class="stat"><b id="statToday">0</b><span>Today</span></div>
+        <div class="stat"><b id="statWeek">0</b><span>This week</span></div>
+        <div class="stat"><b id="statStudents">0</b><span>Students</span></div>
       </div>
     </section>
 
     <div class="layout">
       <section class="card section-card">
         <div class="section-head">
-          <h2>Lịch dạy tổng thể</h2>
-          <button class="btn secondary" onclick="loadSchedule()">↻ Làm mới</button>
+          <h2>This Week's Schedule</h2>
+          <button class="btn secondary" onclick="loadSchedule()">↻ Refresh</button>
         </div>
         <div id="dateStrip" class="date-strip"></div>
         <div id="sessionList" class="session-list"><div class="empty">Đang tải lịch...</div></div>
       </section>
 
       <aside class="card section-card">
-        <div class="section-head"><h2>Hôm nay</h2></div>
-        <div id="todayBox" class="today-box">Đang tải...</div>
-        <div class="tip"><b>Điểm danh nhanh:</b> mở buổi học → tick vào ô cạnh tên học viên. Hệ thống lưu ngay, không cần nút Save.</div>
+        <div class="section-head"><h2>Today</h2></div>
+        <div id="todayBox" class="today-box">Loading...</div>
+        <div class="tip"><b>Quick attendance:</b> open a session → tick the box next to a student's name. Changes are saved instantly.</div>
       </aside>
     </div>
   </div>
 
   <div id="sessionView" class="session-view">
-    <button class="btn ghost back" onclick="backToSchedule()">← Quay lại lịch dạy</button>
+    <button class="btn ghost back" onclick="backToSchedule()">← Back to schedule</button>
     <section class="card session-detail-head">
       <div style="width:100%">
-        <span class="badge">Buổi học</span>
+        <span class="badge">Session</span>
         <h1 id="sessionTitle">Session</h1>
-        <div id="sessionTopic" class="topic">Topic chưa cập nhật</div>
+        <div id="sessionTopic" class="topic">Topic not updated</div>
         <div class="meta-grid">
-          <div class="meta"><span>Ngày</span><b id="detailDate">-</b></div>
-          <div class="meta"><span>Thời gian</span><b id="detailTime">-</b></div>
-          <div class="meta"><span>Phòng học</span><b id="detailRoom">-</b></div>
-          <div class="meta"><span>Sĩ số</span><b id="detailCount">0 học viên</b></div>
+          <div class="meta"><span>Date</span><b id="detailDate">-</b></div>
+          <div class="meta"><span>Time</span><b id="detailTime">-</b></div>
+          <div class="meta"><span>Room</span><b id="detailRoom">-</b></div>
+          <div class="meta"><span>Class size</span><b id="detailCount">0 học viên</b></div>
         </div>
       </div>
     </section>
@@ -268,10 +476,10 @@ button,input{font:inherit}
     <section class="card roster">
       <div class="roster-head">
         <div>
-          <h2>Điểm danh học viên</h2>
-          <div class="muted" style="font-size:12px">Tick ✓ vào người có mặt. Thay đổi được lưu ngay.</div>
+          <h2>Student Attendance</h2>
+          <div class="muted" style="font-size:12px">Tick ✓ for students who are present. Changes are saved instantly.</div>
         </div>
-        <span id="attendanceSummary" class="badge">0 / 0 có mặt</span>
+        <span id="attendanceSummary" class="badge">0 / 0 present</span>
       </div>
       <div id="studentList" class="student-list"></div>
       <div id="saveState" class="save-state"></div>
@@ -291,11 +499,11 @@ let currentSession=null;
 
 function fmtDate(d){
   const x=new Date(d+'T00:00:00');
-  return x.toLocaleDateString('vi-VN',{weekday:'short',day:'2-digit',month:'2-digit'});
+  return x.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'2-digit'});
 }
 function fmtDateLong(d){
   const x=new Date(d+'T00:00:00');
-  return x.toLocaleDateString('vi-VN',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
+  return x.toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'});
 }
 function time24(t){return String(t||'').slice(0,5)}
 function authHeaders(extra={}){return {Authorization:`Bearer ${teacherToken}`,...extra}}
@@ -399,7 +607,7 @@ function renderDateStrip(){
   document.getElementById('dateStrip').innerHTML=dates.map(d=>{
     const x=new Date(d+'T00:00:00');
     return `<button class="day-pill ${selectedDate===d?'active':''}" onclick="selectDate('${d}')">
-      <b>${x.toLocaleDateString('vi-VN',{weekday:'short'})}</b>
+      <b>${x.toLocaleDateString('en-GB',{weekday:'short'})}</b>
       <span>${String(x.getDate()).padStart(2,'0')}/${String(x.getMonth()+1).padStart(2,'0')}</span>
     </button>`;
   }).join('');
@@ -411,7 +619,7 @@ function renderSessions(){
   const items=schedule.filter(s=>s.session_date===selectedDate);
   const host=document.getElementById('sessionList');
   if(!items.length){
-    host.innerHTML=`<div class="empty">Không có buổi dạy ngày ${fmtDate(selectedDate)}.</div>`;
+    host.innerHTML=`<div class="empty">No classes on ${fmtDate(selectedDate)}.</div>`;
     return;
   }
   host.innerHTML=items.map(s=>`
@@ -419,7 +627,7 @@ function renderSessions(){
       <div class="session-time">${time24(s.starts_at)}<br><span style="font-size:11px;color:#7b8883">${time24(s.ends_at)}</span></div>
       <div class="session-main">
         <b>${s.program_name||'SpeakHub'}</b>
-        <span>${s.room_name||'Chưa xếp phòng'}${s.topic_title?` · ${s.topic_title}`:''}</span>
+        <span>${s.room_name||'Room not assigned'}${s.topic_title?` · ${s.topic_title}`:''}</span>
       </div>
       <div class="session-count">${Number(s.booked_count||0)} HV</div>
     </button>
@@ -430,10 +638,10 @@ function renderToday(){
   const items=schedule.filter(s=>s.session_date===today);
   const host=document.getElementById('todayBox');
   if(!items.length){
-    host.innerHTML='<h3>Không có buổi dạy hôm nay</h3><div class="muted" style="font-size:12px">Bạn có thể xem các ngày khác ở lịch bên trái.</div>';
+    host.innerHTML='<h3>No classes today</h3><div class="muted" style="font-size:12px">Check another day in this week's schedule.</div>';
     return;
   }
-  host.innerHTML=`<h3>${items.length} buổi dạy hôm nay</h3>`+items.map(s=>`
+  host.innerHTML=`<h3>${items.length} classes today</h3>`+items.map(s=>`
     <div class="today-row"><span>${time24(s.starts_at)} · ${s.program_name}</span><b>${s.room_name||'-'}</b></div>
   `).join('');
 }
@@ -446,10 +654,10 @@ async function openSession(id){
     document.getElementById('sessionView').classList.add('active');
 
     document.getElementById('sessionTitle').textContent=currentSession.program_name||'SpeakHub';
-    document.getElementById('sessionTopic').textContent=currentSession.topic_title?`Topic: ${currentSession.topic_title}`:'Topic chưa cập nhật';
+    document.getElementById('sessionTopic').textContent=currentSession.topic_title?`Topic: ${currentSession.topic_title}`:'Topic not updated';
     document.getElementById('detailDate').textContent=fmtDateLong(currentSession.session_date);
     document.getElementById('detailTime').textContent=`${time24(currentSession.starts_at)} – ${time24(currentSession.ends_at)}`;
-    document.getElementById('detailRoom').textContent=currentSession.room_name||'Chưa xếp phòng';
+    document.getElementById('detailRoom').textContent=currentSession.room_name||'Room not assigned';
     document.getElementById('detailCount').textContent=`${data.students.length} học viên`;
     renderStudents(data.students||[]);
   }catch(e){
@@ -464,7 +672,7 @@ function backToSchedule(){
 function renderStudents(students){
   const host=document.getElementById('studentList');
   if(!students.length){
-    host.innerHTML='<div class="empty">Chưa có học viên đã thanh toán trong buổi này.</div>';
+    host.innerHTML='<div class="empty">No paid students are booked for this session.</div>';
     updateAttendanceSummary([]);
     return;
   }
@@ -474,8 +682,8 @@ function renderStudents(students){
     return `<div class="student ${present?'present':''}" id="student-${s.booking_id}">
       <div class="avatar">${initial}</div>
       <div class="student-name">
-        <b>${escapeHtml(s.full_name||'Học viên')}</b>
-        <span>${present?'Đã điểm danh':'Chưa điểm danh'}</span>
+        <b>${escapeHtml(s.full_name||'Student')}</b>
+        <span>${present?'Attendance saved':'Not marked'}</span>
       </div>
       <button class="attendance-check" onclick="toggleAttendance('${s.booking_id}',${present?'false':'true'})">✓</button>
     </div>`;
@@ -484,26 +692,26 @@ function renderStudents(students){
 }
 function updateAttendanceSummary(students){
   const present=students.filter(s=>s.status==='ATTENDED').length;
-  document.getElementById('attendanceSummary').textContent=`${present} / ${students.length} có mặt`;
+  document.getElementById('attendanceSummary').textContent=`${present} / ${students.length} present`;
 }
 async function toggleAttendance(bookingId,attended){
   const row=document.getElementById('student-'+bookingId);
   const btn=row?.querySelector('.attendance-check');
   if(btn) btn.disabled=true;
-  document.getElementById('saveState').textContent='Đang lưu điểm danh...';
+  document.getElementById('saveState').textContent='Saving attendance...';
   try{
     await api('?action=attendance',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({booking_id:bookingId,attended})
     });
-    toast(attended?'Đã điểm danh':'Đã bỏ điểm danh');
+    toast(attended?'Attendance saved':'Attendance removed');
     const data=await api(`?action=session&session_id=${encodeURIComponent(currentSession.id)}`);
     renderStudents(data.students||[]);
-    document.getElementById('saveState').textContent='Đã lưu tự động.';
+    document.getElementById('saveState').textContent='Saved automatically.';
   }catch(e){
     toast(e.message);
-    document.getElementById('saveState').textContent='Không lưu được. Thử lại.';
+    document.getElementById('saveState').textContent='Could not save. Please try again.';
     if(btn) btn.disabled=false;
   }
 }
