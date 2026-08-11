@@ -364,6 +364,7 @@ let teacherProfile=null;
 let schedule=[];
 let selectedDate='';
 let currentSession=null;
+let currentStudents=[];
 
 function fmtDate(d){
   const x=new Date(d+'T00:00:00');
@@ -538,6 +539,8 @@ function backToSchedule(){
   currentSession=null;
 }
 function renderStudents(students){
+  currentStudents=(students||[]).map(s=>({...s}));
+  students=currentStudents;
   const host=document.getElementById('studentList');
   if(!students.length){
     host.innerHTML='<div class="empty">No paid students are booked for this session.</div>';
@@ -565,22 +568,44 @@ function updateAttendanceSummary(students){
 async function toggleAttendance(bookingId,attended){
   const row=document.getElementById('student-'+bookingId);
   const btn=row?.querySelector('.attendance-check');
-  if(btn) btn.disabled=true;
-  document.getElementById('saveState').textContent='Saving attendance...';
+  const student=currentStudents.find(s=>String(s.booking_id)===String(bookingId));
+  if(!row||!student||!btn)return;
+
+  const previousStatus=student.status;
+  const nextStatus=attended?'ATTENDED':'CONFIRMED';
+
+  // Optimistic UI: teacher sees the tick immediately.
+  student.status=nextStatus;
+  row.classList.toggle('present',attended);
+  const statusText=row.querySelector('.student-name span');
+  if(statusText) statusText.textContent=attended?'Present':'Not marked';
+  btn.setAttribute('onclick',`toggleAttendance('${bookingId}',${attended?'false':'true'})`);
+  btn.disabled=true;
+  updateAttendanceSummary(currentStudents);
+  document.getElementById('saveState').textContent='Saving...';
+
   try{
     await api('?action=attendance',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({booking_id:bookingId,attended})
     });
-    toast(attended?'Attendance saved':'Attendance removed');
-    const data=await api(`?action=session&session_id=${encodeURIComponent(currentSession.id)}`);
-    renderStudents(data.students||[]);
+
+    // No expensive session-detail reload here.
+    btn.disabled=false;
     document.getElementById('saveState').textContent='Saved automatically.';
+    toast(attended?'Attendance saved':'Attendance removed');
   }catch(e){
-    toast(e.message);
+    // Roll back only if the server write fails.
+    student.status=previousStatus;
+    const wasPresent=previousStatus==='ATTENDED';
+    row.classList.toggle('present',wasPresent);
+    if(statusText) statusText.textContent=wasPresent?'Present':'Not marked';
+    btn.setAttribute('onclick',`toggleAttendance('${bookingId}',${wasPresent?'false':'true'})`);
+    btn.disabled=false;
+    updateAttendanceSummary(currentStudents);
     document.getElementById('saveState').textContent='Could not save. Please try again.';
-    if(btn) btn.disabled=false;
+    toast(e.message);
   }
 }
 function escapeHtml(v){
