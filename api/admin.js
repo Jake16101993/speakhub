@@ -1501,6 +1501,32 @@ async function handleProgressHistory(request){
   return Response.json({success:true,tests:data||[]});
 }
 
+
+function sleep(ms){
+  return new Promise(resolve=>setTimeout(resolve,ms));
+}
+
+function isSupabaseClockSkewError(err){
+  const code=String(err?.code||'');
+  const msg=String(err?.message||'').toLowerCase();
+  return code==='PGRST303' && msg.includes('jwt issued at future');
+}
+
+async function runAdminActionWithRetry(fn){
+  try{
+    return await fn();
+  }catch(err){
+    if(!isSupabaseClockSkewError(err)) throw err;
+
+    // Rare transient clock skew between the serverless runtime and Supabase.
+    // Wait briefly and retry once instead of blanking the entire Admin UI.
+    console.warn('Supabase JWT clock skew detected; retrying admin request once.');
+    await sleep(1200);
+    return await fn();
+  }
+}
+
+
 export default {
   async fetch(request){
     try{
@@ -1525,12 +1551,12 @@ export default {
         return Response.json({error:'UNAUTHORIZED'},{status:401});
       }
 
-      if(action==='overview') return await handleOverview(request);
-      if(action==='sessions') return await handleSessions(request);
-      if(action==='customers') return await handleCustomers(request);
-      if(action==='bookings') return await handleBookings(request);
-      if(action==='topic-upload') return await handleTopicUpload(request);
-      if(action==='topic-delete') return await handleTopicDelete(request);
+      if(action==='overview') return await runAdminActionWithRetry(()=>handleOverview());
+      if(action==='sessions') return await runAdminActionWithRetry(()=>handleSessions(request));
+      if(action==='customers') return await runAdminActionWithRetry(()=>handleCustomers(request));
+      if(action==='bookings') return await runAdminActionWithRetry(()=>handleBookings(request));
+      if(action==='topic-upload') return await runAdminActionWithRetry(()=>handleTopicUpload(request));
+      if(action==='topic-delete') return await runAdminActionWithRetry(()=>handleTopicDelete(request));
 
       return Response.json({error:'UNKNOWN_ACTION'},{status:404});
     }catch(err){
