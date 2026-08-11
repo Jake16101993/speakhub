@@ -13,8 +13,10 @@ function secret(){
 function signTeacherToken(account){
   const s=secret();
   if(!s) throw new Error('TEACHER_SECRET_MISSING');
+  const accountId=account.id||account.teacher_id;
+  if(!accountId) throw new Error('TEACHER_ID_MISSING');
   const payload=Buffer.from(JSON.stringify({
-    teacher_account_id:account.id,
+    teacher_account_id:accountId,
     teacher_name:account.teacher_name,
     exp:Date.now()+12*60*60*1000
   })).toString('base64url');
@@ -74,8 +76,16 @@ async function login(request){
   });
   if(error) throw error;
 
-  const account=Array.isArray(data)?data[0]:data;
-  if(!account) return Response.json({error:'INVALID_LOGIN'},{status:401});
+  const raw=Array.isArray(data)?data[0]:data;
+  if(!raw) return Response.json({error:'INVALID_LOGIN'},{status:401});
+
+  const account={
+    id:raw.teacher_id||raw.id,
+    teacher_name:raw.teacher_name,
+    username:raw.username
+  };
+
+  if(!account.id) return Response.json({error:'TEACHER_ID_MISSING'},{status:500});
 
   return Response.json({
     token:signTeacherToken(account),
