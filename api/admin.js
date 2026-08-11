@@ -373,6 +373,215 @@ async function handleCustomers(){
   return Response.json({customers:data||[]});
 }
 
+
+function validManualPhone(phone){
+  return /^0\d{9}$/.test(String(phone||'').trim());
+}
+function validManualName(name){
+  return String(name||'').trim().split(/\s+/).filter(Boolean).length>=2;
+}
+
+async function getManualSessions(){
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}).format(new Date());
+  const {data:sessions,error}=await supabase
+    .from('class_sessions')
+    .select('id,session_date,starts_at,ends_at,capacity,status,programs(name)')
+    .gte('session_date',today)
+    .eq('status','OPEN')
+    .order('session_date',{ascending:true})
+    .order('starts_at',{ascending:true})
+    .limit(250);
+  if(error) throw error;
+
+  const ids=(sessions||[]).map(x=>x.id), counts={};
+  if(ids.length){
+    const {data:bs,error:bErr}=await supabase
+      .from('bookings').select('session_id').in('session_id',ids)
+      .in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
+    if(bErr) throw bErr;
+    for(const b of (bs||[])) counts[b.session_id]=(counts[b.session_id]||0)+1;
+  }
+  return (sessions||[]).map(x=>({...x,program_name:x.programs?.name||'',booked_count:counts[x.id]||0}));
+}
+
+async function ensureManualCustomer(phone,fullName){
+  const cleanPhone=String(phone).trim();
+  const cleanName=String(fullName).trim().replace(/\s+/g,' ');
+
+  const {data:existing,error:eErr}=await supabase
+    .from('customers')
+    .select('id,phone,full_name,status')
+    .eq('phone',cleanPhone)
+    .maybeSingle();
+  if(eErr) throw eErr;
+
+  if(existing){
+    if(existing.status!=='ACTIVE') throw new Error('CUSTOMER_NOT_ACTIVE');
+    if(cleanName && cleanName!==existing.full_name){
+      await supabase.from('customers').update({full_name:cleanName,updated_at:new Date().toISOString()}).eq('id',existing.id);
+    }
+    return existing.id;
+  }
+
+  // Manual-transfer customer still needs a real auth UUID because orders/bookings
+  // reference auth.users. Create a passwordless internal auth account.
+  const email=`manual-${cleanPhone}-${crypto.randomBytes(4).toString('hex')}@speakhub.local`;
+  const {data:authData,error:authErr}=await supabase.auth.admin.createUser({
+    email,
+    email_confirm:true,
+    user_metadata:{full_name:cleanName,phone:cleanPhone,source:'ADMIN_MANUAL'}
+  });
+  if(authErr) throw authErr;
+  const userId=authData?.user?.id;
+  if(!userId) throw new Error('MANUAL_AUTH_USER_CREATE_FAILED');
+
+  const {error:cErr}=await supabase.from('customers').insert({
+    id:userId,
+    phone:cleanPhone,
+    full_name:cleanName,
+    status:'ACTIVE'
+  });
+  if(cErr) throw cErr;
+
+  return userId;
+}
+
+async function handleManualBookings(request){
+  if(request.method==='GET'){
+    const sessions=await getManualSessions();
+    const {data,error}=await supabase
+      .from('bookings')
+      .select(`
+        id,user_id,session_id,status,created_at,
+        customers:user_id(full_name,phone),
+        orders!inner(id,order_code,payment_status,order_status),
+        class_sessions(session_date,starts_at,ends_at,programs(name))
+      `)
+      .eq('status','CONFIRMED')
+      .eq('orders.payment_status','PAID')
+      .like('orders.order_code','MANUAL-%')
+      .order('created_at',{ascending:false})
+      .limit(300);
+    if(error) throw error;
+
+    return Response.json({
+      sessions,
+      bookings:(data||[]).map(x=>({
+        booking_id:x.id,
+        session_id:x.session_id,
+        full_name:x.customers?.full_name||'',
+        phone:x.customers?.phone||'',
+        session_date:x.class_sessions?.session_date||'',
+        starts_at:x.class_sessions?.starts_at||'',
+        ends_at:x.class_sessions?.ends_at||'',
+        program_name:x.class_sessions?.programs?.name||''
+      }))
+    });
+  }
+
+  if(request.method==='POST'){
+    const b=await request.json().catch(()=>({}));
+    const phone=String(b.phone||'').trim();
+    const fullName=String(b.full_name||'').trim();
+    const sessionId=String(b.session_id||'');
+
+    if(!validManualPhone(phone)) return Response.json({error:'SĐT phải gồm 10 số và bắt đầu bằng 0.'},{status:400});
+    if(!validManualName(fullName)) return Response.json({error:'Vui lòng nhập đầy đủ họ tên.'},{status:400});
+    if(!sessionId) return Response.json({error:'Vui lòng chọn session.'},{status:400});
+
+    const customerId=await ensureManualCustomer(phone,fullName);
+
+    const {data:session,error:sErr}=await supabase
+      .from('class_sessions').select('id,capacity,status,session_date,starts_at')
+      .eq('id',sessionId).maybeSingle();
+    if(sErr) throw sErr;
+    if(!session) return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
+    if(session.status!=='OPEN') return Response.json({error:'SESSION_NOT_OPEN'},{status:400});
+
+    const {count,error:countErr}=await supabase
+      .from('bookings').select('*',{count:'exact',head:true})
+      .eq('session_id',sessionId).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
+    if(countErr) throw countErr;
+    if(Number(count||0)>=Number(session.capacity||0)) return Response.json({error:'SESSION_FULL'},{status:400});
+
+    const {data:dup,error:dErr}=await supabase
+      .from('bookings').select('id').eq('user_id',customerId).eq('session_id',sessionId)
+      .in('status',['PENDING','CONFIRMED','ATTENDED','NO_SHOW']).maybeSingle();
+    if(dErr) throw dErr;
+    if(dup) return Response.json({error:'ALREADY_BOOKED'},{status:400});
+
+    const now=new Date().toISOString();
+    const orderCode=`MANUAL-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+    const {data:order,error:oErr}=await supabase.from('orders').insert({
+      order_code:orderCode,
+      user_id:customerId,
+      session_count:1,
+      unit_price:1,
+      original_total:1,
+      discount_amount:0,
+      total_amount:1,
+      reschedule_limit:20,
+      reschedule_used:0,
+      payment_status:'PAID',
+      order_status:'CONFIRMED',
+      paid_at:now
+    }).select('id').single();
+    if(oErr) throw oErr;
+
+    const {data:booking,error:bErr}=await supabase.from('bookings').insert({
+      user_id:customerId,
+      order_id:order.id,
+      session_id:sessionId,
+      status:'CONFIRMED',
+      confirmed_at:now
+    }).select('id').single();
+    if(bErr) throw bErr;
+
+    return Response.json({success:true,booking_id:booking.id,customer_id:customerId},{status:201});
+  }
+
+  return Response.json({error:'Method not allowed'},{status:405});
+}
+
+async function handleManualReschedule(request){
+  if(request.method!=='POST') return Response.json({error:'Method not allowed'},{status:405});
+  const b=await request.json().catch(()=>({}));
+  const bookingId=String(b.booking_id||''), targetId=String(b.session_id||'');
+  if(!bookingId||!targetId) return Response.json({error:'MISSING_FIELDS'},{status:400});
+
+  const {data:booking,error:bErr}=await supabase
+    .from('bookings')
+    .select('id,user_id,session_id,status,orders!inner(order_code,payment_status)')
+    .eq('id',bookingId).maybeSingle();
+  if(bErr) throw bErr;
+  if(!booking) return Response.json({error:'BOOKING_NOT_FOUND'},{status:404});
+  if(!String(booking.orders?.order_code||'').startsWith('MANUAL-')) return Response.json({error:'NOT_MANUAL_BOOKING'},{status:403});
+  if(booking.orders?.payment_status!=='PAID') return Response.json({error:'ORDER_NOT_PAID'},{status:400});
+  if(booking.session_id===targetId) return Response.json({success:true,unchanged:true});
+
+  const {data:target,error:tErr}=await supabase
+    .from('class_sessions').select('id,capacity,status').eq('id',targetId).maybeSingle();
+  if(tErr) throw tErr;
+  if(!target) return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
+  if(target.status!=='OPEN') return Response.json({error:'SESSION_NOT_OPEN'},{status:400});
+
+  const {count,error:cErr}=await supabase.from('bookings').select('*',{count:'exact',head:true})
+    .eq('session_id',targetId).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
+  if(cErr) throw cErr;
+  if(Number(count||0)>=Number(target.capacity||0)) return Response.json({error:'SESSION_FULL'},{status:400});
+
+  const {data:dup,error:dErr}=await supabase.from('bookings').select('id')
+    .eq('user_id',booking.user_id).eq('session_id',targetId)
+    .in('status',['PENDING','CONFIRMED','ATTENDED','NO_SHOW']).maybeSingle();
+  if(dErr) throw dErr;
+  if(dup) return Response.json({error:'ALREADY_BOOKED_TARGET_SESSION'},{status:400});
+
+  const {error:uErr}=await supabase.from('bookings').update({session_id:targetId}).eq('id',bookingId);
+  if(uErr) throw uErr;
+
+  return Response.json({success:true});
+}
+
 async function handleBookings(){
   const {data,error}=await supabase
     .from('bookings')
@@ -1552,6 +1761,8 @@ export default {
       if(action==='sessions') return await runAdminActionWithRetry(()=>handleSessions(request));
       if(action==='customers') return await runAdminActionWithRetry(()=>handleCustomers(request));
       if(action==='bookings') return await runAdminActionWithRetry(()=>handleBookings(request));
+      if(action==='manual-bookings') return await runAdminActionWithRetry(()=>handleManualBookings(request));
+      if(action==='manual-reschedule') return await runAdminActionWithRetry(()=>handleManualReschedule(request));
       if(action==='topic-upload') return await runAdminActionWithRetry(()=>handleTopicUpload(request));
       if(action==='topic-delete') return await runAdminActionWithRetry(()=>handleTopicDelete(request));
 

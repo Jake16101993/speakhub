@@ -371,24 +371,41 @@ async function sessionDetail(request,url){
 async function openTeacherTopic(request,url){
   const auth=await requireTeacher(request);
   if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+
   const sessionId=url.searchParams.get('session_id');
   if(!sessionId) return Response.json({error:'SESSION_ID_REQUIRED'},{status:400});
+
   const teacher=await resolveTeacherId(auth.account.teacher_name);
   if(!teacher) return Response.json({error:'TEACHER_NOT_MAPPED'},{status:400});
 
   const {data:session,error}=await supabase
     .from('class_sessions')
     .select('id,teacher_id,topic_title,topic_storage_path')
-    .eq('id',sessionId).eq('teacher_id',teacher.id).maybeSingle();
+    .eq('id',sessionId)
+    .eq('teacher_id',teacher.id)
+    .maybeSingle();
+
   if(error) throw error;
   if(!session) return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
 
   const path=String(session.topic_storage_path||'').trim();
   if(!path) return Response.json({error:'TOPIC_NOT_READY'},{status:404});
 
-  const {data:signed,error:signedErr}=await supabase.storage.from('topics').createSignedUrl(path,600);
-  if(signedErr) throw signedErr;
-  return Response.json({title:session.topic_title||'SpeakHub Topic',signed_url:signed.signedUrl,expires_in:600});
+  const {data:file,error:fileErr}=await supabase.storage.from('topics').download(path);
+  if(fileErr){
+    console.error('teacher topic download failed', {path,fileErr});
+    return Response.json({error:'TOPIC_FILE_NOT_FOUND',details:String(fileErr.message||fileErr)},{status:404});
+  }
+
+  const bytes=await file.arrayBuffer();
+  return new Response(bytes,{
+    status:200,
+    headers:{
+      'Content-Type':'application/pdf',
+      'Content-Disposition':`inline; filename="speakhub-topic.pdf"`,
+      'Cache-Control':'private, max-age=300'
+    }
+  });
 }
 
 async function attendance(request){
