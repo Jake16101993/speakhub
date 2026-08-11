@@ -437,14 +437,63 @@ function setButtonBusy(btn,busy=true){
   return ()=>{};
 }
 
-// Every button gives immediate visual feedback, even for fast synchronous actions.
-// Long async actions can call setButtonBusy() themselves and keep the spinner active.
-document.addEventListener('click',e=>{
-  const btn=e.target.closest?.('button');
-  if(!btn || btn.disabled || btn.classList.contains('ui-button-busy')) return;
-  btn.classList.add('ui-button-busy');
-  setTimeout(()=>btn?.classList?.remove('ui-button-busy'),550);
-},true);
+
+(function installFetchAwareButtonBusy(){
+  if(window.__speakHubFetchBusyInstalled) return;
+  window.__speakHubFetchBusyInstalled=true;
+
+  const nativeFetch=window.fetch.bind(window);
+  let clickedButton=null;
+
+  function start(btn){
+    if(!btn || btn.disabled) return;
+    btn.classList.add('ui-button-busy');
+    btn.dataset.busyFetchCount=btn.dataset.busyFetchCount||'0';
+  }
+  function finish(btn){
+    if(!btn) return;
+    const n=Number(btn.dataset.busyFetchCount||0);
+    if(n<=0){
+      btn.classList.remove('ui-button-busy');
+      delete btn.dataset.busyFetchCount;
+    }
+  }
+
+  document.addEventListener('click',e=>{
+    const btn=e.target.closest?.('button');
+    if(!btn || btn.disabled) return;
+    clickedButton=btn;
+    start(btn);
+    setTimeout(()=>{
+      if(Number(btn.dataset.busyFetchCount||0)===0) finish(btn);
+      if(clickedButton===btn) clickedButton=null;
+    },180);
+  },true);
+
+  window.fetch=function(...args){
+    const btn=clickedButton;
+    if(btn){
+      start(btn);
+      btn.dataset.busyFetchCount=String(Number(btn.dataset.busyFetchCount||0)+1);
+    }
+    let result;
+    try{ result=nativeFetch(...args); }
+    catch(err){
+      if(btn){
+        btn.dataset.busyFetchCount=String(Math.max(0,Number(btn.dataset.busyFetchCount||0)-1));
+        finish(btn);
+      }
+      throw err;
+    }
+    return Promise.resolve(result).finally(()=>{
+      if(btn){
+        btn.dataset.busyFetchCount=String(Math.max(0,Number(btn.dataset.busyFetchCount||0)-1));
+        setTimeout(()=>finish(btn),80);
+      }
+    });
+  };
+})();
+
 
 
 let token=localStorage.getItem('speakhub_admin_token')||'';
@@ -543,7 +592,11 @@ async function loadSessions(){
   syncTopicTitleFromSession();
   renderTopicStatus();
 
-  document.getElementById('sessionsTable').innerHTML=table(['Ngày','Giờ','Lớp','Loại','GV','Chỗ','Status'],d.sessions.map(x=>[
+  const sessionRows=[...(d.sessions||[])].sort((a,b)=>
+    `${a.session_date||''} ${a.starts_at||''}`.localeCompare(`${b.session_date||''} ${b.starts_at||''}`)
+  );
+
+  document.getElementById('sessionsTable').innerHTML=table(['Ngày','Giờ','Lớp','Loại','GV','Chỗ','Status'],sessionRows.map(x=>[
     x.session_date,
     `${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,
     x.program_name,
