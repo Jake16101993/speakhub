@@ -288,7 +288,9 @@ async function attendance(request){
   return Response.json({success:true,status:nextStatus});
 }
 
-export default async function handler(request){
+export default {
+  async fetch(request) {
+
   try{
     const url=requestUrl(request);
     const action=url.searchParams.get('action')||'';
@@ -308,4 +310,5 @@ export default async function handler(request){
       action:requestUrl(request).searchParams.get('action')||''
     },{status:500});
   }
-}
+  }
+};
