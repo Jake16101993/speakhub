@@ -450,99 +450,129 @@ async function handleManualBookings(request){
   if(request.method==='GET'){
     const sessions=await getManualSessions();
 
-    // Booking history is secondary. Never let a relationship/query problem
-    // prevent Admin from seeing the session dropdown.
-    let bookings=[];
+    let orders=[];
     try{
       const {data,error}=await supabase
-        .from('bookings')
+        .from('orders')
         .select(`
-          id,user_id,session_id,status,created_at,
+          id,order_code,user_id,total_amount,paid_at,payment_status,order_status,created_at,
           customers:user_id(full_name,phone),
-          orders!inner(id,order_code,payment_status,order_status),
-          class_sessions(session_date,starts_at,ends_at,programs(name))
+          bookings(id,session_id,status,class_sessions(session_date,starts_at,ends_at,programs(name)))
         `)
-        .eq('status','CONFIRMED')
-        .eq('orders.payment_status','PAID')
-        .like('orders.order_code','MANUAL-%')
+        .eq('payment_status','PAID')
+        .like('order_code','MANUAL-%')
         .order('created_at',{ascending:false})
         .limit(300);
 
       if(error) throw error;
 
-      bookings=(data||[]).map(x=>({
-        booking_id:x.id,
-        session_id:x.session_id,
-        full_name:x.customers?.full_name||'',
-        phone:x.customers?.phone||'',
-        session_date:x.class_sessions?.session_date||'',
-        starts_at:x.class_sessions?.starts_at||'',
-        ends_at:x.class_sessions?.ends_at||'',
-        program_name:x.class_sessions?.programs?.name||''
-      }));
+      orders=(data||[]).map(o=>({
+        order_id:o.id,
+        order_code:o.order_code,
+        full_name:o.customers?.full_name||'',
+        phone:o.customers?.phone||'',
+        total_amount:Number(o.total_amount||0),
+        paid_date:o.paid_at?String(o.paid_at).slice(0,10):'',
+        bookings:(o.bookings||[])
+          .filter(b=>['CONFIRMED','ATTENDED','NO_SHOW'].includes(String(b.status||'')))
+          .map(b=>({
+            booking_id:b.id,
+            session_id:b.session_id,
+            session_date:b.class_sessions?.session_date||'',
+            starts_at:b.class_sessions?.starts_at||'',
+            ends_at:b.class_sessions?.ends_at||'',
+            program_name:b.class_sessions?.programs?.name||''
+          }))
+          .sort((a,b)=>`${a.session_date} ${a.starts_at}`.localeCompare(`${b.session_date} ${b.starts_at}`))
+      })).filter(o=>o.bookings.length);
     }catch(historyErr){
-      console.error('manual booking history load failed',historyErr);
+      console.error('manual order history load failed',historyErr);
     }
 
-    return Response.json({sessions,bookings});
+    return Response.json({sessions,orders});
   }
 
   if(request.method==='POST'){
     const b=await request.json().catch(()=>({}));
     const phone=String(b.phone||'').trim();
     const fullName=String(b.full_name||'').trim();
-    const sessionId=String(b.session_id||'');
+    const sessionIds=[...new Set((Array.isArray(b.session_ids)?b.session_ids:[]).map(x=>String(x||'')).filter(Boolean))];
+    const amount=Math.round(Number(b.amount||0));
+    const paidDate=String(b.paid_date||'').trim();
 
     if(!validManualPhone(phone)) return Response.json({error:'SĐT phải gồm 10 số và bắt đầu bằng 0.'},{status:400});
     if(!validManualName(fullName)) return Response.json({error:'Vui lòng nhập đầy đủ họ tên.'},{status:400});
-    if(!sessionId) return Response.json({error:'Vui lòng chọn session.'},{status:400});
+    if(!sessionIds.length) return Response.json({error:'Vui lòng chọn ít nhất 1 session.'},{status:400});
+    if(!Number.isFinite(amount)||amount<=0) return Response.json({error:'Vui lòng nhập số tiền đã nhận.'},{status:400});
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(paidDate)) return Response.json({error:'Vui lòng chọn ngày thanh toán thành công.'},{status:400});
 
     const customerId=await ensureManualCustomer(phone,fullName);
 
-    const {data:session,error:sErr}=await supabase
-      .from('class_sessions').select('id,capacity,status,session_date,starts_at')
-      .eq('id',sessionId).maybeSingle();
+    const {data:selectedSessions,error:sErr}=await supabase
+      .from('class_sessions')
+      .select('id,capacity,status,session_date,starts_at')
+      .in('id',sessionIds);
     if(sErr) throw sErr;
-    if(!session) return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
-    if(session.status!=='OPEN') return Response.json({error:'SESSION_NOT_OPEN'},{status:400});
+    if((selectedSessions||[]).length!==sessionIds.length) return Response.json({error:'Có session không tồn tại.'},{status:400});
 
-    const {count,error:countErr}=await supabase
-      .from('bookings').select('*',{count:'exact',head:true})
-      .eq('session_id',sessionId).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
-    if(countErr) throw countErr;
-    if(Number(count||0)>=Number(session.capacity||0)) return Response.json({error:'SESSION_FULL'},{status:400});
+    for(const session of selectedSessions||[]){
+      if(session.status!=='OPEN') return Response.json({error:`Session ${session.session_date} ${String(session.starts_at).slice(0,5)} không còn OPEN.`},{status:400});
 
-    const {data:dup,error:dErr}=await supabase
-      .from('bookings').select('id').eq('user_id',customerId).eq('session_id',sessionId)
-      .in('status',['PENDING','CONFIRMED','ATTENDED','NO_SHOW']).maybeSingle();
-    if(dErr) throw dErr;
-    if(dup) return Response.json({error:'ALREADY_BOOKED'},{status:400});
+      const {count,error:countErr}=await supabase
+        .from('bookings').select('*',{count:'exact',head:true})
+        .eq('session_id',session.id)
+        .in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
+      if(countErr) throw countErr;
+      if(Number(count||0)>=Number(session.capacity||0)){
+        return Response.json({error:`Session ${session.session_date} ${String(session.starts_at).slice(0,5)} đã FULL.`},{status:400});
+      }
 
+      const {data:dup,error:dErr}=await supabase
+        .from('bookings').select('id')
+        .eq('user_id',customerId)
+        .eq('session_id',session.id)
+        .in('status',['PENDING','CONFIRMED','ATTENDED','NO_SHOW'])
+        .maybeSingle();
+      if(dErr) throw dErr;
+      if(dup) return Response.json({error:`Học viên đã có booking ở session ${session.session_date} ${String(session.starts_at).slice(0,5)}.`},{status:400});
+    }
+
+    // Use noon Vietnam time so selecting a paid calendar date never shifts to
+    // the previous day when rendered through UTC-aware clients.
+    const paidAt=`${paidDate}T12:00:00+07:00`;
     const now=new Date().toISOString();
+    const count=sessionIds.length;
+    const unitPrice=Math.round(amount/count);
     const orderCode=`MANUAL-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
     const {data:order,error:oErr}=await supabase.from('orders').insert({
       order_code:orderCode,
       user_id:customerId,
-      session_count:1,
-      unit_price:1,
-      original_total:1,
+      session_count:count,
+      unit_price:unitPrice,
+      original_total:amount,
       discount_amount:0,
-      total_amount:1,
-      reschedule_limit:20,
+      total_amount:amount,
+      reschedule_limit:999,
       reschedule_used:0,
       payment_status:'PAID',
       order_status:'CONFIRMED',
-      paid_at:now
+      paid_at:paidAt
     }).select('id').single();
     if(oErr) throw oErr;
 
-    const {data:booking,error:bErr}=await supabase.from('bookings').insert({
+    const bookingRows=sessionIds.map(sessionId=>({
       user_id:customerId,
       order_id:order.id,
       session_id:sessionId,
       status:'CONFIRMED',
       confirmed_at:now
-    }).select('id').single();
+    }));
+
+    const {data:bookings,error:bErr}=await supabase
+      .from('bookings')
+      .insert(bookingRows)
+      .select('id,session_id');
     if(bErr) throw bErr;
 
     return Response.json({
@@ -550,7 +580,11 @@ async function handleManualBookings(request){
       source:'ADMIN_MANUAL_TRANSFER',
       payment_status:'PAID',
       booking_status:'CONFIRMED',
-      booking_id:booking.id,
+      booking_count:(bookings||[]).length,
+      booking_ids:(bookings||[]).map(x=>x.id),
+      total_amount:amount,
+      paid_date:paidDate,
+      order_id:order.id,
       customer_id:customerId
     },{status:201});
   }
