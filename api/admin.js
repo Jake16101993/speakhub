@@ -61,20 +61,104 @@ async function handleLogin(request){
   return Response.json({token:signAdminToken()});
 }
 
+function vnDateParts(date=new Date()){
+  const parts=new Intl.DateTimeFormat('en-CA',{
+    timeZone:'Asia/Ho_Chi_Minh',
+    year:'numeric',month:'2-digit',day:'2-digit'
+  }).formatToParts(date);
+  const get=t=>parts.find(x=>x.type===t)?.value||'';
+  return {year:Number(get('year')),month:Number(get('month')),day:Number(get('day'))};
+}
+function dateISOFromParts(y,m,d){
+  return new Date(Date.UTC(y,m-1,d)).toISOString().slice(0,10);
+}
+function addDaysISO(iso,days){
+  const d=new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate()+days);
+  return d.toISOString().slice(0,10);
+}
+function currentWeekBounds(){
+  const p=vnDateParts();
+  const today=dateISOFromParts(p.year,p.month,p.day);
+  const d=new Date(`${today}T00:00:00Z`);
+  const day=d.getUTCDay()===0?7:d.getUTCDay();
+  const monday=addDaysISO(today,-(day-1));
+  return {
+    prev_from:addDaysISO(monday,-7), prev_to:addDaysISO(monday,-1),
+    current_from:monday, current_to:addDaysISO(monday,6),
+    next_from:addDaysISO(monday,7), next_to:addDaysISO(monday,13)
+  };
+}
+function monthBounds(){
+  const p=vnDateParts();
+  const first=dateISOFromParts(p.year,p.month,1);
+  const next=p.month===12?dateISOFromParts(p.year+1,1,1):dateISOFromParts(p.year,p.month+1,1);
+  return {first,next};
+}
+function fillRate(sessions,bookingCounts){
+  let seats=0,booked=0;
+  for(const s of (sessions||[])){
+    seats+=Number(s.capacity||0);
+    booked+=Number(bookingCounts[s.id]||0);
+  }
+  return seats>0?Math.round((booked/seats)*1000)/10:0;
+}
 async function handleOverview(){
-  const [c,o,b,s]=await Promise.all([
+  const w=currentWeekBounds();
+  const month=monthBounds();
+  const weekEndExclusive=addDaysISO(w.current_to,1);
+
+  const results=await Promise.all([
     supabase.from('customers').select('*',{count:'exact',head:true}),
     supabase.from('orders').select('*',{count:'exact',head:true}).eq('payment_status','PAID'),
     supabase.from('bookings').select('*',{count:'exact',head:true}).eq('status','CONFIRMED'),
-    supabase.from('class_sessions').select('*',{count:'exact',head:true}).eq('status','OPEN')
+    supabase.from('class_sessions').select('*',{count:'exact',head:true}).eq('status','OPEN'),
+    supabase.from('class_sessions').select('id,capacity,session_date').gte('session_date',w.current_from).lte('session_date',w.current_to).neq('status','CANCELLED'),
+    supabase.from('class_sessions').select('id,capacity,session_date').gte('session_date',w.prev_from).lte('session_date',w.prev_to).neq('status','CANCELLED'),
+    supabase.from('class_sessions').select('id,capacity,session_date').gte('session_date',w.next_from).lte('session_date',w.next_to).neq('status','CANCELLED'),
+    supabase.from('placement_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
+    supabase.from('progress_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
+    supabase.from('placement_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED'),
+    supabase.from('progress_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED'),
+    supabase.from('orders').select('total_amount,created_at').eq('payment_status','PAID').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
+    supabase.from('orders').select('total_amount,created_at').eq('payment_status','PAID').gte('created_at',`${month.first}T00:00:00+07:00`).lt('created_at',`${month.next}T00:00:00+07:00`)
   ]);
+  const err=results.find(x=>x.error)?.error;
+  if(err) throw err;
+
+  const [c,o,b,s,week,prev,next,pw,gw,pa,ga,mw,mm]=results;
+  const allSessions=[...(prev.data||[]),...(week.data||[]),...(next.data||[])];
+  const ids=allSessions.map(x=>x.id);
+  const bookingCounts={};
+
+  if(ids.length){
+    const {data:bs,error:bErr}=await supabase
+      .from('bookings')
+      .select('session_id,status')
+      .in('session_id',ids)
+      .in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
+    if(bErr) throw bErr;
+    for(const x of (bs||[])) bookingCounts[x.session_id]=(bookingCounts[x.session_id]||0)+1;
+  }
+
+  const sum=rows=>(rows||[]).reduce((n,x)=>n+Number(x.total_amount||0),0);
 
   return Response.json({
     counts:{
-      customers:c.count||0,
-      paid_orders:o.count||0,
-      confirmed_bookings:b.count||0,
-      open_sessions:s.count||0
+      customers:c.count||0,paid_orders:o.count||0,
+      confirmed_bookings:b.count||0,open_sessions:s.count||0
+    },
+    analytics:{
+      sessions_this_week:(week.data||[]).length,
+      tests_this_week:{placement:pw.count||0,progress:gw.count||0},
+      tests_all:{placement:pa.count||0,progress:ga.count||0},
+      paid_amount:{week:sum(mw.data),month:sum(mm.data)},
+      fill_rate:{
+        previous_week:fillRate(prev.data,bookingCounts),
+        current_week:fillRate(week.data,bookingCounts),
+        next_week:fillRate(next.data,bookingCounts)
+      },
+      ranges:w
     }
   });
 }
@@ -360,9 +444,10 @@ function topicVocabularySchema(){
             part_of_speech:{type:'string'},
             pronunciation:{type:'string'},
             vietnamese:{type:'string'},
-            example:{type:'string'}
+            example:{type:'string'},
+            situation:{type:'string'}
           },
-          required:['word','part_of_speech','pronunciation','vietnamese','example']
+          required:['word','part_of_speech','pronunciation','vietnamese','example','situation']
         }
       }
     },
@@ -380,11 +465,11 @@ TOPIC: ${topic}
 
 Create exactly 10 useful words, phrases, or collocations that students can actively use while discussing this topic.
 
-Difficulty:
-- Kid Starter: very simple everyday English.
-- Kid Communicator: simple, expressive speaking vocabulary.
-- Adult Beginner: common practical conversational English.
-- Adult Intermediate: natural discussion vocabulary and useful collocations, not academic or overly difficult.
+Difficulty — follow this strictly:
+- Kid Starter: VERY EASY A1 concrete words and short phrases. Avoid abstract vocabulary.
+- Kid Communicator: EASY A1–A2 speaking words/phrases suitable for children.
+- Adult Beginner: EASY practical A1–A2 conversational English. Avoid difficult synonyms and academic vocabulary.
+- Adult Intermediate: practical B1 conversational vocabulary and common collocations. Do NOT make it IELTS/academic/B2-heavy.
 
 For every item:
 - word: useful English word/phrase/collocation
@@ -392,8 +477,9 @@ For every item:
 - pronunciation: simple IPA if useful, otherwise empty string
 - vietnamese: concise Vietnamese meaning
 - example: one natural English sentence related directly to the topic
+- situation: one short Vietnamese situation where the student could naturally use this word/phrase
 
-Avoid obscure words and duplicate meanings.`;
+Avoid obscure words and duplicate meanings. Keep situation concise and practical.`;
 
   const resp=await fetch('https://api.openai.com/v1/responses',{
     method:'POST',
@@ -460,6 +546,12 @@ async function handleTopicUpload(request){
   if(!sessionId||!file){
     return Response.json({error:'MISSING_FIELDS'},{status:400});
   }
+  if(!title){
+    return Response.json({
+      error:'TOPIC_TITLE_REQUIRED',
+      details:'Vui lòng nhập tên topic. Hệ thống không dùng tên file PDF làm tên topic.'
+    },{status:400});
+  }
 
   if(file.type && file.type!=='application/pdf'){
     return Response.json({error:'PDF_ONLY'},{status:400});
@@ -479,7 +571,7 @@ async function handleTopicUpload(request){
     return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
   }
 
-  const topicTitle=title||file.name.replace(/\.pdf$/i,'');
+  const topicTitle=title;
 
   // Generate first. Admin only gets "success" when both topic + shared vocabulary
   // are ready, so we never silently save an empty vocabulary list.
@@ -825,11 +917,9 @@ async function handlePlacementScore(request){
     ? Math.round(Number(b.transcription_confidence_2)*100)
     : null;
 
-  const allowedByAge=age<=9
+  const allowedByAge=age<15
     ? ['Kid Starter','Kid Communicator']
-    : age<=14
-      ? ['Kid Starter','Kid Communicator','Adult Beginner']
-      : ['Adult Beginner','Adult Intermediate'];
+    : ['Adult Beginner','Adult Intermediate'];
 
   const prompt=`You are the SpeakHub English Placement Assessor.
 
@@ -838,6 +928,13 @@ This is NOT an IELTS/academic English exam. The goal is to place learners into a
 
 AGE: ${age}
 ALLOWED PROGRAMS FOR THIS AGE: ${allowedByAge.join(', ')}
+
+AGE-SPECIFIC PLACEMENT RULE:
+${age<10
+  ? '- Young child: keep the benchmark gentle. The ONLY goal is Kid Starter vs Kid Communicator. Reward understanding, short complete answers, willingness to speak, and basic everyday vocabulary. Never score like an adult exam.'
+  : age<15
+    ? '- Child/young teen: keep the benchmark accessible. The ONLY goal is Kid Starter vs Kid Communicator. Kid Communicator does not require advanced grammar; understanding and connected simple sentences are enough.'
+    : '- Adult benchmark: Adult Intermediate means conversationally fluent and understandable; advanced academic English is NOT required.'}
 
 READING:
 Score: ${readingScore}/100
@@ -958,7 +1055,7 @@ IMPORTANT:
   }
 
   if(!allowedByAge.includes(result.recommended_program_name)){
-    result.recommended_program_name=age<=14?'Kid Communicator':'Adult Beginner';
+    result.recommended_program_name=age<15?'Kid Communicator':'Adult Beginner';
     result.confidence=Math.min(Number(result.confidence||0),0.5);
   }
 
