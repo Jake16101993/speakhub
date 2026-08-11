@@ -553,7 +553,10 @@ async function handleManualBookings(request){
       original_total:amount,
       discount_amount:0,
       total_amount:amount,
-      reschedule_limit:999,
+      // Keep the DB column inside the normal customer constraint.
+      // Admin manual rescheduling does NOT use this counter; the dedicated
+      // admin endpoint allows unlimited moves independently.
+      reschedule_limit:2,
       reschedule_used:0,
       payment_status:'PAID',
       order_status:'CONFIRMED',
