@@ -8,7 +8,12 @@ const supabase=createClient(
 );
 
 function secret(){
-  return process.env.SPEAKHUB_TEACHER_SECRET || process.env.SPEAKHUB_ADMIN_SECRET;
+  // Prefer a dedicated teacher secret, then reuse the existing admin secret.
+  // Final fallback keeps Teacher login working on the current deployment
+  // without requiring another Vercel env variable.
+  return process.env.SPEAKHUB_TEACHER_SECRET
+    || process.env.SPEAKHUB_ADMIN_SECRET
+    || process.env.SUPABASE_SECRET_KEY;
 }
 function signTeacherToken(account){
   const s=secret();
@@ -74,7 +79,14 @@ async function login(request){
     p_username:username,
     p_password:password
   });
-  if(error) throw error;
+
+  if(error){
+    console.error('verify_teacher_login RPC error', error);
+    return Response.json({
+      error:'TEACHER_LOGIN_RPC_FAILED',
+      details:error.message||String(error)
+    },{status:500});
+  }
 
   const raw=Array.isArray(data)?data[0]:data;
   if(!raw) return Response.json({error:'INVALID_LOGIN'},{status:401});
@@ -278,6 +290,10 @@ export default async function handler(request){
     return Response.json({error:'NOT_FOUND'},{status:404});
   }catch(err){
     console.error('teacher api error',err);
-    return Response.json({error:'TEACHER_API_ERROR',details:err?.message||String(err)},{status:500});
+    return Response.json({
+      error:'TEACHER_API_ERROR',
+      details:err?.message||String(err),
+      action:(new URL(request.url)).searchParams.get('action')||''
+    },{status:500});
   }
 }
