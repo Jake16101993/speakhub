@@ -1765,6 +1765,51 @@ async function handleProgressHistory(request){
 }
 
 
+
+function normalizePricingTiers(input){
+  if(!Array.isArray(input)||!input.length) throw new Error('PRICE_TIERS_REQUIRED');
+  const tiers=input.map(x=>({
+    min_sessions:Number(x.min_sessions),
+    max_sessions:(x.max_sessions===null||x.max_sessions===''||x.max_sessions===undefined)?null:Number(x.max_sessions),
+    unit_price:Number(x.unit_price)
+  })).sort((a,b)=>a.min_sessions-b.min_sessions);
+  if(tiers[0].min_sessions!==1) throw new Error('PRICE_TIERS_MUST_START_AT_1');
+  for(let i=0;i<tiers.length;i++){
+    const t=tiers[i];
+    if(!Number.isInteger(t.min_sessions)||t.min_sessions<1) throw new Error('INVALID_PRICE_MIN');
+    if(!Number.isInteger(t.unit_price)||t.unit_price<0) throw new Error('INVALID_UNIT_PRICE');
+    if(t.max_sessions!==null && (!Number.isInteger(t.max_sessions)||t.max_sessions<t.min_sessions)) throw new Error('INVALID_PRICE_MAX');
+    if(i<tiers.length-1){
+      if(t.max_sessions===null) throw new Error('ONLY_LAST_TIER_CAN_BE_OPEN_ENDED');
+      if(tiers[i+1].min_sessions!==t.max_sessions+1) throw new Error('PRICE_TIERS_MUST_BE_CONTIGUOUS');
+    }else if(t.max_sessions!==null){
+      throw new Error('LAST_PRICE_TIER_MUST_BE_OPEN_ENDED');
+    }
+  }
+  return tiers;
+}
+async function handlePrice(request){
+  if(request.method==='GET'){
+    const {data,error}=await supabase.from('pricing_config').select('landing_price,tiers,updated_at').eq('id',1).maybeSingle();
+    if(error) throw error;
+    return Response.json(data||{landing_price:89000,tiers:[
+      {min_sessions:1,max_sessions:3,unit_price:119000},
+      {min_sessions:4,max_sessions:7,unit_price:99000},
+      {min_sessions:8,max_sessions:null,unit_price:89000}
+    ]});
+  }
+  if(request.method==='POST'){
+    const body=await request.json().catch(()=>({}));
+    const landing=Number(body.landing_price);
+    if(!Number.isInteger(landing)||landing<0) throw new Error('INVALID_LANDING_PRICE');
+    const tiers=normalizePricingTiers(body.tiers);
+    const {data,error}=await supabase.from('pricing_config').upsert({id:1,landing_price:landing,tiers,updated_at:new Date().toISOString()},{onConflict:'id'}).select('landing_price,tiers,updated_at').single();
+    if(error) throw error;
+    return Response.json(data);
+  }
+  return Response.json({error:'Method not allowed'},{status:405});
+}
+
 function sleep(ms){
   return new Promise(resolve=>setTimeout(resolve,ms));
 }
@@ -1815,6 +1860,7 @@ export default {
       }
 
       if(action==='overview') return await runAdminActionWithRetry(()=>handleOverview());
+      if(action==='price') return await runAdminActionWithRetry(()=>handlePrice(request));
       if(action==='sessions') return await runAdminActionWithRetry(()=>handleSessions(request));
       if(action==='customers') return await runAdminActionWithRetry(()=>handleCustomers(request));
       if(action==='bookings') return await runAdminActionWithRetry(()=>handleBookings(request));
