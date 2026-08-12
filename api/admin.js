@@ -152,7 +152,19 @@ async function handleOverview(){
     const {data,error}=await supabase.from('website_visits').select('visitor_id').gte('last_seen_at',from).lt('last_seen_at',to);
     if(error)throw error;return new Set((data||[]).map(x=>x.visitor_id).filter(Boolean)).size;
   }
-  const [visDay,visWeek,visMonth]=await Promise.all([uniqueVisitors(dayStart,dayEnd),uniqueVisitors(weekStart,weekEnd),uniqueVisitors(monthStart,monthEnd)]);
+  const chartFrom=addDaysISO(today,-29);
+  const onlineSince=new Date(Date.now()-75*1000).toISOString();
+  const [visDay,visWeek,visMonth,onlineRes,chartRes]=await Promise.all([
+    uniqueVisitors(dayStart,dayEnd),uniqueVisitors(weekStart,weekEnd),uniqueVisitors(monthStart,monthEnd),
+    supabase.from('website_visits').select('visitor_id').gte('last_seen_at',onlineSince),
+    supabase.from('website_visits').select('visitor_id,visited_on').gte('visited_on',chartFrom).lte('visited_on',today)
+  ]);
+  if(onlineRes.error)throw onlineRes.error;if(chartRes.error)throw chartRes.error;
+  const onlineVisitors=new Set((onlineRes.data||[]).map(x=>x.visitor_id).filter(Boolean)).size;
+  const dailyMap={};
+  for(let i=0;i<30;i++)dailyMap[addDaysISO(chartFrom,i)]=new Set();
+  for(const x of (chartRes.data||[])){if(dailyMap[x.visited_on]&&x.visitor_id)dailyMap[x.visited_on].add(x.visitor_id);}
+  const visits30=Object.entries(dailyMap).map(([date,set])=>({date,visitors:set.size}));
   return Response.json({
     counts:{customers:c.count||0,paid_orders:o.count||0,confirmed_bookings:b.count||0,open_sessions:s.count||0},
     analytics:{
@@ -164,7 +176,7 @@ async function handleOverview(){
       paid_amount:{week:sum(mw.data),month:sum(mm.data)},
       fill_rate:{previous_week:fill(prev.data),current_week:fill(week.data),next_week:fill(next.data)},
       ranges:w,
-      website_visits:{day:visDay,week:visWeek,month:visMonth}
+      website_visits:{day:visDay,week:visWeek,month:visMonth,online:onlineVisitors,daily_30:visits30}
     }
   });
 }
