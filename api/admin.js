@@ -989,6 +989,42 @@ async function placementUsage(customerId){
   return dailyTestUsage(customerId,'PLACEMENT');
 }
 
+async function dailyPlacementUsage(customerId,visitorId){
+  const b=vnTodayBounds();
+  let q=supabase.from('test_attempts')
+    .select('*',{count:'exact',head:true})
+    .eq('test_type','PLACEMENT')
+    .gte('created_at',b.start)
+    .lt('created_at',b.end);
+
+  if(customerId) q=q.eq('customer_id',customerId);
+  else q=q.eq('visitor_id',visitorId).is('customer_id',null);
+
+  const {count,error}=await q;
+  if(error)throw error;
+  const used=Number(count||0),limit=3;
+  return {used,remaining:Math.max(0,limit-used),limit,date:b.day};
+}
+async function recordPlacementAttempt(customerId,visitorId){
+  const row={
+    customer_id:customerId||null,
+    visitor_id:customerId?null:visitorId,
+    test_type:'PLACEMENT'
+  };
+  const {error}=await supabase.from('test_attempts').insert(row);
+  if(error)throw error;
+}
+async function resolvePlacementIdentity(customerId,token,visitorId){
+  if(customerId||token){
+    const auth=await requireActiveCustomer(customerId,token);
+    if(auth.error)return {error:auth.error,status:auth.status};
+    return {customerId:auth.customer.id,visitorId:null,customer:auth.customer};
+  }
+  const v=String(visitorId||'').slice(0,120);
+  if(!v)return {error:'PLACEMENT_IDENTITY_REQUIRED',status:400};
+  return {customerId:null,visitorId:v,customer:null};
+}
+
 async function handlePlacementStatus(request){
   if(request.method!=='GET'){
     return Response.json({error:'Method not allowed'},{status:405});
@@ -997,11 +1033,12 @@ async function handlePlacementStatus(request){
   const url=new URL(request.url);
   const customerId=url.searchParams.get('customer_id');
   const token=url.searchParams.get('token');
+  const visitorId=url.searchParams.get('visitor_id');
 
-  const auth=await requireActiveCustomer(customerId,token);
-  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+  const ident=await resolvePlacementIdentity(customerId,token,visitorId);
+  if(ident.error)return Response.json({error:ident.error},{status:ident.status});
 
-  return Response.json(await placementUsage(customerId));
+  return Response.json(await dailyPlacementUsage(ident.customerId,ident.visitorId));
 }
 
 function averageTranscriptionConfidence(logprobs){
@@ -1025,14 +1062,16 @@ async function handlePlacementTranscribe(request){
   const fd=await request.formData();
   const customerId=String(fd.get('customer_id')||'');
   const token=String(fd.get('token')||'');
+  const visitorId=String(fd.get('visitor_id')||'');
   const audio=fd.get('audio');
 
-  const auth=await requireActiveCustomer(customerId,token);
-  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
-  const usageBefore=await dailyTestUsage(customerId,'PLACEMENT');
+  const ident=await resolvePlacementIdentity(customerId,token,visitorId);
+  if(ident.error) return Response.json({error:ident.error},{status:ident.status});
+
+  const usageBefore=await dailyPlacementUsage(ident.customerId,ident.visitorId);
   if(usageBefore.remaining<=0) return Response.json({error:'TEST_DAILY_LIMIT',usage:usageBefore},{status:429});
 
-  // Daily test limit enforced server-side.
+  // Daily test limit enforced server-side for both customers and guests.
   if(!audio || typeof audio.arrayBuffer!=='function'){
     return Response.json({error:'AUDIO_REQUIRED'},{status:400});
   }
@@ -1149,11 +1188,15 @@ async function handlePlacementScore(request){
   const b=await request.json().catch(()=>({}));
   const customerId=String(b.customer_id||'');
   const token=String(b.token||'');
+  const visitorId=String(b.visitor_id||'');
 
-  const auth=await requireActiveCustomer(customerId,token);
-  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+  const ident=await resolvePlacementIdentity(customerId,token,visitorId);
+  if(ident.error) return Response.json({error:ident.error},{status:ident.status});
 
-  // TEST MODE: weekly placement limit temporarily disabled.
+  const usageBefore=await dailyPlacementUsage(ident.customerId,ident.visitorId);
+  if(usageBefore.remaining<=0) return Response.json({error:'TEST_DAILY_LIMIT',usage:usageBefore},{status:429});
+
+  // Anonymous users may take placement tests; booked customers keep account-linked history.
   const birthYear=Number(b.birth_year||0);
   const nowYear=new Date().getFullYear();
   const age=nowYear-birthYear;
@@ -1342,7 +1385,8 @@ IMPORTANT:
   if(programErr) throw programErr;
 
   const insertRow={
-    customer_id:customerId,
+    customer_id:ident.customerId,
+    visitor_id:ident.customerId?null:ident.visitorId,
     birth_year:birthYear,
     age_at_test:age,
     reading_score:readingScore,
@@ -1379,14 +1423,14 @@ IMPORTANT:
 
   if(saveErr) throw saveErr;
 
-  await recordTestAttempt(customerId,'PLACEMENT');
+  await recordPlacementAttempt(ident.customerId,ident.visitorId);
   return Response.json({
     success:true,
     placement_test_id:saved.id,
     created_at:saved.created_at,
     program_id:program?.id||null,
     ...result,
-    usage:await placementUsage(customerId)
+    usage:await dailyPlacementUsage(ident.customerId,ident.visitorId)
   });
 }
 
@@ -1399,11 +1443,12 @@ async function handlePlacementHistory(request){
   const url=new URL(request.url);
   const customerId=url.searchParams.get('customer_id');
   const token=url.searchParams.get('token');
+  const visitorId=url.searchParams.get('visitor_id');
 
-  const auth=await requireActiveCustomer(customerId,token);
-  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+  const ident=await resolvePlacementIdentity(customerId,token,visitorId);
+  if(ident.error)return Response.json({error:ident.error},{status:ident.status});
 
-  const {data,error}=await supabase
+  let q=supabase
     .from('placement_tests')
     .select(`
       id,created_at,birth_year,age_at_test,reading_score,
@@ -1412,11 +1457,14 @@ async function handlePlacementHistory(request){
       recommended_program_id,recommended_program_name,ai_confidence,
       summary_vi,strengths_vi,improvements_vi,grammar_examples,raw_result,status
     `)
-    .eq('customer_id',customerId)
     .eq('status','COMPLETED')
     .order('created_at',{ascending:false})
     .limit(30);
 
+  if(ident.customerId) q=q.eq('customer_id',ident.customerId);
+  else q=q.eq('visitor_id',ident.visitorId).is('customer_id',null);
+
+  const {data,error}=await q;
   if(error) throw error;
 
   return Response.json({
