@@ -130,6 +130,16 @@ button.primary.ui-button-busy::after{
   cursor:pointer;
   white-space:nowrap;
 }
+
+.admin-chat-grid{display:grid;grid-template-columns:310px minmax(0,1fr);gap:12px}
+.admin-chat-threads{border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:560px}
+.admin-chat-thread{padding:11px;border-bottom:1px solid var(--line);cursor:pointer}.admin-chat-thread:hover{background:#f5faf8}.admin-chat-thread.on{background:var(--gs)}
+.admin-chat-thread b{display:block}.admin-chat-thread small{color:var(--muted)}
+.admin-chat-panel{border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+.admin-chat-messages{height:430px;overflow:auto;background:#fbfdfc;border-radius:10px;padding:10px}
+.admin-chat-msg{max-width:78%;padding:9px 11px;border-radius:11px;background:#eef2f0;margin:7px 0}.admin-chat-msg.admin{margin-left:auto;background:var(--gs)}
+.admin-chat-input{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:10px}.admin-chat-input input{border:1px solid var(--line);border-radius:10px;padding:10px}
+@media(max-width:700px){.admin-chat-grid{grid-template-columns:1fr}.admin-chat-messages{height:330px}}
 </style>
 
 <style>
@@ -291,6 +301,7 @@ button.primary.ui-button-busy::after{
       <button class="tab" onclick="showTab('topics',this)">Topics</button>
       <button class="tab" onclick="showTab('manual',this);setTimeout(loadManual,0)">Thêm thủ công</button>
       <button class="tab" onclick="showTab('price',this);setTimeout(loadPrice,0)">Price</button>
+      <button class="tab" onclick="showTab('chat',this);setTimeout(loadAdminChatThreads,0)">Chat</button>
     </div>
 
     <section id="tab-overview"></section>
@@ -312,6 +323,21 @@ button.primary.ui-button-busy::after{
         <div id="priceTiers" style="display:grid;gap:10px;margin-top:14px"></div>
         <button id="savePriceBtn" class="btn primary" style="width:100%;margin-top:14px" onclick="savePrice()">Lưu bảng giá</button>
         <div id="priceMsg"></div>
+      </div>
+    </section>
+
+    <section id="tab-chat" class="hidden">
+      <div class="card">
+        <h3 style="margin-top:0">Chat SpeakHub</h3>
+        <p class="muted">Tin nhắn user gửi từ tab Chat SpeakHub.</p>
+        <div class="admin-chat-grid">
+          <div id="adminChatThreads" class="admin-chat-threads">Đang tải...</div>
+          <div class="admin-chat-panel">
+            <div id="adminChatTitle" style="font-weight:900;margin-bottom:10px">Chọn một học viên</div>
+            <div id="adminChatMessages" class="admin-chat-messages"></div>
+            <div class="admin-chat-input"><input id="adminChatText" placeholder="Nhập phản hồi..." onkeydown="if(event.key==='Enter')sendAdminChat()"><button class="btn primary" onclick="sendAdminChat()">Gửi</button></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -596,6 +622,34 @@ async function savePrice(){
   finally{btn.disabled=false;btn.textContent='Lưu bảng giá'}
 }
 
+
+let adminChatCurrentCustomer=null;
+async function loadAdminChatThreads(){
+  const d=await api('/api/admin?action=admin-chat');
+  const host=document.getElementById('adminChatThreads');if(!host)return;
+  host.innerHTML=(d.threads||[]).map(t=>`<div class="admin-chat-thread ${String(t.customer_id)===String(adminChatCurrentCustomer)?'on':''}" onclick="openAdminChat('${t.customer_id}','${String(t.full_name||'').replace(/'/g,"&#39;")}','${String(t.phone||'').replace(/'/g,"&#39;")}')">
+    <div style="display:flex;justify-content:space-between;gap:8px"><b>${t.full_name||'Học viên'}</b>${Number(t.unread||0)>0?`<span class="badge">${t.unread}</span>`:''}</div>
+    <small>${t.phone||''}</small><div class="muted" style="font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.last_message||''}</div>
+  </div>`).join('')||'<div class="muted" style="padding:14px">Chưa có hội thoại.</div>';
+}
+async function openAdminChat(customerId,name,phone){
+  adminChatCurrentCustomer=customerId;
+  document.getElementById('adminChatTitle').textContent=`${name||'Học viên'} · ${phone||''}`;
+  const d=await api(`/api/admin?action=admin-chat&customer_id=${encodeURIComponent(customerId)}`);
+  const host=document.getElementById('adminChatMessages');
+  host.innerHTML=(d.messages||[]).map(m=>`<div class="admin-chat-msg ${m.sender==='ADMIN'?'admin':''}">${String(m.body||'').replace(/</g,'&lt;')}</div>`).join('')||'<div class="muted">Chưa có tin nhắn.</div>';
+  host.scrollTop=host.scrollHeight;await loadAdminChatThreads();
+}
+async function sendAdminChat(){
+  if(!adminChatCurrentCustomer)return;
+  const input=document.getElementById('adminChatText'),text=(input?.value||'').trim();if(!text)return;
+  input.value='';
+  await api('/api/admin?action=admin-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_id:adminChatCurrentCustomer,text})});
+  const current=adminChatCurrentCustomer;
+  const title=document.getElementById('adminChatTitle').textContent.split(' · ');
+  await openAdminChat(current,title[0]||'',title[1]||'');
+}
+
 async function loadOverview(){
   const d=await api('/api/admin?action=overview');
   const a=d.analytics||{};
@@ -614,6 +668,9 @@ async function loadOverview(){
       <div class="card overview-metric"><span>Tests trong tuần</span><b>${Number(a.tests_this_week?.placement||0)} / ${Number(a.tests_this_week?.progress||0)}</b><small>Xếp lớp / Tiến bộ</small></div>
       <div class="card overview-metric"><span>Tests toàn bộ</span><b>${Number(a.tests_all?.placement||0)} / ${Number(a.tests_all?.progress||0)}</b><small>Xếp lớp / Tiến bộ</small></div>
       <div class="card overview-metric"><span>Paid tuần / tháng</span><b class="money-metric">${money(a.paid_amount?.week)} / ${money(a.paid_amount?.month)}</b><small>Đã PAID</small></div>
+      <div class="card overview-metric"><span>Truy cập hôm nay</span><b>${Number(a.website_visits?.day||0)}</b><small>Unique visitor</small></div>
+      <div class="card overview-metric"><span>Truy cập tuần</span><b>${Number(a.website_visits?.week||0)}</b><small>Unique visitor</small></div>
+      <div class="card overview-metric"><span>Truy cập tháng</span><b>${Number(a.website_visits?.month||0)}</b><small>Unique visitor</small></div>
     </div>
     <div class="card overview-fill-card">
       <div><h3 style="margin:0">Tỷ lệ lấp đầy trung bình</h3><div class="muted" style="font-size:12px;margin-top:4px">Booking / tổng sức chứa session</div></div>
