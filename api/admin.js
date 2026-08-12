@@ -1941,21 +1941,92 @@ async function handleCommunity(request){
 async function handleChat(request){
   const u=new URL(request.url);
   const b=request.method==='POST'?await request.json().catch(()=>({})):{};
-  const customerId=b.customer_id||u.searchParams.get('customer_id'),token=b.token||u.searchParams.get('token');
-  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
-  if(request.method==='POST'){
-    const text=String(b.text||'').trim();if(!text)return Response.json({error:'MESSAGE_REQUIRED'},{status:400});
-    const {error}=await supabase.from('support_messages').insert({customer_id:customerId,sender:'USER',body:text,read_by_user:true,read_by_admin:false});
-    if(error)throw error;return Response.json({success:true});
+
+  const customerId=b.customer_id||u.searchParams.get('customer_id')||'';
+  const token=b.token||u.searchParams.get('token')||'';
+  const visitorId=String(b.visitor_id||u.searchParams.get('visitor_id')||'').slice(0,120);
+
+  let customer=null;
+  if(customerId||token){
+    const auth=await requireActiveCustomer(customerId,token);
+    if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+    customer=auth.customer;
+  }else if(!visitorId){
+    return Response.json({error:'CHAT_IDENTITY_REQUIRED'},{status:400});
   }
-  const {data,error}=await supabase.from('support_messages').select('id,sender,body,created_at').eq('customer_id',customerId).order('created_at');
+
+  if(request.method==='POST'){
+    const text=String(b.text||'').trim();
+    const clientMessageId=String(b.client_message_id||'').slice(0,120);
+    if(!text)return Response.json({error:'MESSAGE_REQUIRED'},{status:400});
+
+    const row={
+      customer_id:customer?.id||null,
+      visitor_id:customer?.id?null:visitorId,
+      sender:'USER',
+      body:text,
+      read_by_user:true,
+      read_by_admin:false,
+      client_message_id:clientMessageId||null
+    };
+
+    if(clientMessageId){
+      const {error}=await supabase.from('support_messages')
+        .upsert(row,{onConflict:'client_message_id',ignoreDuplicates:true});
+      if(error)throw error;
+    }else{
+      const {error}=await supabase.from('support_messages').insert(row);
+      if(error)throw error;
+    }
+    return Response.json({success:true});
+  }
+
+  let q=supabase.from('support_messages').select('id,sender,body,created_at');
+  if(customer?.id) q=q.eq('customer_id',customer.id);
+  else q=q.eq('visitor_id',visitorId).is('customer_id',null);
+
+  const {data,error}=await q.order('created_at');
   if(error)throw error;
-  await supabase.from('support_messages').update({read_by_user:true}).eq('customer_id',customerId).eq('sender','ADMIN').eq('read_by_user',false);
+
+  let mark=supabase.from('support_messages').update({read_by_user:true})
+    .eq('sender','ADMIN').eq('read_by_user',false);
+  if(customer?.id) mark=mark.eq('customer_id',customer.id);
+  else mark=mark.eq('visitor_id',visitorId).is('customer_id',null);
+  await mark;
+
   return Response.json({messages:data||[]});
 }
 async function handleAccountBadges(request){
-  const u=new URL(request.url),customerId=u.searchParams.get('customer_id'),token=u.searchParams.get('token');
-  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const u=new URL(request.url);
+  const customerId=u.searchParams.get('customer_id')||'';
+  const token=u.searchParams.get('token')||'';
+  const visitorId=String(u.searchParams.get('visitor_id')||'').slice(0,120);
+
+  if(!customerId||!token){
+    if(!visitorId){
+      return Response.json({
+        notification_unread:0,community_unread:0,chat_unread:0,
+        placement:{used:0,remaining:3,limit:3},
+        progress:{used:0,remaining:3,limit:3}
+      });
+    }
+    const {count:chatUnread,error}=await supabase.from('support_messages')
+      .select('*',{count:'exact',head:true})
+      .eq('visitor_id',visitorId)
+      .is('customer_id',null)
+      .eq('sender','ADMIN')
+      .eq('read_by_user',false);
+    if(error)throw error;
+    return Response.json({
+      notification_unread:0,community_unread:0,chat_unread:chatUnread||0,
+      placement:{used:0,remaining:3,limit:3},
+      progress:{used:0,remaining:3,limit:3}
+    });
+  }
+
+  const auth=await requireActiveCustomer(customerId,token);
+  if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+
   const ids=await relevantSessionIds(customerId);
   let notificationUnread=0;
   if(ids.length){
@@ -1965,19 +2036,37 @@ async function handleAccountBadges(request){
     if(eventIds.length){
       const {data:reads,error:rErr}=await supabase.from('notification_reads').select('event_id').eq('customer_id',customerId).in('event_id',eventIds);
       if(rErr)throw rErr;
-      const rs=new Set((reads||[]).map(x=>x.event_id));notificationUnread=eventIds.filter(id=>!rs.has(id)).length;
+      const rs=new Set((reads||[]).map(x=>x.event_id));
+      notificationUnread=eventIds.filter(id=>!rs.has(id)).length;
     }
   }
-  const {data:cr,error:crErr}=await supabase.from('community_read_state').select('last_seen_at').eq('customer_id',customerId).maybeSingle();
+
+  const {data:cr,error:crErr}=await supabase.from('community_read_state')
+    .select('last_seen_at').eq('customer_id',customerId).maybeSingle();
   if(crErr)throw crErr;
+
   let cq=supabase.from('community_posts').select('*',{count:'exact',head:true});
   if(cr?.last_seen_at)cq=cq.gt('created_at',cr.last_seen_at);
   const cRes=await cq;if(cRes.error)throw cRes.error;
-  const {count:chatUnread,error:chatErr}=await supabase.from('support_messages').select('*',{count:'exact',head:true})
-    .eq('customer_id',customerId).eq('sender','ADMIN').eq('read_by_user',false);
+
+  const {count:chatUnread,error:chatErr}=await supabase.from('support_messages')
+    .select('*',{count:'exact',head:true})
+    .eq('customer_id',customerId)
+    .eq('sender','ADMIN')
+    .eq('read_by_user',false);
   if(chatErr)throw chatErr;
-  const [placement,progress]=await Promise.all([dailyTestUsage(customerId,'PLACEMENT'),dailyTestUsage(customerId,'PROGRESS')]);
-  return Response.json({notification_unread:notificationUnread,community_unread:cRes.count||0,chat_unread:chatUnread||0,placement,progress});
+
+  const [placement,progress]=await Promise.all([
+    dailyTestUsage(customerId,'PLACEMENT'),
+    dailyTestUsage(customerId,'PROGRESS')
+  ]);
+
+  return Response.json({
+    notification_unread:notificationUnread,
+    community_unread:cRes.count||0,
+    chat_unread:chatUnread||0,
+    placement,progress
+  });
 }
 async function handleTrackVisit(request){
   if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
@@ -1989,26 +2078,85 @@ async function handleTrackVisit(request){
 }
 async function handleAdminChat(request){
   if(request.method==='GET'){
-    const u=new URL(request.url),customerId=u.searchParams.get('customer_id');
-    if(customerId){
-      const {data:messages,error}=await supabase.from('support_messages').select('id,sender,body,created_at,read_by_admin').eq('customer_id',customerId).order('created_at');
+    const u=new URL(request.url);
+    const threadKey=String(u.searchParams.get('thread_key')||'');
+
+    if(threadKey){
+      const [kind,id]=threadKey.split(':',2);
+      let q=supabase.from('support_messages').select('id,sender,body,created_at,read_by_admin');
+      if(kind==='customer') q=q.eq('customer_id',id);
+      else if(kind==='visitor') q=q.eq('visitor_id',id).is('customer_id',null);
+      else return Response.json({error:'INVALID_THREAD_KEY'},{status:400});
+
+      const {data:messages,error}=await q.order('created_at');
       if(error)throw error;
-      await supabase.from('support_messages').update({read_by_admin:true}).eq('customer_id',customerId).eq('sender','USER').eq('read_by_admin',false);
+
+      let mark=supabase.from('support_messages').update({read_by_admin:true})
+        .eq('sender','USER').eq('read_by_admin',false);
+      if(kind==='customer') mark=mark.eq('customer_id',id);
+      else mark=mark.eq('visitor_id',id).is('customer_id',null);
+      await mark;
+
       return Response.json({messages:messages||[]});
     }
-    const {data:msgs,error}=await supabase.from('support_messages').select('customer_id,sender,body,created_at,read_by_admin,customers(full_name,phone)').order('created_at',{ascending:false}).limit(1000);
+
+    const {data:msgs,error}=await supabase.from('support_messages').select(
+      'customer_id,visitor_id,sender,body,created_at,read_by_admin,customers(full_name,phone)'
+    ).order('created_at',{ascending:false}).limit(1000);
     if(error)throw error;
+
     const map=new Map();
     for(const m of (msgs||[])){
-      if(!map.has(m.customer_id))map.set(m.customer_id,{customer_id:m.customer_id,full_name:m.customers?.full_name||'',phone:m.customers?.phone||'',last_message:m.body,last_at:m.created_at,unread:0});
-      if(m.sender==='USER'&&!m.read_by_admin)map.get(m.customer_id).unread++;
+      const key=m.customer_id?`customer:${m.customer_id}`:`visitor:${m.visitor_id}`;
+      if(!key || key==='visitor:null')continue;
+      if(!map.has(key)){
+        map.set(key,{
+          thread_key:key,
+          customer_id:m.customer_id||null,
+          visitor_id:m.visitor_id||null,
+          full_name:m.customer_id?(m.customers?.full_name||'Học viên'):'Người lạ',
+          phone:m.customer_id?(m.customers?.phone||''):'',
+          last_message:m.body,
+          last_at:m.created_at,
+          unread:0
+        });
+      }
+      if(m.sender==='USER'&&!m.read_by_admin)map.get(key).unread++;
     }
-    return Response.json({threads:[...map.values()].sort((a,b)=>String(b.last_at).localeCompare(String(a.last_at)))});
+
+    return Response.json({
+      threads:[...map.values()].sort((a,b)=>String(b.last_at).localeCompare(String(a.last_at)))
+    });
   }
-  const b=await request.json().catch(()=>({}));const customerId=String(b.customer_id||''),text=String(b.text||'').trim();
-  if(!customerId||!text)return Response.json({error:'MISSING_FIELDS'},{status:400});
-  const {error}=await supabase.from('support_messages').insert({customer_id:customerId,sender:'ADMIN',body:text,read_by_admin:true,read_by_user:false});
-  if(error)throw error;return Response.json({success:true});
+
+  const b=await request.json().catch(()=>({}));
+  const threadKey=String(b.thread_key||'');
+  const text=String(b.text||'').trim();
+  if(!threadKey||!text)return Response.json({error:'MISSING_FIELDS'},{status:400});
+
+  const [kind,id]=threadKey.split(':',2);
+  const row={
+    customer_id:kind==='customer'?id:null,
+    visitor_id:kind==='visitor'?id:null,
+    sender:'ADMIN',
+    body:text,
+    read_by_admin:true,
+    read_by_user:false,
+    client_message_id:String(b.client_message_id||'').slice(0,120)||null
+  };
+
+  if(!row.customer_id&&!row.visitor_id)return Response.json({error:'INVALID_THREAD_KEY'},{status:400});
+
+  if(row.client_message_id){
+    const {error}=await supabase.from('support_messages')
+      .upsert(row,{onConflict:'client_message_id',ignoreDuplicates:true});
+    if(error)throw error;
+  }else{
+    const {error}=await supabase.from('support_messages').insert(row);
+    if(error)throw error;
+  }
+
+  return Response.json({success:true});
 }
 function sleep(ms){
   return new Promise(resolve=>setTimeout(resolve,ms));
