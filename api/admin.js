@@ -536,14 +536,8 @@ async function handleManualBookings(request){
         return Response.json({error:`Session ${session.session_date} ${String(session.starts_at).slice(0,5)} đã FULL.`},{status:400});
       }
 
-      const {data:dup,error:dErr}=await supabase
-        .from('bookings').select('id')
-        .eq('user_id',customerId)
-        .eq('session_id',session.id)
-        .in('status',['PENDING','CONFIRMED','ATTENDED','NO_SHOW'])
-        .maybeSingle();
-      if(dErr) throw dErr;
-      if(dup) return Response.json({error:`Học viên đã có booking ở session ${session.session_date} ${String(session.starts_at).slice(0,5)}.`},{status:400});
+      // Same phone/customer may intentionally book another seat in the same session.
+      // Capacity is still enforced above; each booking row counts as one seat.
     }
 
     // Use noon Vietnam time so selecting a paid calendar date never shifts to
@@ -636,11 +630,8 @@ async function handleManualReschedule(request){
   if(cErr) throw cErr;
   if(Number(count||0)>=Number(target.capacity||0)) return Response.json({error:'SESSION_FULL'},{status:400});
 
-  const {data:dup,error:dErr}=await supabase.from('bookings').select('id')
-    .eq('user_id',booking.user_id).eq('session_id',targetId)
-    .in('status',['PENDING','CONFIRMED','ATTENDED','NO_SHOW']).maybeSingle();
-  if(dErr) throw dErr;
-  if(dup) return Response.json({error:'ALREADY_BOOKED_TARGET_SESSION'},{status:400});
+  // Admin may move this booking into a session where the same customer
+  // already has another seat. Capacity remains the only seat-limit rule.
 
   const {error:uErr}=await supabase.from('bookings').update({session_id:targetId}).eq('id',bookingId);
   if(uErr) throw uErr;
