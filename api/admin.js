@@ -2018,15 +2018,15 @@ async function handleChat(request){
       client_message_id:clientMessageId||null
     };
 
-    if(clientMessageId){
-      const {error}=await supabase.from('support_messages')
-        .upsert(row,{onConflict:'client_message_id',ignoreDuplicates:true});
-      if(error)throw error;
-    }else{
-      const {error}=await supabase.from('support_messages').insert(row);
-      if(error)throw error;
-    }
-    return Response.json({success:true});
+    // Do not use upsert(onConflict: client_message_id) here.
+    // The DB uses a partial unique index for non-null message IDs, and
+    // PostgREST cannot reliably infer that index for ON CONFLICT.
+    // A normal insert is correct; if a network retry sends the same
+    // client_message_id twice, treat PostgreSQL 23505 as success.
+    const {error}=await supabase.from('support_messages').insert(row);
+    if(error && String(error.code||'')!=='23505') throw error;
+
+    return Response.json({success:true,duplicate:String(error?.code||'')==='23505'});
   }
 
   let q=supabase.from('support_messages').select('id,sender,body,created_at');
@@ -2195,16 +2195,10 @@ async function handleAdminChat(request){
 
   if(!row.customer_id&&!row.visitor_id)return Response.json({error:'INVALID_THREAD_KEY'},{status:400});
 
-  if(row.client_message_id){
-    const {error}=await supabase.from('support_messages')
-      .upsert(row,{onConflict:'client_message_id',ignoreDuplicates:true});
-    if(error)throw error;
-  }else{
-    const {error}=await supabase.from('support_messages').insert(row);
-    if(error)throw error;
-  }
+  const {error}=await supabase.from('support_messages').insert(row);
+  if(error && String(error.code||'')!=='23505') throw error;
 
-  return Response.json({success:true});
+  return Response.json({success:true,duplicate:String(error?.code||'')==='23505'});
 }
 function sleep(ms){
   return new Promise(resolve=>setTimeout(resolve,ms));
@@ -2253,7 +2247,17 @@ export default {
       if(action==='progress-status') return await handleProgressStatus(request);
       if(action==='notifications') return await handleNotifications(request);
       if(action==='community') return await handleCommunity(request);
-      if(action==='chat') return await handleChat(request);
+      if(action==='chat'){
+        try{
+          return await handleChat(request);
+        }catch(err){
+          console.error('chat api error',err);
+          return Response.json(
+            {error:'CHAT_API_ERROR',details:String(err?.message||err),code:String(err?.code||'')},
+            {status:500}
+          );
+        }
+      }
       if(action==='account-badges') return await handleAccountBadges(request);
       if(action==='track-visit') return await handleTrackVisit(request);
 
