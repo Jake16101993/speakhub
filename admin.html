@@ -290,9 +290,30 @@ button.primary.ui-button-busy::after{
       <button class="tab" onclick="showTab('bookings',this)">Bookings</button>
       <button class="tab" onclick="showTab('topics',this)">Topics</button>
       <button class="tab" onclick="showTab('manual',this);setTimeout(loadManual,0)">Thêm thủ công</button>
+      <button class="tab" onclick="showTab('price',this);setTimeout(loadPrice,0)">Price</button>
     </div>
 
     <section id="tab-overview"></section>
+
+    <section id="tab-price" class="hidden">
+      <div class="card">
+        <h3>Price</h3>
+        <div class="muted" style="margin-bottom:14px">Quản lý giá hiển thị và giá tính khi học viên đặt chỗ. Sau khi lưu, backend sẽ dùng bảng giá này để tạo order.</div>
+        <div style="max-width:420px">
+          <label>Giá hiển thị trên Landing Page (đ / buổi)</label>
+          <input id="landingPrice" type="number" min="0" step="1000" placeholder="89000">
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
+          <div><h3 style="margin:0">Bảng giá đặt chỗ</h3><div class="muted" style="font-size:12px;margin-top:4px">Tạo bao nhiêu mức tùy ý. Mức cuối để “Đến” trống = không giới hạn.</div></div>
+          <button class="btn" onclick="addPriceTier()">+ Thêm mức giá</button>
+        </div>
+        <div id="priceTiers" style="display:grid;gap:10px;margin-top:14px"></div>
+        <button id="savePriceBtn" class="btn primary" style="width:100%;margin-top:14px" onclick="savePrice()">Lưu bảng giá</button>
+        <div id="priceMsg"></div>
+      </div>
+    </section>
 
     <section id="tab-sessions" class="hidden">
       <div class="card">
@@ -532,6 +553,49 @@ function showTab(name,btn){
   document.getElementById('tab-'+name).classList.remove('hidden');
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));btn.classList.add('on');
 }
+
+let priceTiers=[];
+function renderPriceTiers(){
+  const host=document.getElementById('priceTiers'); if(!host)return;
+  host.innerHTML=priceTiers.map((t,i)=>`
+    <div class="row" style="align-items:end;border:1px solid #dfe8e4;border-radius:14px;padding:12px">
+      <div><label>Từ số buổi</label><input class="price-min" data-i="${i}" type="number" min="1" value="${Number(t.min_sessions||1)}"></div>
+      <div><label>Đến số buổi</label><input class="price-max" data-i="${i}" type="number" min="1" value="${t.max_sessions==null?'':Number(t.max_sessions)}" placeholder="Không giới hạn"></div>
+      <div><label>Giá / buổi (đ)</label><input class="price-unit" data-i="${i}" type="number" min="0" step="1000" value="${Number(t.unit_price||0)}"></div>
+      <button class="btn" onclick="removePriceTier(${i})" ${priceTiers.length<=1?'disabled':''}>Xóa</button>
+    </div>`).join('');
+}
+function addPriceTier(){
+  const last=priceTiers[priceTiers.length-1];
+  const next=last?.max_sessions?Number(last.max_sessions)+1:(last?Number(last.min_sessions)+1:1);
+  priceTiers.push({min_sessions:next,max_sessions:null,unit_price:last?.unit_price||89000});
+  renderPriceTiers();
+}
+function removePriceTier(i){priceTiers.splice(i,1);renderPriceTiers()}
+async function loadPrice(){
+  const msg=document.getElementById('priceMsg'); if(msg)msg.innerHTML='';
+  try{
+    const d=await api('/api/admin?action=price');
+    document.getElementById('landingPrice').value=Number(d.landing_price||89000);
+    priceTiers=(d.tiers||[]).map(x=>({...x}));
+    if(!priceTiers.length)priceTiers=[{min_sessions:1,max_sessions:3,unit_price:119000},{min_sessions:4,max_sessions:7,unit_price:99000},{min_sessions:8,max_sessions:null,unit_price:89000}];
+    renderPriceTiers();
+  }catch(e){if(msg)msg.innerHTML=`<div class="error">${e.message}</div>`}
+}
+async function savePrice(){
+  const msg=document.getElementById('priceMsg');msg.innerHTML='';
+  const btn=document.getElementById('savePriceBtn');
+  const mins=[...document.querySelectorAll('.price-min')], maxs=[...document.querySelectorAll('.price-max')], units=[...document.querySelectorAll('.price-unit')];
+  const tiers=mins.map((el,i)=>({min_sessions:Number(el.value),max_sessions:maxs[i].value===''?null:Number(maxs[i].value),unit_price:Number(units[i].value)}));
+  btn.disabled=true;btn.textContent='Đang lưu...';
+  try{
+    const d=await api('/api/admin?action=price',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({landing_price:Number(document.getElementById('landingPrice').value),tiers})});
+    priceTiers=d.tiers||tiers;renderPriceTiers();
+    msg.innerHTML='<div class="success">Đã lưu bảng giá thành công.</div>';
+  }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
+  finally{btn.disabled=false;btn.textContent='Lưu bảng giá'}
+}
+
 async function loadOverview(){
   const d=await api('/api/admin?action=overview');
   const a=d.analytics||{};
