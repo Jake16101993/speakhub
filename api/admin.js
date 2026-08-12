@@ -1788,6 +1788,28 @@ function normalizePricingTiers(input){
   }
   return tiers;
 }
+async function handlePublicPrice(){
+  const {data,error}=await supabase.rpc('get_public_pricing');
+  if(error) throw error;
+
+  const fallback={
+    landing_price:89000,
+    tiers:[
+      {min_sessions:1,max_sessions:3,unit_price:119000},
+      {min_sessions:4,max_sessions:7,unit_price:99000},
+      {min_sessions:8,max_sessions:null,unit_price:89000}
+    ]
+  };
+
+  const result=(data && typeof data==='object') ? data : fallback;
+  return Response.json(result,{
+    status:200,
+    headers:{
+      'Cache-Control':'no-store, no-cache, must-revalidate'
+    }
+  });
+}
+
 async function handlePrice(request){
   if(request.method==='GET'){
     const {data,error}=await supabase.from('pricing_config').select('landing_price,tiers,updated_at').eq('id',1).maybeSingle();
@@ -1854,6 +1876,10 @@ export default {
       if(action==='placement-history') return await handlePlacementHistory(request);
       if(action==='progress-score') return await handleProgressScore(request);
       if(action==='progress-history') return await handleProgressHistory(request);
+
+      // Public read-only price config used by landing page and booking UI.
+      // No admin secret is exposed; only landing_price + tiers are returned.
+      if(action==='public-price') return await runAdminActionWithRetry(()=>handlePublicPrice());
 
       if(!requireAdmin(request)){
         return Response.json({error:'UNAUTHORIZED'},{status:401});
