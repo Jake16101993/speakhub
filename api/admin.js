@@ -1789,23 +1789,22 @@ function normalizePricingTiers(input){
   return tiers;
 }
 async function handlePublicPrice(){
-  const {data,error}=await supabase.rpc('get_public_pricing');
+  // Read the exact same pricing_config row used by Admin > Price.
+  // This avoids a second RPC/function becoming stale or missing.
+  const {data,error}=await supabase
+    .from('pricing_config')
+    .select('landing_price,tiers,updated_at')
+    .eq('id',1)
+    .maybeSingle();
   if(error) throw error;
+  if(!data) throw new Error('PRICE_CONFIG_NOT_FOUND');
 
-  const fallback={
-    landing_price:89000,
-    tiers:[
-      {min_sessions:1,max_sessions:3,unit_price:119000},
-      {min_sessions:4,max_sessions:7,unit_price:99000},
-      {min_sessions:8,max_sessions:null,unit_price:89000}
-    ]
-  };
-
-  const result=(data && typeof data==='object') ? data : fallback;
-  return Response.json(result,{
+  return Response.json(data,{
     status:200,
     headers:{
-      'Cache-Control':'no-store, no-cache, must-revalidate'
+      'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0',
+      'CDN-Cache-Control':'no-store',
+      'Vercel-CDN-Cache-Control':'no-store'
     }
   });
 }
