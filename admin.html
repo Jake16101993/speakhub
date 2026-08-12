@@ -623,31 +623,59 @@ async function savePrice(){
 }
 
 
-let adminChatCurrentCustomer=null;
+let adminChatCurrentThread=null;
+
 async function loadAdminChatThreads(){
   const d=await api('/api/admin?action=admin-chat');
   const host=document.getElementById('adminChatThreads');if(!host)return;
-  host.innerHTML=(d.threads||[]).map(t=>`<div class="admin-chat-thread ${String(t.customer_id)===String(adminChatCurrentCustomer)?'on':''}" onclick="openAdminChat('${t.customer_id}','${String(t.full_name||'').replace(/'/g,"&#39;")}','${String(t.phone||'').replace(/'/g,"&#39;")}')">
-    <div style="display:flex;justify-content:space-between;gap:8px"><b>${t.full_name||'Học viên'}</b>${Number(t.unread||0)>0?`<span class="badge">${t.unread}</span>`:''}</div>
-    <small>${t.phone||''}</small><div class="muted" style="font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.last_message||''}</div>
-  </div>`).join('')||'<div class="muted" style="padding:14px">Chưa có hội thoại.</div>';
+  host.innerHTML=(d.threads||[]).map(t=>`
+    <div class="admin-chat-thread ${String(t.thread_key)===String(adminChatCurrentThread)?'on':''}"
+      onclick='openAdminChat(${JSON.stringify(t.thread_key)},${JSON.stringify(t.full_name||"Người lạ")},${JSON.stringify(t.phone||"")})'>
+      <div style="display:flex;justify-content:space-between;gap:8px">
+        <b>${t.full_name||'Người lạ'}</b>
+        ${Number(t.unread||0)>0?`<span class="badge">${t.unread}</span>`:''}
+      </div>
+      <small>${t.phone||'Khách chưa đăng nhập'}</small>
+      <div class="muted" style="font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.last_message||''}</div>
+    </div>`).join('')||'<div class="muted" style="padding:14px">Chưa có hội thoại.</div>';
 }
-async function openAdminChat(customerId,name,phone){
-  adminChatCurrentCustomer=customerId;
-  document.getElementById('adminChatTitle').textContent=`${name||'Học viên'} · ${phone||''}`;
-  const d=await api(`/api/admin?action=admin-chat&customer_id=${encodeURIComponent(customerId)}`);
+
+async function openAdminChat(threadKey,name,phone){
+  adminChatCurrentThread=threadKey;
+  document.getElementById('adminChatTitle').textContent=`${name||'Người lạ'}${phone?' · '+phone:''}`;
+  const d=await api(`/api/admin?action=admin-chat&thread_key=${encodeURIComponent(threadKey)}`);
   const host=document.getElementById('adminChatMessages');
   host.innerHTML=(d.messages||[]).map(m=>`<div class="admin-chat-msg ${m.sender==='ADMIN'?'admin':''}">${String(m.body||'').replace(/</g,'&lt;')}</div>`).join('')||'<div class="muted">Chưa có tin nhắn.</div>';
-  host.scrollTop=host.scrollHeight;await loadAdminChatThreads();
+  host.scrollTop=host.scrollHeight;
+  await loadAdminChatThreads();
 }
+
+let adminChatSending=false;
 async function sendAdminChat(){
-  if(!adminChatCurrentCustomer)return;
-  const input=document.getElementById('adminChatText'),text=(input?.value||'').trim();if(!text)return;
-  input.value='';
-  await api('/api/admin?action=admin-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_id:adminChatCurrentCustomer,text})});
-  const current=adminChatCurrentCustomer;
-  const title=document.getElementById('adminChatTitle').textContent.split(' · ');
-  await openAdminChat(current,title[0]||'',title[1]||'');
+  if(!adminChatCurrentThread||adminChatSending)return;
+  const input=document.getElementById('adminChatText'),text=(input?.value||'').trim();
+  if(!text)return;
+
+  adminChatSending=true;
+  input.disabled=true;
+  try{
+    await api('/api/admin?action=admin-chat',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        thread_key:adminChatCurrentThread,
+        text,
+        client_message_id:(crypto.randomUUID?.()||`admin-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+      })
+    });
+    input.value='';
+    const current=adminChatCurrentThread;
+    const title=document.getElementById('adminChatTitle').textContent.split(' · ');
+    await openAdminChat(current,title[0]||'Người lạ',title[1]||'');
+  }finally{
+    adminChatSending=false;
+    const el=document.getElementById('adminChatText');if(el)el.disabled=false;
+  }
 }
 
 async function loadOverview(){
