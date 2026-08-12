@@ -512,7 +512,7 @@ async function handleManualBookings(request){
     if(!validManualPhone(phone)) return Response.json({error:'SĐT phải gồm 10 số và bắt đầu bằng 0.'},{status:400});
     if(!validManualName(fullName)) return Response.json({error:'Vui lòng nhập đầy đủ họ tên.'},{status:400});
     if(!sessionIds.length) return Response.json({error:'Vui lòng chọn ít nhất 1 session.'},{status:400});
-    if(!Number.isFinite(amount)||amount<=0) return Response.json({error:'Vui lòng nhập số tiền đã nhận.'},{status:400});
+    if(!Number.isFinite(amount)||amount<0) return Response.json({error:'Số tiền đã nhận không được âm.'},{status:400});
     if(!/^\d{4}-\d{2}-\d{2}$/.test(paidDate)) return Response.json({error:'Vui lòng chọn ngày thanh toán thành công.'},{status:400});
 
     const customerId=await ensureManualCustomer(phone,fullName);
@@ -2274,7 +2274,17 @@ export default {
       if(action==='sessions') return await runAdminActionWithRetry(()=>handleSessions(request));
       if(action==='customers') return await runAdminActionWithRetry(()=>handleCustomers(request));
       if(action==='bookings') return await runAdminActionWithRetry(()=>handleBookings(request));
-      if(action==='manual-bookings') return await runAdminActionWithRetry(()=>handleManualBookings(request));
+      if(action==='manual-bookings'){
+        try{
+          return await runAdminActionWithRetry(()=>handleManualBookings(request));
+        }catch(err){
+          console.error('manual booking api error',err);
+          return Response.json(
+            {error:'MANUAL_BOOKING_ERROR',details:String(err?.message||err),code:String(err?.code||'')},
+            {status:500}
+          );
+        }
+      }
       if(action==='manual-reschedule') return await runAdminActionWithRetry(()=>handleManualReschedule(request));
       if(action==='topic-upload') return await runAdminActionWithRetry(()=>handleTopicUpload(request));
       if(action==='topic-delete') return await runAdminActionWithRetry(()=>handleTopicDelete(request));
