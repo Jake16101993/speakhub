@@ -388,8 +388,8 @@ button.primary.ui-button-busy::after{
         </div>
         <div class="row2" style="margin-top:10px">
           <div>
-            <label>Số tiền đã nhận</label>
-            <input id="manualAmount" type="number" min="0" step="1000" inputmode="numeric" placeholder="Ví dụ: 396000">
+            <label>Số tiền đã nhận <span class="muted" style="font-size:11px">(có thể nhập 0đ)</span></label>
+            <input id="manualAmount" type="number" min="0" step="1000" inputmode="numeric" placeholder="0">
           </div>
           <div>
             <label>Ngày thanh toán thành công</label>
@@ -552,7 +552,7 @@ async function api(url,opt={}){
   const res=await fetch(url,{...opt,headers,cache:'no-store'});
   const data=await res.json().catch(()=>({}));
   if(res.status===401){logout();throw new Error('UNAUTHORIZED')}
-  if(!res.ok) throw new Error(data?.error||data?.details||'REQUEST_FAILED');
+  if(!res.ok) throw new Error(data?.details||data?.error||'REQUEST_FAILED');
   return data;
 }
 async function login(){
