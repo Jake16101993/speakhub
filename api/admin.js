@@ -145,6 +145,14 @@ async function handleOverview(){
     return total?Math.round((booked/total)*1000)/10:0;
   };
   const sum=rows=>(rows||[]).reduce((n,x)=>n+Number(x.total_amount||0),0);
+  const dayStart=`${today}T00:00:00+07:00`,dayEnd=`${addDaysISO(today,1)}T00:00:00+07:00`;
+  const weekStart=`${w.current_from}T00:00:00+07:00`,weekEnd=`${weekEndExclusive}T00:00:00+07:00`;
+  const monthStart=`${month.first}T00:00:00+07:00`,monthEnd=`${month.next}T00:00:00+07:00`;
+  async function uniqueVisitors(from,to){
+    const {data,error}=await supabase.from('website_visits').select('visitor_id').gte('last_seen_at',from).lt('last_seen_at',to);
+    if(error)throw error;return new Set((data||[]).map(x=>x.visitor_id).filter(Boolean)).size;
+  }
+  const [visDay,visWeek,visMonth]=await Promise.all([uniqueVisitors(dayStart,dayEnd),uniqueVisitors(weekStart,weekEnd),uniqueVisitors(monthStart,monthEnd)]);
   return Response.json({
     counts:{customers:c.count||0,paid_orders:o.count||0,confirmed_bookings:b.count||0,open_sessions:s.count||0},
     analytics:{
@@ -155,7 +163,8 @@ async function handleOverview(){
       tests_all:{placement:pa.count||0,progress:ga.count||0},
       paid_amount:{week:sum(mw.data),month:sum(mm.data)},
       fill_rate:{previous_week:fill(prev.data),current_week:fill(week.data),next_week:fill(next.data)},
-      ranges:w
+      ranges:w,
+      website_visits:{day:visDay,week:visWeek,month:visMonth}
     }
   });
 }
@@ -977,17 +986,7 @@ function startOfCurrentWeekISO(){
 }
 
 async function placementUsage(customerId){
-  const weekStart=startOfCurrentWeekISO();
-  const {count,error}=await supabase
-    .from('placement_tests')
-    .select('*',{count:'exact',head:true})
-    .eq('customer_id',customerId)
-    .gte('created_at',weekStart)
-    .eq('status','COMPLETED');
-
-  if(error) throw error;
-  const used=Number(count||0);
-  return {used,remaining:999,unlimited:true,week_start:weekStart};
+  return dailyTestUsage(customerId,'PLACEMENT');
 }
 
 async function handlePlacementStatus(request){
@@ -1030,8 +1029,10 @@ async function handlePlacementTranscribe(request){
 
   const auth=await requireActiveCustomer(customerId,token);
   if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+  const usageBefore=await dailyTestUsage(customerId,'PLACEMENT');
+  if(usageBefore.remaining<=0) return Response.json({error:'TEST_DAILY_LIMIT',usage:usageBefore},{status:429});
 
-  // TEST MODE: weekly placement limit temporarily disabled.
+  // Daily test limit enforced server-side.
   if(!audio || typeof audio.arrayBuffer!=='function'){
     return Response.json({error:'AUDIO_REQUIRED'},{status:400});
   }
@@ -1136,6 +1137,8 @@ function extractResponseText(data){
 }
 
 async function handlePlacementScore(request){
+  // Limit successful AI tests to 3 per Vietnam calendar day.
+
   if(request.method!=='POST'){
     return Response.json({error:'Method not allowed'},{status:405});
   }
@@ -1376,6 +1379,7 @@ IMPORTANT:
 
   if(saveErr) throw saveErr;
 
+  await recordTestAttempt(customerId,'PLACEMENT');
   return Response.json({
     success:true,
     placement_test_id:saved.id,
@@ -1507,6 +1511,8 @@ async function verifyProgressBooking(customerId,bookingId){
 }
 
 async function handleProgressScore(request){
+  // Limit successful AI tests to 3 per Vietnam calendar day.
+
   if(request.method!=='POST'){
     return Response.json({error:'Method not allowed'},{status:405});
   }
@@ -1521,6 +1527,8 @@ async function handleProgressScore(request){
 
   const auth=await requireActiveCustomer(customerId,token);
   if(auth.error) return Response.json({error:auth.error},{status:auth.status});
+  const usageBefore=await dailyTestUsage(customerId,'PROGRESS');
+  if(usageBefore.remaining<=0) return Response.json({error:'TEST_DAILY_LIMIT',usage:usageBefore},{status:429});
 
   const verified=await verifyProgressBooking(customerId,bookingId);
   if(verified.error) return Response.json({error:verified.error},{status:verified.status});
@@ -1723,6 +1731,7 @@ IMPORTANT:
     saved=insertData;
   }
 
+  await recordTestAttempt(customerId,'PROGRESS');
   return Response.json({
     success:true,
     progress_test_id:saved.id,
@@ -1831,6 +1840,176 @@ async function handlePrice(request){
   return Response.json({error:'Method not allowed'},{status:405});
 }
 
+
+function vnTodayBounds(){
+  const now=new Date();
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
+  return {
+    day:parts,
+    start:`${parts}T00:00:00+07:00`,
+    end:`${addDaysISO(parts,1)}T00:00:00+07:00`
+  };
+}
+async function dailyTestUsage(customerId,testType){
+  const b=vnTodayBounds();
+  const {count,error}=await supabase.from('test_attempts').select('*',{count:'exact',head:true})
+    .eq('customer_id',customerId).eq('test_type',testType)
+    .gte('created_at',b.start).lt('created_at',b.end);
+  if(error)throw error;
+  const used=Number(count||0),limit=3;
+  return {used,remaining:Math.max(0,limit-used),limit,date:b.day};
+}
+async function recordTestAttempt(customerId,testType){
+  const {error}=await supabase.from('test_attempts').insert({customer_id:customerId,test_type:testType});
+  if(error)throw error;
+}
+async function handleProgressStatus(request){
+  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
+  const u=new URL(request.url),customerId=u.searchParams.get('customer_id'),token=u.searchParams.get('token');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  return Response.json(await dailyTestUsage(customerId,'PROGRESS'));
+}
+async function relevantSessionIds(customerId){
+  const {data,error}=await supabase.from('bookings').select('session_id,status,orders!inner(payment_status)')
+    .eq('user_id',customerId).neq('status','CANCELLED').eq('orders.payment_status','PAID');
+  if(error)throw error;
+  return [...new Set((data||[]).map(x=>x.session_id).filter(Boolean))];
+}
+async function handleNotifications(request){
+  const body=request.method==='POST'?await request.json().catch(()=>({})):{};
+  const u=new URL(request.url);
+  const customerId=body.customer_id||u.searchParams.get('customer_id'),token=body.token||u.searchParams.get('token');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const ids=await relevantSessionIds(customerId);
+  if(!ids.length)return Response.json({notifications:[],unread_count:0});
+  const {data:events,error}=await supabase.from('session_events').select(`
+    id,event_type,message,created_at,session_id,
+    class_sessions(session_date,starts_at,programs(name))
+  `).in('session_id',ids).order('created_at',{ascending:false}).limit(100);
+  if(error)throw error;
+  const eventIds=(events||[]).map(x=>x.id);
+  let readSet=new Set();
+  if(eventIds.length){
+    const {data:reads,error:rErr}=await supabase.from('notification_reads').select('event_id').eq('customer_id',customerId).in('event_id',eventIds);
+    if(rErr)throw rErr;readSet=new Set((reads||[]).map(x=>x.event_id));
+  }
+  if(request.method==='POST' && body.mark_all && eventIds.length){
+    const rows=eventIds.map(event_id=>({customer_id:customerId,event_id}));
+    const {error:wErr}=await supabase.from('notification_reads').upsert(rows,{onConflict:'customer_id,event_id',ignoreDuplicates:true});
+    if(wErr)throw wErr;readSet=new Set(eventIds);
+  }
+  const notifications=(events||[]).map(e=>({
+    id:e.id,event_type:e.event_type,message:e.message,created_at:e.created_at,
+    session_date:e.class_sessions?.session_date||'',starts_at:e.class_sessions?.starts_at||'',
+    program_name:e.class_sessions?.programs?.name||'',unread:!readSet.has(e.id)
+  }));
+  return Response.json({notifications,unread_count:notifications.filter(x=>x.unread).length});
+}
+async function handleCommunity(request){
+  const u=new URL(request.url);
+  let b={};
+  if(request.method==='POST')b=await request.json().catch(()=>({}));
+  const customerId=b.customer_id||u.searchParams.get('customer_id'),token=b.token||u.searchParams.get('token');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  if(request.method==='POST'){
+    if(b.op==='post'){
+      const title=String(b.title||'').trim(),tag=String(b.tag||'Thảo luận').trim();
+      if(!title)return Response.json({error:'TITLE_REQUIRED'},{status:400});
+      const today=vnTodayBounds();
+      const {count,error:cErr}=await supabase.from('community_posts').select('*',{count:'exact',head:true})
+        .eq('customer_id',customerId).gte('created_at',today.start).lt('created_at',today.end);
+      if(cErr)throw cErr;
+      if(Number(count||0)>=3)return Response.json({error:'COMMUNITY_DAILY_LIMIT'},{status:429});
+      const {error}=await supabase.from('community_posts').insert({customer_id:customerId,tag,title});
+      if(error)throw error;
+      return Response.json({success:true});
+    }
+    return Response.json({error:'UNKNOWN_COMMUNITY_OP'},{status:400});
+  }
+  const {data:posts,error}=await supabase.from('community_posts').select('id,tag,title,created_at,customers(full_name)').order('created_at',{ascending:false}).limit(100);
+  if(error)throw error;
+  const {data:stateRow,error:sErr}=await supabase.from('community_read_state').select('last_seen_at').eq('customer_id',customerId).maybeSingle();
+  if(sErr)throw sErr;
+  const lastSeen=stateRow?.last_seen_at?new Date(stateRow.last_seen_at).getTime():0;
+  const unread=(posts||[]).filter(p=>new Date(p.created_at).getTime()>lastSeen && p.customers?.full_name!==auth.customer.full_name).length;
+  if(u.searchParams.get('seen')==='1'){
+    const {error:uErr}=await supabase.from('community_read_state').upsert({customer_id:customerId,last_seen_at:new Date().toISOString()},{onConflict:'customer_id'});
+    if(uErr)throw uErr;
+  }
+  return Response.json({posts:(posts||[]).map(p=>({id:p.id,tag:p.tag,title:p.title,created_at:p.created_at,author:p.customers?.full_name||'Học viên',likes:0})),unread_count:u.searchParams.get('seen')==='1'?0:unread});
+}
+async function handleChat(request){
+  const u=new URL(request.url);
+  const b=request.method==='POST'?await request.json().catch(()=>({})):{};
+  const customerId=b.customer_id||u.searchParams.get('customer_id'),token=b.token||u.searchParams.get('token');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  if(request.method==='POST'){
+    const text=String(b.text||'').trim();if(!text)return Response.json({error:'MESSAGE_REQUIRED'},{status:400});
+    const {error}=await supabase.from('support_messages').insert({customer_id:customerId,sender:'USER',body:text,read_by_user:true,read_by_admin:false});
+    if(error)throw error;return Response.json({success:true});
+  }
+  const {data,error}=await supabase.from('support_messages').select('id,sender,body,created_at').eq('customer_id',customerId).order('created_at');
+  if(error)throw error;
+  await supabase.from('support_messages').update({read_by_user:true}).eq('customer_id',customerId).eq('sender','ADMIN').eq('read_by_user',false);
+  return Response.json({messages:data||[]});
+}
+async function handleAccountBadges(request){
+  const u=new URL(request.url),customerId=u.searchParams.get('customer_id'),token=u.searchParams.get('token');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const ids=await relevantSessionIds(customerId);
+  let notificationUnread=0;
+  if(ids.length){
+    const {data:events,error}=await supabase.from('session_events').select('id').in('session_id',ids);
+    if(error)throw error;
+    const eventIds=(events||[]).map(x=>x.id);
+    if(eventIds.length){
+      const {data:reads,error:rErr}=await supabase.from('notification_reads').select('event_id').eq('customer_id',customerId).in('event_id',eventIds);
+      if(rErr)throw rErr;
+      const rs=new Set((reads||[]).map(x=>x.event_id));notificationUnread=eventIds.filter(id=>!rs.has(id)).length;
+    }
+  }
+  const {data:cr,error:crErr}=await supabase.from('community_read_state').select('last_seen_at').eq('customer_id',customerId).maybeSingle();
+  if(crErr)throw crErr;
+  let cq=supabase.from('community_posts').select('*',{count:'exact',head:true});
+  if(cr?.last_seen_at)cq=cq.gt('created_at',cr.last_seen_at);
+  const cRes=await cq;if(cRes.error)throw cRes.error;
+  const {count:chatUnread,error:chatErr}=await supabase.from('support_messages').select('*',{count:'exact',head:true})
+    .eq('customer_id',customerId).eq('sender','ADMIN').eq('read_by_user',false);
+  if(chatErr)throw chatErr;
+  const [placement,progress]=await Promise.all([dailyTestUsage(customerId,'PLACEMENT'),dailyTestUsage(customerId,'PROGRESS')]);
+  return Response.json({notification_unread:notificationUnread,community_unread:cRes.count||0,chat_unread:chatUnread||0,placement,progress});
+}
+async function handleTrackVisit(request){
+  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
+  const b=await request.json().catch(()=>({}));const visitor=String(b.visitor_id||'').slice(0,120);
+  if(!visitor)return Response.json({error:'VISITOR_REQUIRED'},{status:400});
+  const day=vnTodayBounds().day;
+  const {error}=await supabase.from('website_visits').upsert({visitor_id:visitor,visited_on:day,last_seen_at:new Date().toISOString()},{onConflict:'visitor_id,visited_on'});
+  if(error)throw error;return Response.json({success:true});
+}
+async function handleAdminChat(request){
+  if(request.method==='GET'){
+    const u=new URL(request.url),customerId=u.searchParams.get('customer_id');
+    if(customerId){
+      const {data:messages,error}=await supabase.from('support_messages').select('id,sender,body,created_at,read_by_admin').eq('customer_id',customerId).order('created_at');
+      if(error)throw error;
+      await supabase.from('support_messages').update({read_by_admin:true}).eq('customer_id',customerId).eq('sender','USER').eq('read_by_admin',false);
+      return Response.json({messages:messages||[]});
+    }
+    const {data:msgs,error}=await supabase.from('support_messages').select('customer_id,sender,body,created_at,read_by_admin,customers(full_name,phone)').order('created_at',{ascending:false}).limit(1000);
+    if(error)throw error;
+    const map=new Map();
+    for(const m of (msgs||[])){
+      if(!map.has(m.customer_id))map.set(m.customer_id,{customer_id:m.customer_id,full_name:m.customers?.full_name||'',phone:m.customers?.phone||'',last_message:m.body,last_at:m.created_at,unread:0});
+      if(m.sender==='USER'&&!m.read_by_admin)map.get(m.customer_id).unread++;
+    }
+    return Response.json({threads:[...map.values()].sort((a,b)=>String(b.last_at).localeCompare(String(a.last_at)))});
+  }
+  const b=await request.json().catch(()=>({}));const customerId=String(b.customer_id||''),text=String(b.text||'').trim();
+  if(!customerId||!text)return Response.json({error:'MISSING_FIELDS'},{status:400});
+  const {error}=await supabase.from('support_messages').insert({customer_id:customerId,sender:'ADMIN',body:text,read_by_admin:true,read_by_user:false});
+  if(error)throw error;return Response.json({success:true});
+}
 function sleep(ms){
   return new Promise(resolve=>setTimeout(resolve,ms));
 }
@@ -1875,6 +2054,12 @@ export default {
       if(action==='placement-history') return await handlePlacementHistory(request);
       if(action==='progress-score') return await handleProgressScore(request);
       if(action==='progress-history') return await handleProgressHistory(request);
+      if(action==='progress-status') return await handleProgressStatus(request);
+      if(action==='notifications') return await handleNotifications(request);
+      if(action==='community') return await handleCommunity(request);
+      if(action==='chat') return await handleChat(request);
+      if(action==='account-badges') return await handleAccountBadges(request);
+      if(action==='track-visit') return await handleTrackVisit(request);
 
       // Public read-only price config used by landing page and booking UI.
       // No admin secret is exposed; only landing_price + tiers are returned.
@@ -1893,6 +2078,7 @@ export default {
       if(action==='manual-reschedule') return await runAdminActionWithRetry(()=>handleManualReschedule(request));
       if(action==='topic-upload') return await runAdminActionWithRetry(()=>handleTopicUpload(request));
       if(action==='topic-delete') return await runAdminActionWithRetry(()=>handleTopicDelete(request));
+      if(action==='admin-chat') return await runAdminActionWithRetry(()=>handleAdminChat(request));
 
       return Response.json({error:'UNKNOWN_ACTION'},{status:404});
     }catch(err){
