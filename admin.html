@@ -149,6 +149,8 @@ button.primary.ui-button-busy::after{
 .overview-metric small{display:block;margin-top:5px;color:var(--muted)}
 .overview-metric .money-metric{font-size:18px;line-height:1.35}
 .overview-fill-card{margin-top:12px}
+.overview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.overview-refresh{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 13px;font-weight:800;color:var(--gd);cursor:pointer}.overview-refresh:hover{background:var(--gs)}
+.visit-combined{font-size:18px!important;line-height:1.4}.visit-chart-card{margin-top:12px}.visit-chart-wrap{height:260px;margin-top:14px;position:relative}.visit-chart-wrap canvas{width:100%;height:100%;display:block}
 .fill-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
 .fill-metrics>div{padding:14px;border:1px solid var(--line);border-radius:12px;background:#fafcfb}
 .fill-metrics>div.current{background:#edf8f4;border-color:#b8dfcf}
@@ -679,11 +681,14 @@ async function sendAdminChat(){
 }
 
 async function loadOverview(){
+  const root=document.getElementById('tab-overview');
+  if(root)root.innerHTML=`<div class="card"><span class="muted">Đang tải tổng quan...</span></div>`;
   const d=await api('/api/admin?action=overview');
   const a=d.analytics||{};
   const money=n=>new Intl.NumberFormat('vi-VN').format(Number(n||0))+'đ';
   const pct=n=>`${Number(n||0).toFixed(1).replace('.0','')}%`;
   document.getElementById('tab-overview').innerHTML=`
+    <div class="overview-head"><div><h2 style="margin:0">Tổng quan</h2><div class="muted" style="font-size:12px;margin-top:3px">Dữ liệu vận hành SpeakHub</div></div><button class="overview-refresh" onclick="loadOverview()">↻ Refresh</button></div>
     <div class="grid4">
       <div class="card stat"><span class="muted">Customers</span><b>${d.counts.customers}</b></div>
       <div class="card stat"><span class="muted">Paid orders</span><b>${d.counts.paid_orders}</b></div>
@@ -691,14 +696,13 @@ async function loadOverview(){
       <div class="card stat"><span class="muted">Open sessions</span><b>${d.counts.open_sessions}</b></div>
     </div>
     <div class="overview-analytics-grid">
-      <div class="card overview-metric"><span>Sessions tuần hiện tại</span><b>${Number(a.sessions_this_week||0)}</b><small>${a.ranges?.current_from||''} → ${a.ranges?.current_to||''}</small></div><div class="card overview-metric"><span>Topic tuần này</span><b>${Number(a.topics_this_week||0)} / ${Number(a.sessions_this_week||0)}</b><small>Đã upload / Tổng session</small></div>
+      <div class="card overview-metric"><span>Topic tuần này</span><b>${Number(a.topics_this_week||0)} / ${Number(a.sessions_this_week||0)}</b><small>Đã upload / Tổng session</small></div>
       <div class="card overview-metric"><span>Học viên active</span><b>${Number(a.active_students||0)}</b><small>Có lịch học sắp tới</small></div>
       <div class="card overview-metric"><span>Tests trong tuần</span><b>${Number(a.tests_this_week?.placement||0)} / ${Number(a.tests_this_week?.progress||0)}</b><small>Xếp lớp / Tiến bộ</small></div>
       <div class="card overview-metric"><span>Tests toàn bộ</span><b>${Number(a.tests_all?.placement||0)} / ${Number(a.tests_all?.progress||0)}</b><small>Xếp lớp / Tiến bộ</small></div>
       <div class="card overview-metric"><span>Paid tuần / tháng</span><b class="money-metric">${money(a.paid_amount?.week)} / ${money(a.paid_amount?.month)}</b><small>Đã PAID</small></div>
-      <div class="card overview-metric"><span>Truy cập hôm nay</span><b>${Number(a.website_visits?.day||0)}</b><small>Unique visitor</small></div>
-      <div class="card overview-metric"><span>Truy cập tuần</span><b>${Number(a.website_visits?.week||0)}</b><small>Unique visitor</small></div>
-      <div class="card overview-metric"><span>Truy cập tháng</span><b>${Number(a.website_visits?.month||0)}</b><small>Unique visitor</small></div>
+      <div class="card overview-metric"><span>Số người đang truy cập</span><b>${Number(a.website_visits?.online||0)}</b><small>Hoạt động trong ~75 giây gần nhất</small></div>
+      <div class="card overview-metric"><span>Truy cập hôm nay / tuần / tháng</span><b class="visit-combined">${Number(a.website_visits?.day||0)} / ${Number(a.website_visits?.week||0)} / ${Number(a.website_visits?.month||0)}</b><small>Unique visitor</small></div>
     </div>
     <div class="card overview-fill-card">
       <div><h3 style="margin:0">Tỷ lệ lấp đầy trung bình</h3><div class="muted" style="font-size:12px;margin-top:4px">Booking / tổng sức chứa session</div></div>
@@ -707,8 +711,24 @@ async function loadOverview(){
         <div class="current"><span>Tuần hiện tại</span><b>${pct(a.fill_rate?.current_week)}</b></div>
         <div><span>Tuần tiếp theo</span><b>${pct(a.fill_rate?.next_week)}</b></div>
       </div>
-    </div>`;
+    </div>
+    <div class="card visit-chart-card"><h3 style="margin:0">Lượng truy cập 30 ngày gần nhất</h3><div class="muted" style="font-size:12px;margin-top:4px">Unique visitor theo ngày</div><div class="visit-chart-wrap"><canvas id="visit30Chart"></canvas></div></div>`;
+  drawVisit30Chart(a.website_visits?.daily_30||[]);
 }
+function drawVisit30Chart(rows){
+  const c=document.getElementById('visit30Chart');if(!c)return;
+  const box=c.parentElement.getBoundingClientRect(),dpr=Math.max(1,window.devicePixelRatio||1);
+  c.width=Math.max(300,Math.floor(box.width*dpr));c.height=Math.max(180,Math.floor(box.height*dpr));
+  const ctx=c.getContext('2d');ctx.scale(dpr,dpr);const W=box.width,H=box.height,p={l:42,r:12,t:12,b:34};
+  const vals=rows.map(x=>Number(x.visitors||0)),max=Math.max(1,...vals),iw=W-p.l-p.r,ih=H-p.t-p.b;
+  ctx.font='11px system-ui';ctx.textBaseline='middle';ctx.strokeStyle='#e3ebe7';ctx.fillStyle='#6b7772';ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){const y=p.t+ih*i/4;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(W-p.r,y);ctx.stroke();const v=Math.round(max*(1-i/4));ctx.fillText(String(v),8,y)}
+  if(!rows.length)return;const step=rows.length>1?iw/(rows.length-1):iw;
+  ctx.strokeStyle='#0b7a5b';ctx.lineWidth=2.5;ctx.beginPath();rows.forEach((r,i)=>{const x=p.l+i*step,y=p.t+ih-(Number(r.visitors||0)/max)*ih;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();
+  ctx.fillStyle='#0b7a5b';rows.forEach((r,i)=>{const x=p.l+i*step,y=p.t+ih-(Number(r.visitors||0)/max)*ih;ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill()});
+  ctx.fillStyle='#6b7772';ctx.textAlign='center';rows.forEach((r,i)=>{if(i%5===0||i===rows.length-1){const d=String(r.date||'').split('-');ctx.fillText(`${d[2]}/${d[1]}`,p.l+i*step,H-13)}});ctx.textAlign='start';
+}
+
 async function loadSessions(){
   const d=await api('/api/admin?action=sessions');
   cache=d;
