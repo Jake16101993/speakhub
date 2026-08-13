@@ -1996,17 +1996,12 @@ function normalizePricingTiers(input){
   return tiers;
 }
 async function handlePublicPrice(){
-  // Read the exact same pricing_config row used by Admin > Price.
-  // This avoids a second RPC/function becoming stale or missing.
-  const {data,error}=await supabase
-    .from('pricing_config')
-    .select('landing_price,tiers,updated_at')
-    .eq('id',1)
-    .maybeSingle();
-  if(error) throw error;
-  if(!data) throw new Error('PRICE_CONFIG_NOT_FOUND');
-
-  return Response.json(data,{
+  // Production hotfix: use the current single booking price directly.
+  // Do not depend on pricing_config, which may not exist in this project.
+  return Response.json({
+    landing_price:65000,
+    tiers:[{min_sessions:1,max_sessions:null,unit_price:80000}]
+  },{
     status:200,
     headers:{
       'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0',
@@ -2018,24 +2013,16 @@ async function handlePublicPrice(){
 
 async function handlePrice(request){
   if(request.method==='GET'){
-    const {data,error}=await supabase.from('pricing_config').select('landing_price,tiers,updated_at').eq('id',1).maybeSingle();
-    if(error) throw error;
-    return Response.json(data||{landing_price:89000,tiers:[
-      {min_sessions:1,max_sessions:3,unit_price:119000},
-      {min_sessions:4,max_sessions:7,unit_price:99000},
-      {min_sessions:8,max_sessions:null,unit_price:89000}
-    ]});
+    return Response.json({
+      landing_price:65000,
+      tiers:[{min_sessions:1,max_sessions:null,unit_price:80000}],
+      read_only:true
+    });
   }
-  if(request.method==='POST'){
-    const body=await request.json().catch(()=>({}));
-    const landing=Number(body.landing_price);
-    if(!Number.isInteger(landing)||landing<0) throw new Error('INVALID_LANDING_PRICE');
-    const tiers=normalizePricingTiers(body.tiers);
-    const {data,error}=await supabase.from('pricing_config').upsert({id:1,landing_price:landing,tiers,updated_at:new Date().toISOString()},{onConflict:'id'}).select('landing_price,tiers,updated_at').single();
-    if(error) throw error;
-    return Response.json(data);
-  }
-  return Response.json({error:'Method not allowed'},{status:405});
+  return Response.json({
+    error:'PRICE_READ_ONLY',
+    details:'Booking price is temporarily fixed at 80,000 VND per lesson.'
+  },{status:400});
 }
 
 
