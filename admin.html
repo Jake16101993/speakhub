@@ -588,9 +588,14 @@ async function api(url,opt={}){
   const headers={...(opt.headers||{})};
   if(token) headers.Authorization=`Bearer ${token}`;
   const res=await fetch(url,{...opt,headers,cache:'no-store'});
-  const data=await res.json().catch(()=>({}));
+  const raw=await res.text();
+  let data={};
+  try{ data=raw?JSON.parse(raw):{} }catch{}
   if(res.status===401){logout();throw new Error('UNAUTHORIZED')}
-  if(!res.ok) throw new Error(data?.details||data?.error||'REQUEST_FAILED');
+  if(!res.ok){
+    const detail=data?.details||data?.error||raw||`HTTP ${res.status}`;
+    throw new Error(detail);
+  }
   return data;
 }
 async function login(){
