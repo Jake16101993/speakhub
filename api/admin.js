@@ -1996,15 +1996,11 @@ function normalizePricingTiers(input){
   return tiers;
 }
 async function handlePublicPrice(){
-  // Read the exact same pricing_config row used by Admin > Price.
-  // This avoids a second RPC/function becoming stale or missing.
-  const {data,error}=await supabase
-    .from('pricing_config')
-    .select('landing_price,tiers,updated_at')
-    .eq('id',1)
-    .maybeSingle();
+  const {data,error}=await supabase.rpc('get_pricing_config_v2');
   if(error) throw error;
-  const config=data||{
+
+  const row=Array.isArray(data)?data[0]:data;
+  const config=row||{
     landing_price:65000,
     tiers:[
       {min_sessions:1,max_sessions:3,unit_price:80000},
@@ -2024,22 +2020,42 @@ async function handlePublicPrice(){
 
 async function handlePrice(request){
   if(request.method==='GET'){
-    const {data,error}=await supabase.from('pricing_config').select('landing_price,tiers,updated_at').eq('id',1).maybeSingle();
+    const {data,error}=await supabase.rpc('get_pricing_config_v2');
     if(error) throw error;
-    return Response.json(data||{landing_price:65000,tiers:[
-      {min_sessions:1,max_sessions:3,unit_price:80000},
-      {min_sessions:4,max_sessions:null,unit_price:65000}
-    ]});
+    const row=Array.isArray(data)?data[0]:data;
+    return Response.json(row||{
+      landing_price:65000,
+      tiers:[
+        {min_sessions:1,max_sessions:3,unit_price:80000},
+        {min_sessions:4,max_sessions:null,unit_price:65000}
+      ]
+    });
   }
+
   if(request.method==='POST'){
     const body=await request.json().catch(()=>({}));
     const landing=Number(body.landing_price);
-    if(!Number.isInteger(landing)||landing<0) throw new Error('INVALID_LANDING_PRICE');
-    const tiers=normalizePricingTiers(body.tiers);
-    const {data,error}=await supabase.from('pricing_config').upsert({id:1,landing_price:landing,tiers,updated_at:new Date().toISOString()},{onConflict:'id'}).select('landing_price,tiers,updated_at').single();
+    if(!Number.isInteger(landing)||landing<0){
+      return Response.json({error:'INVALID_LANDING_PRICE',details:'Landing page price must be a whole number greater than or equal to 0.'},{status:400});
+    }
+
+    let tiers;
+    try{
+      tiers=normalizePricingTiers(body.tiers);
+    }catch(err){
+      return Response.json({error:String(err?.message||err),details:String(err?.message||err)},{status:400});
+    }
+
+    const {data,error}=await supabase.rpc('set_pricing_config_v2',{
+      p_landing_price:landing,
+      p_tiers:tiers
+    });
     if(error) throw error;
-    return Response.json(data);
+
+    const row=Array.isArray(data)?data[0]:data;
+    return Response.json(row||{landing_price:landing,tiers});
   }
+
   return Response.json({error:'Method not allowed'},{status:405});
 }
 
@@ -2452,7 +2468,12 @@ export default {
     }catch(err){
       console.error('admin api error',err);
       return Response.json(
-        {error:'ADMIN_API_ERROR',details:String(err?.message||err)},
+        {
+          error:'ADMIN_API_ERROR',
+          details:String(err?.message||err),
+          code:String(err?.code||''),
+          hint:String(err?.hint||'')
+        },
         {status:500}
       );
     }
