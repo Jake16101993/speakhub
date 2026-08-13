@@ -165,22 +165,6 @@ async function handleOverview(){
   for(let i=0;i<30;i++)dailyMap[addDaysISO(chartFrom,i)]=new Set();
   for(const x of (chartRes.data||[])){if(dailyMap[x.visited_on]&&x.visitor_id)dailyMap[x.visited_on].add(x.visitor_id);}
   const visits30=Object.entries(dailyMap).map(([date,set])=>({date,visitors:set.size}));
-
-  // Renewal rate = customers with at least 2 PAID orders / customers with at least 1 PAID order.
-  const {data:renewalOrders,error:renewalErr}=await supabase
-    .from('orders')
-    .select('user_id')
-    .eq('payment_status','PAID');
-  if(renewalErr) throw renewalErr;
-  const renewalCounts=new Map();
-  for(const row of (renewalOrders||[])){
-    if(!row.user_id) continue;
-    renewalCounts.set(row.user_id,(renewalCounts.get(row.user_id)||0)+1);
-  }
-  const renewalBase=renewalCounts.size;
-  const renewed=[...renewalCounts.values()].filter(n=>n>=2).length;
-  const renewalRate=renewalBase?Math.round((renewed/renewalBase)*1000)/10:0;
-
   return Response.json({
     counts:{customers:c.count||0,paid_orders:o.count||0,confirmed_bookings:b.count||0,open_sessions:s.count||0},
     analytics:{
@@ -191,141 +175,10 @@ async function handleOverview(){
       tests_all:{placement:pa.count||0,progress:ga.count||0},
       paid_amount:{week:sum(mw.data),month:sum(mm.data)},
       fill_rate:{previous_week:fill(prev.data),current_week:fill(week.data),next_week:fill(next.data)},
-      renewal_rate:{rate:renewalRate,renewed_customers:renewed,paid_customers:renewalBase},
       ranges:w,
       website_visits:{day:visDay,week:visWeek,month:visMonth,online:onlineVisitors,daily_30:visits30}
     }
   });
-}
-
-
-async function handleReminders(){
-  const nowVN=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Ho_Chi_Minh'}));
-
-  const {data,error}=await supabase
-    .from('bookings')
-    .select(`
-      id,user_id,status,
-      customers:user_id(id,full_name,phone,status),
-      orders!inner(payment_status,order_status),
-      class_sessions(id,session_date,starts_at,ends_at,programs(name))
-    `)
-    .eq('orders.payment_status','PAID')
-    .in('status',['CONFIRMED','ATTENDED','NO_SHOW'])
-    .limit(10000);
-
-  if(error) throw error;
-
-  const byCustomer=new Map();
-  for(const b of (data||[])){
-    const c=b.customers||{};
-    if(!b.user_id || String(c.status||'ACTIVE')!=='ACTIVE') continue;
-    const s=b.class_sessions||{};
-    if(!s.session_date || !s.starts_at) continue;
-
-    const when=new Date(`${s.session_date}T${String(s.starts_at).slice(0,8)}+07:00`);
-    const item={
-      customer_id:b.user_id,
-      full_name:c.full_name||'',
-      phone:c.phone||'',
-      session_date:s.session_date,
-      starts_at:s.starts_at,
-      ends_at:s.ends_at,
-      program_name:s.programs?.name||'',
-      when
-    };
-
-    if(!byCustomer.has(b.user_id)) byCustomer.set(b.user_id,[]);
-    byCustomer.get(b.user_id).push(item);
-  }
-
-  const reminders=[];
-  for(const [customerId,items] of byCustomer){
-    const upcoming=items.filter(x=>x.when>nowVN).sort((a,b)=>a.when-b.when);
-    if(upcoming.length) continue;
-
-    const past=items.filter(x=>x.when<=nowVN).sort((a,b)=>b.when-a.when);
-    if(!past.length) continue;
-    const last=past[0];
-
-    reminders.push({
-      customer_id:customerId,
-      full_name:last.full_name,
-      phone:last.phone,
-      last_session_date:last.session_date,
-      last_starts_at:last.starts_at,
-      last_ends_at:last.ends_at,
-      last_program_name:last.program_name
-    });
-  }
-
-  reminders.sort((a,b)=>
-    `${b.last_session_date} ${b.last_starts_at}`.localeCompare(`${a.last_session_date} ${a.last_starts_at}`)
-  );
-
-  return Response.json({reminders});
-}
-
-async function handleDiscounts(request){
-  if(request.method==='GET'){
-    const {data,error}=await supabase
-      .from('date_discounts')
-      .select('discount_date,discount_percent,created_at')
-      .order('discount_date',{ascending:true});
-    if(error) throw error;
-    return Response.json({discounts:data||[]});
-  }
-
-  if(request.method==='POST'){
-    const b=await request.json().catch(()=>({}));
-    const date=String(b.discount_date||'').trim();
-    const percent=Number(b.discount_percent);
-
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){
-      return Response.json({error:'Please choose a valid date.'},{status:400});
-    }
-    if(!Number.isFinite(percent) || percent<=0 || percent>100){
-      return Response.json({error:'Discount must be greater than 0 and no more than 100%.'},{status:400});
-    }
-
-    const {data,error}=await supabase
-      .from('date_discounts')
-      .upsert({
-        discount_date:date,
-        discount_percent:Math.round(percent*100)/100
-      },{onConflict:'discount_date'})
-      .select('discount_date,discount_percent,created_at')
-      .single();
-
-    if(error) throw error;
-    return Response.json({success:true,discount:data});
-  }
-
-  if(request.method==='DELETE'){
-    const b=await request.json().catch(()=>({}));
-    const date=String(b.discount_date||'').trim();
-    if(!date) return Response.json({error:'Discount date is required.'},{status:400});
-
-    const {error}=await supabase
-      .from('date_discounts')
-      .delete()
-      .eq('discount_date',date);
-    if(error) throw error;
-    return Response.json({success:true});
-  }
-
-  return Response.json({error:'Method not allowed'},{status:405});
-}
-
-async function handlePublicDiscounts(){
-  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}).format(new Date());
-  const {data,error}=await supabase
-    .from('date_discounts')
-    .select('discount_date,discount_percent')
-    .gte('discount_date',today)
-    .order('discount_date',{ascending:true});
-  if(error) throw error;
-  return Response.json({discounts:data||[]});
 }
 
 async function handleSessions(request){
@@ -668,11 +521,11 @@ async function handleManualBookings(request){
     const amount=Math.round(Number(b.amount||0));
     const paidDate=String(b.paid_date||'').trim();
 
-    if(!validManualPhone(phone)) return Response.json({error:'Phone number is invalid.'},{status:400});
-    if(!validManualName(fullName)) return Response.json({error:'Please enter the student's full name.'},{status:400});
-    if(!sessionIds.length) return Response.json({error:'Please select at least one session.'},{status:400});
-    if(!Number.isFinite(amount)||amount<0) return Response.json({error:'Amount received cannot be negative.'},{status:400});
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(paidDate)) return Response.json({error:'Please choose the successful payment date.'},{status:400});
+    if(!validManualPhone(phone)) return Response.json({error:'SĐT phải gồm 10 số và bắt đầu bằng 0.'},{status:400});
+    if(!validManualName(fullName)) return Response.json({error:'Vui lòng nhập đầy đủ họ tên.'},{status:400});
+    if(!sessionIds.length) return Response.json({error:'Vui lòng chọn ít nhất 1 session.'},{status:400});
+    if(!Number.isFinite(amount)||amount<0) return Response.json({error:'Số tiền đã nhận không được âm.'},{status:400});
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(paidDate)) return Response.json({error:'Vui lòng chọn ngày thanh toán thành công.'},{status:400});
 
     const customerId=await ensureManualCustomer(phone,fullName);
 
@@ -681,10 +534,10 @@ async function handleManualBookings(request){
       .select('id,capacity,status,session_date,starts_at')
       .in('id',sessionIds);
     if(sErr) throw sErr;
-    if((selectedSessions||[]).length!==sessionIds.length) return Response.json({error:'One or more sessions do not exist.'},{status:400});
+    if((selectedSessions||[]).length!==sessionIds.length) return Response.json({error:'Có session không tồn tại.'},{status:400});
 
     for(const session of selectedSessions||[]){
-      if(session.status!=='OPEN') return Response.json({error:`Session ${session.session_date} ${String(session.starts_at).slice(0,5)}  is no longer OPEN.`},{status:400});
+      if(session.status!=='OPEN') return Response.json({error:`Session ${session.session_date} ${String(session.starts_at).slice(0,5)} không còn OPEN.`},{status:400});
 
       const {count,error:countErr}=await supabase
         .from('bookings').select('*',{count:'exact',head:true})
@@ -692,7 +545,7 @@ async function handleManualBookings(request){
         .in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
       if(countErr) throw countErr;
       if(Number(count||0)>=Number(session.capacity||0)){
-        return Response.json({error:`Session ${session.session_date} ${String(session.starts_at).slice(0,5)}  is FULL.`},{status:400});
+        return Response.json({error:`Session ${session.session_date} ${String(session.starts_at).slice(0,5)} đã FULL.`},{status:400});
       }
 
       // Same phone/customer may intentionally book another seat in the same session.
@@ -1996,19 +1849,17 @@ function normalizePricingTiers(input){
   return tiers;
 }
 async function handlePublicPrice(){
-  const {data,error}=await supabase.rpc('get_pricing_config_v2');
+  // Read the exact same pricing_config row used by Admin > Price.
+  // This avoids a second RPC/function becoming stale or missing.
+  const {data,error}=await supabase
+    .from('pricing_config')
+    .select('landing_price,tiers,updated_at')
+    .eq('id',1)
+    .maybeSingle();
   if(error) throw error;
+  if(!data) throw new Error('PRICE_CONFIG_NOT_FOUND');
 
-  const row=Array.isArray(data)?data[0]:data;
-  const config=row||{
-    landing_price:65000,
-    tiers:[
-      {min_sessions:1,max_sessions:3,unit_price:80000},
-      {min_sessions:4,max_sessions:null,unit_price:65000}
-    ]
-  };
-
-  return Response.json(config,{
+  return Response.json(data,{
     status:200,
     headers:{
       'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0',
@@ -2020,42 +1871,23 @@ async function handlePublicPrice(){
 
 async function handlePrice(request){
   if(request.method==='GET'){
-    const {data,error}=await supabase.rpc('get_pricing_config_v2');
+    const {data,error}=await supabase.from('pricing_config').select('landing_price,tiers,updated_at').eq('id',1).maybeSingle();
     if(error) throw error;
-    const row=Array.isArray(data)?data[0]:data;
-    return Response.json(row||{
-      landing_price:65000,
-      tiers:[
-        {min_sessions:1,max_sessions:3,unit_price:80000},
-        {min_sessions:4,max_sessions:null,unit_price:65000}
-      ]
-    });
+    return Response.json(data||{landing_price:89000,tiers:[
+      {min_sessions:1,max_sessions:3,unit_price:119000},
+      {min_sessions:4,max_sessions:7,unit_price:99000},
+      {min_sessions:8,max_sessions:null,unit_price:89000}
+    ]});
   }
-
   if(request.method==='POST'){
     const body=await request.json().catch(()=>({}));
     const landing=Number(body.landing_price);
-    if(!Number.isInteger(landing)||landing<0){
-      return Response.json({error:'INVALID_LANDING_PRICE',details:'Landing page price must be a whole number greater than or equal to 0.'},{status:400});
-    }
-
-    let tiers;
-    try{
-      tiers=normalizePricingTiers(body.tiers);
-    }catch(err){
-      return Response.json({error:String(err?.message||err),details:String(err?.message||err)},{status:400});
-    }
-
-    const {data,error}=await supabase.rpc('set_pricing_config_v2',{
-      p_landing_price:landing,
-      p_tiers:tiers
-    });
+    if(!Number.isInteger(landing)||landing<0) throw new Error('INVALID_LANDING_PRICE');
+    const tiers=normalizePricingTiers(body.tiers);
+    const {data,error}=await supabase.from('pricing_config').upsert({id:1,landing_price:landing,tiers,updated_at:new Date().toISOString()},{onConflict:'id'}).select('landing_price,tiers,updated_at').single();
     if(error) throw error;
-
-    const row=Array.isArray(data)?data[0]:data;
-    return Response.json(row||{landing_price:landing,tiers});
+    return Response.json(data);
   }
-
   return Response.json({error:'Method not allowed'},{status:405});
 }
 
@@ -2435,15 +2267,12 @@ export default {
       // Public read-only price config used by landing page and booking UI.
       // No admin secret is exposed; only landing_price + tiers are returned.
       if(action==='public-price') return await runAdminActionWithRetry(()=>handlePublicPrice());
-      if(action==='public-discounts') return await runAdminActionWithRetry(()=>handlePublicDiscounts());
 
       if(!requireAdmin(request)){
         return Response.json({error:'UNAUTHORIZED'},{status:401});
       }
 
       if(action==='overview') return await runAdminActionWithRetry(()=>handleOverview());
-      if(action==='reminders') return await runAdminActionWithRetry(()=>handleReminders());
-      if(action==='discounts') return await runAdminActionWithRetry(()=>handleDiscounts(request));
       if(action==='price') return await runAdminActionWithRetry(()=>handlePrice(request));
       if(action==='sessions') return await runAdminActionWithRetry(()=>handleSessions(request));
       if(action==='customers') return await runAdminActionWithRetry(()=>handleCustomers(request));
@@ -2468,12 +2297,7 @@ export default {
     }catch(err){
       console.error('admin api error',err);
       return Response.json(
-        {
-          error:'ADMIN_API_ERROR',
-          details:String(err?.message||err),
-          code:String(err?.code||''),
-          hint:String(err?.hint||'')
-        },
+        {error:'ADMIN_API_ERROR',details:String(err?.message||err)},
         {status:500}
       );
     }
