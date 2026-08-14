@@ -595,6 +595,36 @@ async function handleSessions(request){
   return Response.json({error:'Method not allowed'},{status:405});
 }
 
+
+async function handleCustomerSearch(request){
+  const url=new URL(request.url);
+  const q=String(url.searchParams.get('q')||'').trim();
+
+  if(!q){
+    return Response.json({customers:[]});
+  }
+
+  const safeText=q.replace(/[%_,]/g,'');
+  const digits=q.replace(/\D/g,'');
+
+  let builder=supabase
+    .from('customers')
+    .select('id,full_name,phone,status,created_at')
+    .eq('status','ACTIVE')
+    .order('created_at',{ascending:false})
+    .limit(8);
+
+  if(digits.length>=3){
+    builder=builder.or(`phone.ilike.%${digits}%,full_name.ilike.%${safeText}%`);
+  }else{
+    builder=builder.ilike('full_name',`%${safeText}%`);
+  }
+
+  const {data,error}=await builder;
+  if(error) throw error;
+  return Response.json({customers:data||[]});
+}
+
 async function handleCustomers(){
   const {data,error}=await supabase
     .from('customers')
@@ -2490,6 +2520,7 @@ export default {
       if(action==='discounts') return await runAdminActionWithRetry(()=>handleDateDiscounts(request));
       if(action==='price') return await runAdminActionWithRetry(()=>handlePrice(request));
       if(action==='sessions') return await runAdminActionWithRetry(()=>handleSessions(request));
+      if(action==='customer-search') return await runAdminActionWithRetry(()=>handleCustomerSearch(request));
       if(action==='customers') return await runAdminActionWithRetry(()=>handleCustomers(request));
       if(action==='bookings') return await runAdminActionWithRetry(()=>handleBookings(request));
       if(action==='manual-bookings'){
