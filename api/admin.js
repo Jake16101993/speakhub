@@ -2249,9 +2249,11 @@ async function handleCommunity(request){
     if(op==='comment'){
       const text=String(body.text||'').trim().slice(0,1000);
       if(!text) return Response.json({error:'COMMENT_REQUIRED'},{status:400});
-      const {error}=await supabase.from('community_comments').insert({post_id:postId,customer_id:customerId,text});
+      const {data:inserted,error}=await supabase.from('community_comments')
+        .insert({post_id:postId,customer_id:customerId,text})
+        .select('id,created_at').single();
       if(error) throw error;
-      return Response.json({ok:true});
+      return Response.json({ok:true,comment:inserted});
     }
     return Response.json({error:'INVALID_COMMUNITY_OPERATION'},{status:400});
   }
@@ -2276,17 +2278,11 @@ async function handleCommunity(request){
     likes=lr.data||[];comments=cr.data||[];
   }
 
-  const {data:stateRow,error:sErr}=await supabase.from('community_read_state')
-    .select('last_seen_at').eq('customer_id',customerId).maybeSingle();
-  if(sErr) throw sErr;
-  const lastSeen=stateRow?.last_seen_at||'1970-01-01T00:00:00.000Z';
-  const unread=(posts||[]).filter(p=>new Date(p.created_at)>new Date(lastSeen)).length;
-
-  if(u.searchParams.get('seen')==='1'){
-    const {error:uErr}=await supabase.from('community_read_state')
-      .upsert({customer_id:customerId,last_seen_at:new Date().toISOString()},{onConflict:'customer_id'});
-    if(uErr) throw uErr;
-  }
+  const todayCommunity=vnTodayBounds();
+  const todayCount=(posts||[]).filter(p=>{
+    const t=new Date(p.created_at).getTime();
+    return t>=new Date(todayCommunity.start).getTime() && t<new Date(todayCommunity.end).getTime();
+  }).length;
 
   const result=(posts||[]).map(p=>{
     const pl=likes.filter(x=>String(x.post_id)===String(p.id));
@@ -2300,7 +2296,7 @@ async function handleCommunity(request){
       }))
     };
   });
-  return Response.json({posts:result,unread_count:u.searchParams.get('seen')==='1'?0:unread});
+  return Response.json({posts:result,today_count:todayCount,unread_count:todayCount});
 }
 async function handleChat(request){
   const u=new URL(request.url);
@@ -2405,13 +2401,10 @@ async function handleAccountBadges(request){
     }
   }
 
-  const {data:cr,error:crErr}=await supabase.from('community_read_state')
-    .select('last_seen_at').eq('customer_id',customerId).maybeSingle();
-  if(crErr)throw crErr;
-
-  let cq=supabase.from('community_posts').select('*',{count:'exact',head:true});
-  if(cr?.last_seen_at)cq=cq.gt('created_at',cr.last_seen_at);
-  const cRes=await cq;if(cRes.error)throw cRes.error;
+  const todayCommunity=vnTodayBounds();
+  const cRes=await supabase.from('community_posts').select('*',{count:'exact',head:true})
+    .gte('created_at',todayCommunity.start).lt('created_at',todayCommunity.end);
+  if(cRes.error)throw cRes.error;
 
   const {count:chatUnread,error:chatErr}=await supabase.from('support_messages')
     .select('*',{count:'exact',head:true})
