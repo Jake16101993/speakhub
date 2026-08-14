@@ -301,6 +301,7 @@ button.primary.ui-button-busy::after{
       <button class="tab" onclick="showTab('customers',this)">Customers</button>
       <button class="tab" onclick="showTab('bookings',this)">Bookings</button>
       <button class="tab" onclick="showTab('remind',this);setTimeout(loadReminders,0)">Remind</button>
+      <button class="tab" onclick="showTab('discounts',this);setTimeout(loadDiscounts,0)">Discounts</button>
       <button class="tab" onclick="showTab('topics',this)">Topics</button>
       <button class="tab" onclick="showTab('manual',this);setTimeout(loadManual,0)">Manual Add</button>
       <button class="tab" onclick="showTab('price',this);setTimeout(loadPrice,0)">Price</button>
@@ -437,6 +438,41 @@ button.primary.ui-button-busy::after{
         </div>
         <input id="remindFilter" placeholder="Filter by name, phone, last lesson date or class..." oninput="renderReminders()" style="margin-top:14px">
         <div id="remindTable" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <section id="tab-discounts" class="hidden">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div>
+            <h3 style="margin:0">Date Discounts</h3>
+            <div class="muted" style="font-size:12px;margin-top:4px">
+              Set a discount for a specific class date. The discount is applied automatically to payment for lessons on that date.
+            </div>
+          </div>
+          <button class="btn" onclick="loadDiscounts()">↻ Refresh</button>
+        </div>
+
+        <div class="row2" style="margin-top:16px">
+          <div>
+            <label>Class date</label>
+            <input id="discountDate" type="date">
+          </div>
+          <div>
+            <label>Discount (%)</label>
+            <input id="discountPercent" type="number" min="0.01" max="99.99" step="0.01" placeholder="10">
+          </div>
+        </div>
+
+        <button id="saveDiscountBtn" class="btn primary" style="width:100%;margin-top:12px" onclick="saveDiscount()">
+          Save discount
+        </button>
+        <div id="discountMsg"></div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <h3 style="margin-top:0">Scheduled Discounts</h3>
+        <div id="discountTable"></div>
       </div>
     </section>
 
@@ -763,6 +799,85 @@ async function loadReminders(){
   const d=await api('/api/admin?action=reminders');
   adminRemindersCache=d.reminders||[];
   renderReminders();
+}
+
+
+let adminDiscountsCache=[];
+
+async function loadDiscounts(){
+  const msg=document.getElementById('discountMsg');
+  if(msg) msg.innerHTML='';
+  const d=await api('/api/admin?action=discounts');
+  adminDiscountsCache=d.discounts||[];
+  renderDiscountsTable();
+}
+
+function renderDiscountsTable(){
+  const host=document.getElementById('discountTable');
+  if(!host)return;
+
+  if(!adminDiscountsCache.length){
+    host.innerHTML='<div class="muted" style="padding:18px;text-align:center">No scheduled discounts.</div>';
+    return;
+  }
+
+  host.innerHTML=table(
+    ['Date','Discount','Action'],
+    adminDiscountsCache.map(x=>[
+      x.discount_date||'',
+      `<b>-${Number(x.discount_percent||0)}%</b>`,
+      `<button class="btn" onclick="deleteDiscount('${x.discount_date}')">Delete</button>`
+    ])
+  );
+}
+
+async function saveDiscount(){
+  const msg=document.getElementById('discountMsg');
+  const btn=document.getElementById('saveDiscountBtn');
+  const discount_date=document.getElementById('discountDate')?.value||'';
+  const discount_percent=Number(document.getElementById('discountPercent')?.value);
+
+  if(msg) msg.innerHTML='';
+
+  if(!discount_date){
+    if(msg) msg.innerHTML='<div class="error">Please choose a class date.</div>';
+    return;
+  }
+  if(!Number.isFinite(discount_percent)||discount_percent<=0||discount_percent>=100){
+    if(msg) msg.innerHTML='<div class="error">Discount must be greater than 0% and less than 100%.</div>';
+    return;
+  }
+
+  if(btn){btn.disabled=true;btn.textContent='Saving...';}
+  try{
+    await api('/api/admin?action=discounts',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({discount_date,discount_percent})
+    });
+    if(msg) msg.innerHTML='<div class="ok">Discount saved successfully.</div>';
+    await loadDiscounts();
+  }catch(e){
+    if(msg) msg.innerHTML=`<div class="error">${adminEscapeHtml(e.message)}</div>`;
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='Save discount';}
+  }
+}
+
+async function deleteDiscount(date){
+  if(!confirm(`Delete discount for ${date}?`)) return;
+  const msg=document.getElementById('discountMsg');
+  try{
+    await api('/api/admin?action=discounts',{
+      method:'DELETE',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({discount_date:date})
+    });
+    if(msg) msg.innerHTML='<div class="ok">Discount deleted.</div>';
+    await loadDiscounts();
+  }catch(e){
+    if(msg) msg.innerHTML=`<div class="error">${adminEscapeHtml(e.message)}</div>`;
+  }
 }
 
 async function loadOverview(){
