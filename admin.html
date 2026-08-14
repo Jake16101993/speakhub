@@ -416,18 +416,17 @@ button.primary.ui-button-busy::after{
       </div>
 
       <div class="card" style="margin-top:14px">
-        <label>Find existing customer</label>
-        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:6px">
-          <input id="manualCustomerFilter"
-            placeholder="Filter by name or phone..."
-            oninput="queueManualCustomerSearch()"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();searchManualCustomersFromDB()}">
-          <button type="button" class="btn" onclick="searchManualCustomersFromDB()">Search</button>
+        <label>Filter Manual Bookings</label>
+        <input id="manualFilter"
+          placeholder="Search by student name, phone, class or booking code..."
+          oninput="renderManualOrdersFromCache()"
+          style="margin-top:6px">
+        <div class="muted" style="font-size:11px;margin-top:6px">
+          Type a student name or phone number to find the manual booking and move their lesson.
         </div>
-        <div id="manualCustomerMatches" style="margin-top:6px"></div>
       </div>
 
-      <div class="card" style="margin-top:14px">
+<div class="card" style="margin-top:14px">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
           <div>
             <h3 style="margin:0">Manual Bookings</h3>
@@ -1204,13 +1203,14 @@ function pickManualCustomer(name,phone){
 function renderManualOrdersFromCache(){
   const box=document.getElementById('manualBookings'); if(!box)return;
   const q=String(document.getElementById('manualFilter')?.value||'').trim().toLowerCase();
-  const orders=(!q
+  const filtered=!q
     ? adminManualOrdersCache
     : adminManualOrdersCache.filter(o=>
         [o.full_name,o.phone,o.order_code,o.paid_date,...(o.bookings||[]).flatMap(b=>[b.session_date,b.starts_at,b.program_name])]
           .some(v=>String(v||'').toLowerCase().includes(q))
-      )
-  ).slice(0,10);
+      );
+
+  const orders=filtered.slice(0,q?20:10);
 
   if(!orders.length){
     box.innerHTML='<div class="muted" style="padding:18px;text-align:center">No matching manual bookings.</div>';
