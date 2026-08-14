@@ -2202,37 +2202,106 @@ async function handleNotifications(request){
   return Response.json({notifications,unread_count:notifications.filter(x=>x.unread).length});
 }
 async function handleCommunity(request){
+  const supabase=getSupabase();
   const u=new URL(request.url);
-  let b={};
-  if(request.method==='POST')b=await request.json().catch(()=>({}));
-  const customerId=b.customer_id||u.searchParams.get('customer_id'),token=b.token||u.searchParams.get('token');
-  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
-  if(request.method==='POST'){
-    if(b.op==='post'){
-      const title=String(b.title||'').trim(),tag=String(b.tag||'Thảo luận').trim();
-      if(!title)return Response.json({error:'TITLE_REQUIRED'},{status:400});
-      const today=vnTodayBounds();
+  const method=request.method.toUpperCase();
+  let customerId=u.searchParams.get('customer_id');
+  let token=u.searchParams.get('token');
+
+  if(method==='POST'){
+    const body=await request.json().catch(()=>({}));
+    customerId=body.customer_id||customerId;
+    token=body.token||token;
+    const auth=await authenticateCustomer(customerId,token);
+    if(!auth) return Response.json({error:'UNAUTHORIZED'},{status:401});
+    const op=body.op||'post';
+
+    if(op==='post'){
+      const tag=String(body.tag||'Thảo luận').trim().slice(0,50);
+      const title=String(body.title||'').trim().slice(0,500);
+      if(!title) return Response.json({error:'TITLE_REQUIRED'},{status:400});
+      const since=new Date(); since.setHours(0,0,0,0);
       const {count,error:cErr}=await supabase.from('community_posts').select('*',{count:'exact',head:true})
-        .eq('customer_id',customerId).gte('created_at',today.start).lt('created_at',today.end);
-      if(cErr)throw cErr;
-      if(Number(count||0)>=3)return Response.json({error:'COMMUNITY_DAILY_LIMIT'},{status:429});
+        .eq('customer_id',customerId).gte('created_at',since.toISOString());
+      if(cErr) throw cErr;
+      if((count||0)>=3) return Response.json({error:'DAILY_POST_LIMIT'},{status:429});
       const {error}=await supabase.from('community_posts').insert({customer_id:customerId,tag,title});
-      if(error)throw error;
-      return Response.json({success:true});
+      if(error) throw error;
+      return Response.json({ok:true});
     }
-    return Response.json({error:'UNKNOWN_COMMUNITY_OP'},{status:400});
+
+    const postId=body.post_id;
+    if(!postId) return Response.json({error:'POST_ID_REQUIRED'},{status:400});
+
+    if(op==='like'){
+      const {data:existing,error:eErr}=await supabase.from('community_likes')
+        .select('id').eq('post_id',postId).eq('customer_id',customerId).maybeSingle();
+      if(eErr) throw eErr;
+      if(existing){
+        const {error}=await supabase.from('community_likes').delete().eq('id',existing.id);
+        if(error) throw error;
+        return Response.json({ok:true,liked:false});
+      }
+      const {error}=await supabase.from('community_likes').insert({post_id:postId,customer_id:customerId});
+      if(error) throw error;
+      return Response.json({ok:true,liked:true});
+    }
+
+    if(op==='comment'){
+      const text=String(body.text||'').trim().slice(0,1000);
+      if(!text) return Response.json({error:'COMMENT_REQUIRED'},{status:400});
+      const {error}=await supabase.from('community_comments').insert({post_id:postId,customer_id:customerId,text});
+      if(error) throw error;
+      return Response.json({ok:true});
+    }
+    return Response.json({error:'INVALID_COMMUNITY_OPERATION'},{status:400});
   }
-  const {data:posts,error}=await supabase.from('community_posts').select('id,tag,title,created_at,customers(full_name)').order('created_at',{ascending:false}).limit(100);
-  if(error)throw error;
-  const {data:stateRow,error:sErr}=await supabase.from('community_read_state').select('last_seen_at').eq('customer_id',customerId).maybeSingle();
-  if(sErr)throw sErr;
-  const lastSeen=stateRow?.last_seen_at?new Date(stateRow.last_seen_at).getTime():0;
-  const unread=(posts||[]).filter(p=>new Date(p.created_at).getTime()>lastSeen && p.customers?.full_name!==auth.customer.full_name).length;
+
+  const auth=await authenticateCustomer(customerId,token);
+  if(!auth) return Response.json({error:'UNAUTHORIZED'},{status:401});
+
+  const {data:posts,error}=await supabase.from('community_posts')
+    .select('id,tag,title,created_at,customers(full_name)').order('created_at',{ascending:false}).limit(100);
+  if(error) throw error;
+
+  const postIds=(posts||[]).map(p=>p.id);
+  let likes=[],comments=[];
+  if(postIds.length){
+    const [lr,cr]=await Promise.all([
+      supabase.from('community_likes').select('id,post_id,customer_id').in('post_id',postIds),
+      supabase.from('community_comments').select('id,post_id,text,created_at,customers(full_name)')
+        .in('post_id',postIds).order('created_at',{ascending:true})
+    ]);
+    if(lr.error) throw lr.error;
+    if(cr.error) throw cr.error;
+    likes=lr.data||[];comments=cr.data||[];
+  }
+
+  const {data:stateRow,error:sErr}=await supabase.from('community_read_state')
+    .select('last_seen_at').eq('customer_id',customerId).maybeSingle();
+  if(sErr) throw sErr;
+  const lastSeen=stateRow?.last_seen_at||'1970-01-01T00:00:00.000Z';
+  const unread=(posts||[]).filter(p=>new Date(p.created_at)>new Date(lastSeen)).length;
+
   if(u.searchParams.get('seen')==='1'){
-    const {error:uErr}=await supabase.from('community_read_state').upsert({customer_id:customerId,last_seen_at:new Date().toISOString()},{onConflict:'customer_id'});
-    if(uErr)throw uErr;
+    const {error:uErr}=await supabase.from('community_read_state')
+      .upsert({customer_id:customerId,last_seen_at:new Date().toISOString()},{onConflict:'customer_id'});
+    if(uErr) throw uErr;
   }
-  return Response.json({posts:(posts||[]).map(p=>({id:p.id,tag:p.tag,title:p.title,created_at:p.created_at,author:p.customers?.full_name||'Học viên',likes:0})),unread_count:u.searchParams.get('seen')==='1'?0:unread});
+
+  const result=(posts||[]).map(p=>{
+    const pl=likes.filter(x=>String(x.post_id)===String(p.id));
+    const pc=comments.filter(x=>String(x.post_id)===String(p.id));
+    return {
+      id:p.id,tag:p.tag,title:p.title,created_at:p.created_at,author:p.customers?.full_name||'Học viên',
+      likes:pl.length,liked:pl.some(x=>String(x.customer_id)===String(customerId)),
+      comments:pc.map(c=>({
+        id:c.id,author:c.customers?.full_name||'Học viên',text:c.text,
+        time:new Date(c.created_at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})
+      }))
+    };
+  });
+  return Response.json({posts:result,unread_count:u.searchParams.get('seen')==='1'?0:unread});
 }
 async function handleChat(request){
   const u=new URL(request.url);
