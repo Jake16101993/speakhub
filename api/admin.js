@@ -2202,7 +2202,6 @@ async function handleNotifications(request){
   return Response.json({notifications,unread_count:notifications.filter(x=>x.unread).length});
 }
 async function handleCommunity(request){
-  const supabase=getSupabase();
   const u=new URL(request.url);
   const method=request.method.toUpperCase();
   let customerId=u.searchParams.get('customer_id');
