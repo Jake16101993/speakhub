@@ -281,27 +281,28 @@ button.primary.ui-button-busy::after{
 <body>
 <div class="wrap">
   <div class="top">
-    <div><div class="logo">SpeakHub Admin</div><div class="muted">Quản lý session · booking · customer · topic</div></div>
-    <button id="logoutBtn" class="btn secondary hidden" onclick="logout()">Đăng xuất</button>
+    <div><div class="logo">SpeakHub Admin</div><div class="muted">Manage sessions · bookings · customers · topics</div></div>
+    <button id="logoutBtn" class="btn secondary hidden" onclick="logout()">Log out</button>
   </div>
 
   <section id="loginBox" class="card">
-    <h2>Đăng nhập Admin</h2>
+    <h2>Admin Login</h2>
     <div class="row2">
-      <div><label>Mật khẩu Admin</label><input id="adminPassword" type="password" placeholder="Nhập mật khẩu"></div>
-      <div style="display:flex;align-items:end"><button class="btn primary" style="width:100%" onclick="login()">Đăng nhập</button></div>
+      <div><label>Admin Password</label><input id="adminPassword" type="password" placeholder="Enter password"></div>
+      <div style="display:flex;align-items:end"><button class="btn primary" style="width:100%" onclick="login()">Log in</button></div>
     </div>
     <div id="loginMsg"></div>
   </section>
 
   <main id="adminApp" class="hidden">
     <div class="tabs">
-      <button class="tab on" onclick="showTab('overview',this)">Tổng quan</button>
+      <button class="tab on" onclick="showTab('overview',this)">Overview</button>
       <button class="tab" onclick="showTab('sessions',this)">Sessions</button>
       <button class="tab" onclick="showTab('customers',this)">Customers</button>
       <button class="tab" onclick="showTab('bookings',this)">Bookings</button>
+      <button class="tab" onclick="showTab('remind',this);setTimeout(loadReminders,0)">Remind</button>
       <button class="tab" onclick="showTab('topics',this)">Topics</button>
-      <button class="tab" onclick="showTab('manual',this);setTimeout(loadManual,0)">Thêm thủ công</button>
+      <button class="tab" onclick="showTab('manual',this);setTimeout(loadManual,0)">Manual Add</button>
       <button class="tab" onclick="showTab('price',this);setTimeout(loadPrice,0)">Price</button>
       <button class="tab" onclick="showTab('chat',this);setTimeout(loadAdminChatThreads,0)">Chat</button>
     </div>
@@ -311,19 +312,19 @@ button.primary.ui-button-busy::after{
     <section id="tab-price" class="hidden">
       <div class="card">
         <h3>Price</h3>
-        <div class="muted" style="margin-bottom:14px">Quản lý giá hiển thị và giá tính khi học viên đặt chỗ. Sau khi lưu, backend sẽ dùng bảng giá này để tạo order.</div>
+        <div class="muted" style="margin-bottom:14px">Manage displayed and booking prices. Saved tiers are used by the booking backend.</div>
         <div style="max-width:420px">
-          <label>Giá hiển thị trên Landing Page (đ / buổi)</label>
+          <label>Landing page price (VND / lesson)</label>
           <input id="landingPrice" type="number" min="0" step="1000" placeholder="89000">
         </div>
       </div>
       <div class="card" style="margin-top:14px">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
-          <div><h3 style="margin:0">Bảng giá đặt chỗ</h3><div class="muted" style="font-size:12px;margin-top:4px">Tạo bao nhiêu mức tùy ý. Mức cuối để “Đến” trống = không giới hạn.</div></div>
-          <button class="btn" onclick="addPriceTier()">+ Thêm mức giá</button>
+          <div><h3 style="margin:0">Booking price tiers</h3><div class="muted" style="font-size:12px;margin-top:4px">Create as many tiers as needed. Leave the last “To” value blank for no upper limit.</div></div>
+          <button class="btn" onclick="addPriceTier()">+ Add price tier</button>
         </div>
         <div id="priceTiers" style="display:grid;gap:10px;margin-top:14px"></div>
-        <button id="savePriceBtn" class="btn primary" style="width:100%;margin-top:14px" onclick="savePrice()">Lưu bảng giá</button>
+        <button id="savePriceBtn" class="btn primary" style="width:100%;margin-top:14px" onclick="savePrice()">Save pricing</button>
         <div id="priceMsg"></div>
       </div>
     </section>
@@ -331,13 +332,13 @@ button.primary.ui-button-busy::after{
     <section id="tab-chat" class="hidden">
       <div class="card">
         <h3 style="margin-top:0">Chat SpeakHub</h3>
-        <p class="muted">Tin nhắn user gửi từ tab Chat SpeakHub.</p>
+        <p class="muted">Messages sent by users from Chat SpeakHub.</p>
         <div class="admin-chat-grid">
-          <div id="adminChatThreads" class="admin-chat-threads">Đang tải...</div>
+          <div id="adminChatThreads" class="admin-chat-threads">Loading...</div>
           <div class="admin-chat-panel">
-            <div id="adminChatTitle" style="font-weight:900;margin-bottom:10px">Chọn một học viên</div>
+            <div id="adminChatTitle" style="font-weight:900;margin-bottom:10px">Select a student</div>
             <div id="adminChatMessages" class="admin-chat-messages"></div>
-            <div class="admin-chat-input"><input id="adminChatText" placeholder="Nhập phản hồi..." onkeydown="if(event.key==='Enter')sendAdminChat()"><button class="btn primary" onclick="sendAdminChat()">Gửi</button></div>
+            <div class="admin-chat-input"><input id="adminChatText" placeholder="Type a reply..." onkeydown="if(event.key==='Enter')sendAdminChat()"><button class="btn primary" onclick="sendAdminChat()">Send</button></div>
           </div>
         </div>
       </div>
@@ -345,94 +346,108 @@ button.primary.ui-button-busy::after{
 
     <section id="tab-sessions" class="hidden">
       <div class="card">
-        <h3>Tạo session mới</h3>
+        <h3>Create Session</h3>
         <div class="row">
           <select id="sProgram"></select>
           <select id="sType">
-            <option value="RECURRING">Lớp cố định · lặp mỗi tuần</option>
-            <option value="ONE_OFF">Lớp lẻ · chỉ 1 buổi</option>
+            <option value="RECURRING">Recurring class · weekly</option>
+            <option value="ONE_OFF">One-off class · single lesson</option>
           </select>
           <input id="sDate" type="date">
-          <select id="sPeriod"><option value="MORNING">Sáng</option><option value="AFTERNOON">Chiều</option><option value="EVENING">Tối</option></select>
+          <select id="sPeriod"><option value="MORNING">Morning</option><option value="AFTERNOON">Afternoon</option><option value="EVENING">Evening</option></select>
         </div>
         <div class="row" style="margin-top:10px">
           <input id="sStart" type="time" value="19:30">
           <input id="sEnd" type="time" value="21:00">
           <select id="sTeacher" onchange="syncTeacherCountry()"></select>
-          <input id="sCountry" placeholder="Quốc gia GV" readonly>
+          <input id="sCountry" placeholder="Teacher country" readonly>
         </div>
         <div class="row2" style="margin-top:10px">
-          <input id="sCapacity" type="number" min="1" value="10" placeholder="Sức chứa">
-          <button class="btn primary" onclick="createSession()">Tạo lịch</button>
+          <input id="sCapacity" type="number" min="1" value="10" placeholder="Capacity">
+          <button class="btn primary" onclick="createSession()">Create session</button>
         </div>
         <div id="sessionMsg"></div>
       </div>
-      <div class="card"><h3>Danh sách session</h3><div id="sessionsTable"></div></div>
+      <div class="card"><h3>Session List</h3><input id="sessionsFilter" placeholder="Filter sessions..." oninput="renderSessionsTable()" style="margin:0 0 12px"><div id="sessionsTable"></div></div>
     </section>
 
-    <section id="tab-customers" class="hidden"><div class="card"><h3>Customers</h3><div id="customersTable"></div></div></section>
-    <section id="tab-bookings" class="hidden"><div class="card"><h3>Bookings đã thanh toán</h3><div id="bookingsTable"></div></div></section>
+    <section id="tab-customers" class="hidden"><div class="card"><h3>Customers</h3><input id="customersFilter" placeholder="Filter customers..." oninput="renderCustomersTable()" style="margin:0 0 12px"><div id="customersTable"></div></div></section>
+    <section id="tab-bookings" class="hidden"><div class="card"><h3>Paid Bookings</h3><input id="bookingsFilter" placeholder="Filter bookings..." oninput="renderBookingsTable()" style="margin:0 0 12px"><div id="bookingsTable"></div></div></section>
 
     
     <section id="tab-manual" class="hidden">
       <div class="card">
-        <h3>Thêm học viên chuyển khoản thủ công</h3>
-        <div class="muted" style="margin-bottom:12px">Dùng khi học viên chuyển khoản trực tiếp. Booking được xác nhận ngay, không cần PayOS.</div>
+        <h3>Add Manual Transfer Student</h3>
+        <div class="muted" style="margin-bottom:12px">Use for direct bank transfers. Booking is confirmed immediately without PayOS.</div>
         <div class="row2">
           <div>
-            <label>Họ và tên</label>
+            <label>Full name</label>
             <input id="manualName" placeholder="Nguyễn Văn A">
           </div>
           <div>
-            <label>Số điện thoại</label>
+            <label>Phone number</label>
             <input id="manualPhone" inputmode="numeric" placeholder="09xxxxxxxx">
           </div>
         </div>
         <div class="row2" style="margin-top:10px">
           <div>
-            <label>Số tiền đã nhận <span class="muted" style="font-size:11px">(có thể nhập 0đ)</span></label>
+            <label>Amount received <span class="muted" style="font-size:11px">(0 VND allowed)</span></label>
             <input id="manualAmount" type="number" min="0" step="1000" inputmode="numeric" placeholder="0">
           </div>
           <div>
-            <label>Ngày thanh toán thành công</label>
+            <label>Successful payment date</label>
             <input id="manualPaidDate" type="date">
           </div>
         </div>
 
         <div style="margin-top:12px">
           <div class="manual-session-head">
-            <label>Chọn session</label>
-            <span id="manualSelectedCount">0 buổi đã chọn</span>
+            <label>Select sessions</label>
+            <span id="manualSelectedCount">0 lessons selected</span>
           </div>
           <div id="manualSessionPicker" class="manual-session-picker">
-            <div class="muted" style="padding:14px">Đang tải session...</div>
+            <div class="muted" style="padding:14px">Loading sessions...</div>
           </div>
         </div>
 
-        <button class="btn primary" style="width:100%;margin-top:12px" onclick="addManualBooking()">+ Thêm học viên vào các session đã chọn</button>
+        <button class="btn primary" style="width:100%;margin-top:12px" onclick="addManualBooking()">+ Add student to selected sessions</button>
         <div id="manualMsg"></div>
       </div>
 
       <div class="card" style="margin-top:14px">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
           <div>
-            <h3 style="margin:0">Booking thủ công</h3>
-            <div class="muted" style="font-size:12px;margin-top:4px">Admin có thể đổi buổi học không giới hạn.</div>
+            <h3 style="margin:0">Manual Bookings</h3>
+            <div class="muted" style="font-size:12px;margin-top:4px">Admin can move lessons without a reschedule limit.</div>
           </div>
-          <button class="btn" onclick="loadManual()">↻ Làm mới</button>
+          <button class="btn" onclick="loadManual()">↻ Refresh</button>
         </div>
         <div id="manualBookings" style="margin-top:12px"></div>
       </div>
     </section>
 
-<section id="tab-topics" class="hidden">
+<section id="tab-remind" class="hidden">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <div>
+            <h3 style="margin:0">Renewal Reminders</h3>
+            <div class="muted" style="font-size:12px;margin-top:4px">Students whose paid lessons have ended and who currently have no upcoming paid lesson.</div>
+          </div>
+          <button class="btn" onclick="loadReminders()">↻ Refresh</button>
+        </div>
+        <input id="remindFilter" placeholder="Filter by name, phone, last lesson date or class..." oninput="renderReminders()" style="margin-top:14px">
+        <div id="remindTable" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <section id="tab-topics" class="hidden">
       <div class="card">
         <h3>Upload topic PDF</h3>
         <div class="row2">
           <select id="topicSession" onchange="syncTopicTitleFromSession()"></select>
           <div>
-  <label style="display:block;font-size:11px;font-weight:800;margin:0 0 5px;color:#53615c">Tên Topic</label>
-  <input id="topicTitle" placeholder="Ví dụ: How to Negotiate Successfully?">
+  <label style="display:block;font-size:11px;font-weight:800;margin:0 0 5px;color:#53615c">Topic title</label>
+  <input id="topicTitle" placeholder="Example: How to Negotiate Successfully?">
 </div>
         </div>
         <div class="row2" style="margin-top:10px">
@@ -440,7 +455,7 @@ button.primary.ui-button-busy::after{
   <label style="display:block;font-size:11px;font-weight:800;margin:0 0 5px;color:#53615c">File PDF</label>
   <input id="topicFile" type="file" accept="application/pdf">
 </div>
-          <button class="btn primary" onclick="uploadTopic()">Upload & gắn vào session</button>
+          <button class="btn primary" onclick="uploadTopic()">Upload & attach to session</button>
         </div>
         <div id="topicMsg"></div>
       </div>
@@ -448,19 +463,19 @@ button.primary.ui-button-busy::after{
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div>
-            <h3 style="margin:0">Theo dõi Topic</h3>
-            <div class="muted" style="font-size:12px;margin-top:4px">Các session sắp tới · đã upload / chưa upload · tên topic</div>
+            <h3 style="margin:0">Topic Tracking</h3>
+            <div class="muted" style="font-size:12px;margin-top:4px">Upcoming sessions · upload status · topic title</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <select id="topicStatusFilter" onchange="renderTopicStatus()" style="width:auto;min-width:150px">
-              <option value="ALL">Tất cả</option>
-              <option value="MISSING">Chưa upload</option>
-              <option value="UPLOADED">Đã upload</option>
+              <option value="ALL">All</option>
+              <option value="MISSING">Missing</option>
+              <option value="UPLOADED">Uploaded</option>
             </select>
-            <button class="btn secondary" onclick="renderTopicStatus()">↻ Làm mới bảng</button>
+            <button class="btn secondary" onclick="renderTopicStatus()">↻ Refresh bảng</button>
           </div>
         </div>
-        <div class="topic-admin-note">Mặc định chọn <b>session gần nhất sắp diễn ra</b>. Topic chỉ áp dụng cho đúng ngày/giờ đã chọn.</div>
+        <div class="topic-admin-note">The nearest upcoming session is selected by default. A topic applies only to the selected date/time.</div>
         <div id="topicStatusSummary" class="topic-status-summary" style="margin-top:14px"></div>
         <div id="topicStatusTable" class="topic-table-wrap"></div>
       </div>
@@ -562,7 +577,7 @@ async function login(){
   try{
     const data=await api('/api/admin?action=login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('adminPassword').value})});
     token=data.token;localStorage.setItem('speakhub_admin_token',token);boot();
-  }catch(e){msg.innerHTML='<div class="error">Sai mật khẩu hoặc chưa cấu hình admin.</div>'}
+  }catch(e){msg.innerHTML='<div class="error">Incorrect password or admin is not configured.</div>'}
 }
 function logout(){token='';localStorage.removeItem('speakhub_admin_token');document.getElementById('adminApp').classList.add('hidden');document.getElementById('loginBox').classList.remove('hidden');document.getElementById('logoutBtn').classList.add('hidden')}
 async function boot(){
@@ -573,7 +588,7 @@ async function boot(){
   }catch(e){
     console.error(e);
     const msg=document.getElementById('sessionMsg');
-    if(msg) msg.innerHTML=`<div class="error">Không tải được dữ liệu Admin: ${e.message}</div>`;
+    if(msg) msg.innerHTML=`<div class="error">Could not load Admin data: ${e.message}</div>`;
   }
 }
 function showTab(name,btn){
@@ -587,10 +602,10 @@ function renderPriceTiers(){
   const host=document.getElementById('priceTiers'); if(!host)return;
   host.innerHTML=priceTiers.map((t,i)=>`
     <div class="row" style="align-items:end;border:1px solid #dfe8e4;border-radius:14px;padding:12px">
-      <div><label>Từ số buổi</label><input class="price-min" data-i="${i}" type="number" min="1" value="${Number(t.min_sessions||1)}"></div>
-      <div><label>Đến số buổi</label><input class="price-max" data-i="${i}" type="number" min="1" value="${t.max_sessions==null?'':Number(t.max_sessions)}" placeholder="Không giới hạn"></div>
-      <div><label>Giá / buổi (đ)</label><input class="price-unit" data-i="${i}" type="number" min="0" step="1000" value="${Number(t.unit_price||0)}"></div>
-      <button class="btn" onclick="removePriceTier(${i})" ${priceTiers.length<=1?'disabled':''}>Xóa</button>
+      <div><label>From lessons</label><input class="price-min" data-i="${i}" type="number" min="1" value="${Number(t.min_sessions||1)}"></div>
+      <div><label>To lessons</label><input class="price-max" data-i="${i}" type="number" min="1" value="${t.max_sessions==null?'':Number(t.max_sessions)}" placeholder="No limit"></div>
+      <div><label>Price / lesson (VND)</label><input class="price-unit" data-i="${i}" type="number" min="0" step="1000" value="${Number(t.unit_price||0)}"></div>
+      <button class="btn" onclick="removePriceTier(${i})" ${priceTiers.length<=1?'disabled':''}>Delete</button>
     </div>`).join('');
 }
 function addPriceTier(){
@@ -615,13 +630,13 @@ async function savePrice(){
   const btn=document.getElementById('savePriceBtn');
   const mins=[...document.querySelectorAll('.price-min')], maxs=[...document.querySelectorAll('.price-max')], units=[...document.querySelectorAll('.price-unit')];
   const tiers=mins.map((el,i)=>({min_sessions:Number(el.value),max_sessions:maxs[i].value===''?null:Number(maxs[i].value),unit_price:Number(units[i].value)}));
-  btn.disabled=true;btn.textContent='Đang lưu...';
+  btn.disabled=true;btn.textContent='Saving...';
   try{
     const d=await api('/api/admin?action=price',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({landing_price:Number(document.getElementById('landingPrice').value),tiers})});
     priceTiers=d.tiers||tiers;renderPriceTiers();
-    msg.innerHTML='<div class="success">Đã lưu bảng giá thành công.</div>';
+    msg.innerHTML='<div class="success">Pricing saved successfully.</div>';
   }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
-  finally{btn.disabled=false;btn.textContent='Lưu bảng giá'}
+  finally{btn.disabled=false;btn.textContent='Save pricing'}
 }
 
 
@@ -632,22 +647,22 @@ async function loadAdminChatThreads(){
   const host=document.getElementById('adminChatThreads');if(!host)return;
   host.innerHTML=(d.threads||[]).map(t=>`
     <div class="admin-chat-thread ${String(t.thread_key)===String(adminChatCurrentThread)?'on':''}"
-      onclick='openAdminChat(${JSON.stringify(t.thread_key)},${JSON.stringify(t.full_name||"Người lạ")},${JSON.stringify(t.phone||"")})'>
+      onclick='openAdminChat(${JSON.stringify(t.thread_key)},${JSON.stringify(t.full_name||"Guest")},${JSON.stringify(t.phone||"")})'>
       <div style="display:flex;justify-content:space-between;gap:8px">
-        <b>${t.full_name||'Người lạ'}</b>
+        <b>${t.full_name||'Guest'}</b>
         ${Number(t.unread||0)>0?`<span class="badge">${t.unread}</span>`:''}
       </div>
-      <small>${t.phone||'Khách chưa đăng nhập'}</small>
+      <small>${t.phone||'Guest not logged in'}</small>
       <div class="muted" style="font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.last_message||''}</div>
-    </div>`).join('')||'<div class="muted" style="padding:14px">Chưa có hội thoại.</div>';
+    </div>`).join('')||'<div class="muted" style="padding:14px">No conversations yet.</div>';
 }
 
 async function openAdminChat(threadKey,name,phone){
   adminChatCurrentThread=threadKey;
-  document.getElementById('adminChatTitle').textContent=`${name||'Người lạ'}${phone?' · '+phone:''}`;
+  document.getElementById('adminChatTitle').textContent=`${name||'Guest'}${phone?' · '+phone:''}`;
   const d=await api(`/api/admin?action=admin-chat&thread_key=${encodeURIComponent(threadKey)}`);
   const host=document.getElementById('adminChatMessages');
-  host.innerHTML=(d.messages||[]).map(m=>`<div class="admin-chat-msg ${m.sender==='ADMIN'?'admin':''}">${String(m.body||'').replace(/</g,'&lt;')}</div>`).join('')||'<div class="muted">Chưa có tin nhắn.</div>';
+  host.innerHTML=(d.messages||[]).map(m=>`<div class="admin-chat-msg ${m.sender==='ADMIN'?'admin':''}">${String(m.body||'').replace(/</g,'&lt;')}</div>`).join('')||'<div class="muted">No messages yet.</div>';
   host.scrollTop=host.scrollHeight;
   await loadAdminChatThreads();
 }
@@ -673,22 +688,92 @@ async function sendAdminChat(){
     input.value='';
     const current=adminChatCurrentThread;
     const title=document.getElementById('adminChatTitle').textContent.split(' · ');
-    await openAdminChat(current,title[0]||'Người lạ',title[1]||'');
+    await openAdminChat(current,title[0]||'Guest',title[1]||'');
   }finally{
     adminChatSending=false;
     const el=document.getElementById('adminChatText');if(el)el.disabled=false;
   }
 }
 
+
+let adminSessionsCache=[];
+let adminCustomersCache=[];
+let adminBookingsCache=[];
+let adminManualOrdersCache=[];
+let adminManualSessionsCache=[];
+let adminRemindersCache=[];
+
+function adminFilterRows(rows,query,fields){
+  const q=String(query||'').trim().toLowerCase();
+  const filtered=!q ? rows : rows.filter(row=>
+    fields.some(field=>String(row?.[field]??'').toLowerCase().includes(q))
+  );
+  return filtered.slice(0,10);
+}
+
+function renderSessionsTable(){
+  const q=document.getElementById('sessionsFilter')?.value||'';
+  const rows=adminFilterRows(adminSessionsCache,q,['session_date','starts_at','ends_at','program_name','teacher_name','status','session_type']);
+  const host=document.getElementById('sessionsTable'); if(!host)return;
+  host.innerHTML=table(['Date','Time','Class','Type','Teacher','Seats','Status'],rows.map(x=>[
+    x.session_date||'',
+    `${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)}`,
+    x.program_name||'',
+    `<span class="badge">${x.is_recurring?'Recurring':'One-off'}</span>`,
+    x.teacher_name||'',
+    `${Number(x.booked_count||0)}/${Number(x.capacity||0)}`,
+    `<span class="badge">${x.status||''}</span>`
+  ]));
+}
+
+function renderCustomersTable(){
+  const q=document.getElementById('customersFilter')?.value||'';
+  const rows=adminFilterRows(adminCustomersCache,q,['full_name','phone','status','created_at']);
+  const host=document.getElementById('customersTable'); if(!host)return;
+  host.innerHTML=table(['Name','Phone','Status','Created'],rows.map(x=>[
+    x.full_name||'',x.phone||'',`<span class="badge">${x.status||''}</span>`,fmt(x.created_at)
+  ]));
+}
+
+function renderBookingsTable(){
+  const q=document.getElementById('bookingsFilter')?.value||'';
+  const rows=adminFilterRows(adminBookingsCache,q,['full_name','phone','session_date','starts_at','ends_at','program_name','payment_status']);
+  const host=document.getElementById('bookingsTable'); if(!host)return;
+  host.innerHTML=table(['Student','Phone','Date','Time','Class','Payment'],rows.map(x=>[
+    x.full_name||'',x.phone||'',x.session_date||'',
+    `${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)}`,
+    x.program_name||'',`<span class="badge">${x.payment_status||''}</span>`
+  ]));
+}
+
+function renderReminders(){
+  const q=document.getElementById('remindFilter')?.value||'';
+  const rows=adminFilterRows(adminRemindersCache,q,['full_name','phone','last_session_date','last_starts_at','last_program_name']);
+  const host=document.getElementById('remindTable'); if(!host)return;
+  host.innerHTML=rows.length
+    ? table(['Name','Phone','Last lesson','Time','Class'],rows.map(x=>[
+        x.full_name||'',x.phone||'',x.last_session_date||'',
+        `${String(x.last_starts_at||'').slice(0,5)}–${String(x.last_ends_at||'').slice(0,5)}`,
+        x.last_program_name||''
+      ]))
+    : '<div class="muted" style="padding:18px;text-align:center">No students need a renewal reminder.</div>';
+}
+
+async function loadReminders(){
+  const d=await api('/api/admin?action=reminders');
+  adminRemindersCache=d.reminders||[];
+  renderReminders();
+}
+
 async function loadOverview(){
   const root=document.getElementById('tab-overview');
-  if(root)root.innerHTML=`<div class="card"><span class="muted">Đang tải tổng quan...</span></div>`;
+  if(root)root.innerHTML=`<div class="card"><span class="muted">Loading overview...</span></div>`;
   const d=await api('/api/admin?action=overview');
   const a=d.analytics||{};
   const money=n=>new Intl.NumberFormat('vi-VN').format(Number(n||0))+'đ';
   const pct=n=>`${Number(n||0).toFixed(1).replace('.0','')}%`;
   document.getElementById('tab-overview').innerHTML=`
-    <div class="overview-head"><div><h2 style="margin:0">Tổng quan</h2><div class="muted" style="font-size:12px;margin-top:3px">Dữ liệu vận hành SpeakHub</div></div><button class="overview-refresh" onclick="loadOverview()">↻ Refresh</button></div>
+    <div class="overview-head"><div><h2 style="margin:0">Overview</h2><div class="muted" style="font-size:12px;margin-top:3px">SpeakHub operating metrics</div></div><button class="overview-refresh" onclick="loadOverview()">↻ Refresh</button></div>
     <div class="grid4">
       <div class="card stat"><span class="muted">Customers</span><b>${d.counts.customers}</b></div>
       <div class="card stat"><span class="muted">Paid orders</span><b>${d.counts.paid_orders}</b></div>
@@ -696,23 +781,24 @@ async function loadOverview(){
       <div class="card stat"><span class="muted">Open sessions</span><b>${d.counts.open_sessions}</b></div>
     </div>
     <div class="overview-analytics-grid">
-      <div class="card overview-metric"><span>Topic tuần này</span><b>${Number(a.topics_this_week||0)} / ${Number(a.sessions_this_week||0)}</b><small>Đã upload / Tổng session</small></div>
-      <div class="card overview-metric"><span>Học viên active</span><b>${Number(a.active_students||0)}</b><small>Có lịch học sắp tới</small></div>
-      <div class="card overview-metric"><span>Tests trong tuần</span><b>${Number(a.tests_this_week?.placement||0)} / ${Number(a.tests_this_week?.progress||0)}</b><small>Xếp lớp / Tiến bộ</small></div>
-      <div class="card overview-metric"><span>Tests toàn bộ</span><b>${Number(a.tests_all?.placement||0)} / ${Number(a.tests_all?.progress||0)}</b><small>Xếp lớp / Tiến bộ</small></div>
-      <div class="card overview-metric"><span>Paid tuần / tháng</span><b class="money-metric">${money(a.paid_amount?.week)} / ${money(a.paid_amount?.month)}</b><small>Đã PAID</small></div>
-      <div class="card overview-metric"><span>Số người đang truy cập</span><b>${Number(a.website_visits?.online||0)}</b><small>Hoạt động trong ~75 giây gần nhất</small></div>
-      <div class="card overview-metric"><span>Truy cập hôm nay / tuần / tháng</span><b class="visit-combined">${Number(a.website_visits?.day||0)} / ${Number(a.website_visits?.week||0)} / ${Number(a.website_visits?.month||0)}</b><small>Unique visitor</small></div>
+      <div class="card overview-metric"><span>Topics this week</span><b>${Number(a.topics_this_week||0)} / ${Number(a.sessions_this_week||0)}</b><small>Uploaded / Total sessions</small></div>
+      <div class="card overview-metric"><span>Active students</span><b>${Number(a.active_students||0)}</b><small>Has upcoming lessons</small></div>
+      <div class="card overview-metric"><span>Tests this week</span><b>${Number(a.tests_this_week?.placement||0)} / ${Number(a.tests_this_week?.progress||0)}</b><small>Placement / Progress</small></div>
+      <div class="card overview-metric"><span>All tests</span><b>${Number(a.tests_all?.placement||0)} / ${Number(a.tests_all?.progress||0)}</b><small>Placement / Progress</small></div>
+      <div class="card overview-metric"><span>Paid this week / month</span><b class="money-metric">${money(a.paid_amount?.week)} / ${money(a.paid_amount?.month)}</b><small>PAID</small></div>
+      <div class="card overview-metric"><span>Visitors online now</span><b>${Number(a.website_visits?.online||0)}</b><small>Active within the last ~75 seconds</small></div>
+      <div class="card overview-metric"><span>Visitors today / week / month</span><b class="visit-combined">${Number(a.website_visits?.day||0)} / ${Number(a.website_visits?.week||0)} / ${Number(a.website_visits?.month||0)}</b><small>Unique visitor</small></div>
+      <div class="card overview-metric"><span>Renewal rate</span><b>${pct(a.renewal_rate?.rate)}</b><small>${Number(a.renewal_rate?.renewed_customers||0)} renewed / ${Number(a.renewal_rate?.eligible_customers||0)} eligible customers</small></div>
     </div>
     <div class="card overview-fill-card">
-      <div><h3 style="margin:0">Tỷ lệ lấp đầy trung bình</h3><div class="muted" style="font-size:12px;margin-top:4px">Booking / tổng sức chứa session</div></div>
+      <div><h3 style="margin:0">Average fill rate</h3><div class="muted" style="font-size:12px;margin-top:4px">Bookings / total session capacity</div></div>
       <div class="fill-metrics">
-        <div><span>Tuần trước</span><b>${pct(a.fill_rate?.previous_week)}</b></div>
-        <div class="current"><span>Tuần hiện tại</span><b>${pct(a.fill_rate?.current_week)}</b></div>
-        <div><span>Tuần tiếp theo</span><b>${pct(a.fill_rate?.next_week)}</b></div>
+        <div><span>Previous week</span><b>${pct(a.fill_rate?.previous_week)}</b></div>
+        <div class="current"><span>Current week</span><b>${pct(a.fill_rate?.current_week)}</b></div>
+        <div><span>Next week</span><b>${pct(a.fill_rate?.next_week)}</b></div>
       </div>
     </div>
-    <div class="card visit-chart-card"><h3 style="margin:0">Lượng truy cập 30 ngày gần nhất</h3><div class="muted" style="font-size:12px;margin-top:4px">Unique visitor theo ngày</div><div class="visit-chart-wrap"><canvas id="visit30Chart"></canvas></div></div>`;
+    <div class="card visit-chart-card"><h3 style="margin:0">Visitors in the last 30 days</h3><div class="muted" style="font-size:12px;margin-top:4px">Unique visitors per day</div><div class="visit-chart-wrap"><canvas id="visit30Chart"></canvas></div></div>`;
   drawVisit30Chart(a.website_visits?.daily_30||[]);
 }
 function drawVisit30Chart(rows){
@@ -734,11 +820,11 @@ async function loadSessions(){
   cache=d;
 
   const programSelect=document.getElementById('sProgram');
-  programSelect.innerHTML=`<option value="">Chọn lớp</option>`+
+  programSelect.innerHTML=`<option value="">Choose class</option>`+
     (d.programs||[]).map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
 
   const teacherSelect=document.getElementById('sTeacher');
-  teacherSelect.innerHTML=`<option value="">Chọn giáo viên</option>`+
+  teacherSelect.innerHTML=`<option value="">Choose teacher</option>`+
     (d.teachers||[]).map(x=>`<option value="${x.id}" data-country="${x.country||''}">${x.full_name}</option>`).join('');
   syncTeacherCountry();
 
@@ -761,19 +847,10 @@ async function loadSessions(){
   syncTopicTitleFromSession();
   renderTopicStatus();
 
-  const sessionRows=[...(d.sessions||[])].sort((a,b)=>
+  adminSessionsCache=[...(d.sessions||[])].sort((a,b)=>
     `${a.session_date||''} ${a.starts_at||''}`.localeCompare(`${b.session_date||''} ${b.starts_at||''}`)
   );
-
-  document.getElementById('sessionsTable').innerHTML=table(['Ngày','Giờ','Lớp','Loại','GV','Chỗ','Status'],sessionRows.map(x=>[
-    x.session_date,
-    `${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,
-    x.program_name,
-    `<span class="badge">${x.is_recurring?'Cố định':'Lớp lẻ'}</span>`,
-    x.teacher_name||'',
-    `${x.booked_count}/${x.capacity}`,
-    `<span class="badge">${x.status}</span>`
-  ]));
+  renderSessionsTable();
 }
 function syncTeacherCountry(){
   const select=document.getElementById('sTeacher');
@@ -785,11 +862,11 @@ async function createSession(){
   const msg=document.getElementById('sessionMsg');msg.innerHTML='';
 
   if(!sProgram.value){
-    msg.innerHTML='<div class="error">Vui lòng chọn lớp.</div>';
+    msg.innerHTML='<div class="error">Please choose a class.</div>';
     return;
   }
   if(!sDate.value){
-    msg.innerHTML='<div class="error">Vui lòng chọn ngày bắt đầu.</div>';
+    msg.innerHTML='<div class="error">Please choose a start date.</div>';
     return;
   }
 
@@ -806,29 +883,29 @@ async function createSession(){
     })});
 
     if(result.reused_existing){
-      msg.innerHTML='<div class="ok">Session này đã tồn tại. Đã chuyển session hiện có thành lớp cố định và hệ thống sẽ tự lặp các tuần sau.</div>';
+      msg.innerHTML='<div class="ok">This session already exists. It was converted to recurring and future weeks will be generated automatically.</div>';
     }else{
-      msg.innerHTML=`<div class="ok">${sType.value==='RECURRING'?'Đã tạo lớp cố định. Các tuần sau sẽ tự được sinh từ DB.':'Đã tạo lớp lẻ.'}</div>`;
+      msg.innerHTML=`<div class="ok">${sType.value==='RECURRING'?'Recurring class created. Future weeks will be generated automatically.':'One-off class created.'}</div>`;
     }
 
     await loadSessions();
     await loadOverview();
   }catch(e){
     const friendly=e.message==='SESSION_ALREADY_EXISTS'
-      ?'Session này đã tồn tại đúng lớp, ngày và giờ. Không thể tạo trùng.'
+      ?'This exact class/date/time session already exists.'
       :e.message;
     msg.innerHTML=`<div class="error">${friendly}</div>`;
   }
 }
 async function loadCustomers(){
   const d=await api('/api/admin?action=customers');
-  document.getElementById('customersTable').innerHTML=table(['Tên','SĐT','Status','Ngày tạo'],d.customers.map(x=>[x.full_name||'',x.phone,`<span class="badge">${x.status}</span>`,fmt(x.created_at)]));
+  adminCustomersCache=d.customers||[];
+  renderCustomersTable();
 }
 async function loadBookings(){
   const d=await api('/api/admin?action=bookings');
-  document.getElementById('bookingsTable').innerHTML=table(['Học viên','SĐT','Ngày','Giờ','Lớp','Thanh toán'],d.bookings.map(x=>[
-    x.full_name||'',x.phone,x.session_date,`${x.starts_at.slice(0,5)}–${x.ends_at.slice(0,5)}`,x.program_name,`<span class="badge">${x.payment_status}</span>`
-  ]));
+  adminBookingsCache=d.bookings||[];
+  renderBookingsTable();
 }
 
 
@@ -864,7 +941,7 @@ function getManualSessionsFromCache(){
 function updateManualSelectedCount(){
   const count=document.querySelectorAll('#manualSessionPicker input[type="checkbox"]:checked').length;
   const host=document.getElementById('manualSelectedCount');
-  if(host) host.textContent=`${count} buổi đã chọn`;
+  if(host) host.textContent=`${count} lessons selected`;
 }
 
 function fillManualSessionDropdown(sessions){
@@ -882,9 +959,57 @@ function fillManualSessionDropdown(sessions){
       </span>
       <span class="manual-session-seat">${booked}/${cap}${full?' · FULL':''}</span>
     </label>`;
-  }).join('') || '<div class="muted" style="padding:14px">Không có session sắp tới.</div>';
+  }).join('') || '<div class="muted" style="padding:14px">No upcoming sessions.</div>';
 
   updateManualSelectedCount();
+}
+
+
+function renderManualOrdersFromCache(){
+  const box=document.getElementById('manualBookings'); if(!box)return;
+  const q=String(document.getElementById('manualFilter')?.value||'').trim().toLowerCase();
+  const orders=(!q
+    ? adminManualOrdersCache
+    : adminManualOrdersCache.filter(o=>
+        [o.full_name,o.phone,o.order_code,o.paid_date,...(o.bookings||[]).flatMap(b=>[b.session_date,b.starts_at,b.program_name])]
+          .some(v=>String(v||'').toLowerCase().includes(q))
+      )
+  ).slice(0,10);
+
+  if(!orders.length){
+    box.innerHTML='<div class="muted" style="padding:18px;text-align:center">No matching manual bookings.</div>';
+    return;
+  }
+
+  box.innerHTML=orders.map(o=>`
+    <div class="manual-order-card">
+      <div class="manual-order-head">
+        <div class="manual-order-person">
+          <b>${adminEscapeHtml(o.full_name||'')}</b>
+          <span>${adminEscapeHtml(o.phone||'')} · ${o.bookings.length} lessons</span>
+        </div>
+        <div class="manual-order-payment">
+          <b>${new Intl.NumberFormat('vi-VN').format(Number(o.total_amount||0))}đ</b>
+          <span>PAID · ${o.paid_date||''}</span>
+        </div>
+      </div>
+      <div class="manual-order-sessions">
+        ${o.bookings.map(b=>`
+          <div class="manual-order-session">
+            <div class="manual-order-session-info">
+              <b>${b.session_date} · ${String(b.starts_at||'').slice(0,5)}–${String(b.ends_at||'').slice(0,5)} · ${adminEscapeHtml(b.program_name||'')}</b>
+              <span>Booking ${String(b.booking_id).slice(0,8)}…</span>
+            </div>
+            <select id="move-${b.booking_id}">
+              ${adminManualSessionsCache.map(s=>`
+                <option value="${s.id}" ${s.id===b.session_id?'selected':''}>
+                  ${s.session_date} · ${String(s.starts_at||'').slice(0,5)} · ${adminEscapeHtml(s.program_name||'')} · ${Number(s.booked_count||0)}/${Number(s.capacity||0)}
+                </option>`).join('')}
+            </select>
+            <button class="btn" onclick="moveManualBooking('${b.booking_id}')">Move lesson</button>
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
 }
 
 async function loadManual(){
@@ -908,7 +1033,7 @@ async function loadManual(){
     try{
       d=await api('/api/admin?action=manual-bookings');
     }catch(e){
-      if(box) box.innerHTML=`<div class="error">Không tải được booking thủ công: ${adminEscapeHtml(e.message)}</div>`;
+      if(box) box.innerHTML=`<div class="error">Could not load manual bookings: ${adminEscapeHtml(e.message)}</div>`;
       return;
     }
 
@@ -916,19 +1041,18 @@ async function loadManual(){
     if((d.sessions||[]).length) fillManualSessionDropdown(sessions);
 
     const orders=d.orders||[];
+    adminManualOrdersCache=orders;
+    adminManualSessionsCache=sessions;
     if(!box)return;
-
-    if(!orders.length){
-      box.innerHTML='<div class="muted" style="padding:18px;text-align:center">Chưa có booking thủ công.</div>';
-      return;
-    }
+    renderManualOrdersFromCache();
+    return;
 
     box.innerHTML=orders.map(o=>`
       <div class="manual-order-card">
         <div class="manual-order-head">
           <div class="manual-order-person">
             <b>${adminEscapeHtml(o.full_name||'')}</b>
-            <span>${adminEscapeHtml(o.phone||'')} · ${o.bookings.length} buổi</span>
+            <span>${adminEscapeHtml(o.phone||'')} · ${o.bookings.length} lessons</span>
           </div>
           <div class="manual-order-payment">
             <b>${new Intl.NumberFormat('vi-VN').format(Number(o.total_amount||0))}đ</b>
@@ -946,7 +1070,7 @@ async function loadManual(){
               <select id="move-${b.booking_id}">
                 ${sessions.map(s=>`<option value="${s.id}" ${s.id===b.session_id?'selected':''}>${s.session_date} · ${String(s.starts_at||'').slice(0,5)} · ${adminEscapeHtml(s.program_name||'')} · ${Number(s.booked_count||0)}/${Number(s.capacity||0)}</option>`).join('')}
               </select>
-              <button class="btn" onclick="moveManualBooking('${b.booking_id}')">Đổi buổi này</button>
+              <button class="btn" onclick="moveManualBooking('${b.booking_id}')">Move lesson</button>
             </div>
           `).join('')}
         </div>
@@ -976,7 +1100,7 @@ async function addManualBooking(){
       })
     });
 
-    msg.innerHTML=`<div class="ok">Đã thêm ${Number(result.booking_count||selected.length)} buổi · ${new Intl.NumberFormat('vi-VN').format(Number(result.total_amount||0))}đ · PAID · booking CONFIRMED.</div>`;
+    msg.innerHTML=`<div class="ok">Added ${Number(result.booking_count||selected.length)} lessons · ${new Intl.NumberFormat('vi-VN').format(Number(result.total_amount||0))}đ · PAID · booking CONFIRMED.</div>`;
 
     document.getElementById('manualName').value='';
     document.getElementById('manualPhone').value='';
@@ -1076,33 +1200,33 @@ function renderTopicStatus(){
   });
 
   summary.innerHTML=`
-    <div class="topic-mini-stat"><span>Session sắp tới</span><b>${allRows.length}</b></div>
-    <div class="topic-mini-stat"><span>Đã upload</span><b>${uploaded}</b></div>
-    <div class="topic-mini-stat"><span>Chưa upload</span><b>${missing}</b></div>`;
+    <div class="topic-mini-stat"><span>Upcoming sessions</span><b>${allRows.length}</b></div>
+    <div class="topic-mini-stat"><span>Uploaded</span><b>${uploaded}</b></div>
+    <div class="topic-mini-stat"><span>Missing</span><b>${missing}</b></div>`;
 
   if(!rows.length){
-    host.innerHTML='<div class="muted" style="padding:16px 0">Không có session sắp tới.</div>';
+    host.innerHTML='<div class="muted" style="padding:16px 0">No upcoming sessions.</div>';
     return;
   }
 
   host.innerHTML=table(
-    ['Ngày','Giờ','Lớp','Giáo viên','Trạng thái Topic','Vocabulary','Tên Topic','Thao tác'],
+    ['Ngày','Giờ','Lớp','Teacher','Topic status','Vocabulary','Topic title','Action'],
     rows.map(x=>[
       x.session_date,
       `${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)}`,
       x.program_name||'',
       x.teacher_name||'',
       x.topic_storage_path
-        ? `<span class="topic-status-ok">✓ Đã upload</span>${String(window.lastUploadedTopicSessionId||'')===String(x.id)?'<span class="topic-just-updated">Vừa upload</span>':''}`
-        : '<span class="topic-status-missing">● Chưa upload</span>',
+        ? `<span class="topic-status-ok">✓ Uploaded</span>${String(window.lastUploadedTopicSessionId||'')===String(x.id)?'<span class="topic-just-updated">Just uploaded</span>':''}`
+        : '<span class="topic-status-missing">● Missing</span>',
       Array.isArray(x.topic_vocabulary) && x.topic_vocabulary.length
         ? `<span class="topic-status-ok">✓ ${x.topic_vocabulary.length} từ</span>`
-        : '<span class="topic-status-missing">● Chưa có</span>',
+        : '<span class="topic-status-missing">● None</span>',
       x.topic_title
         ? `<div class="topic-title-cell">${x.topic_title}</div>`
-        : '<span class="topic-none">Chưa có topic</span>',
+        : '<span class="topic-none">None topic</span>',
       x.topic_storage_path
-        ? `<button class="topic-delete-btn" onclick="deleteTopic('${x.id}',this)">Xoá</button>`
+        ? `<button class="topic-delete-btn" onclick="deleteTopic('${x.id}',this)">Delete</button>`
         : ''
     ])
   );
@@ -1111,7 +1235,7 @@ function renderTopicStatus(){
 
 
 async function deleteTopic(sessionId,btn){
-  if(!confirm('Xoá topic và vocabulary của session này?')) return;
+  if(!confirm('Delete topic và vocabulary của session này?')) return;
 
   const stop=setButtonBusy(btn,true);
   try{
@@ -1122,7 +1246,7 @@ async function deleteTopic(sessionId,btn){
     });
 
     document.getElementById('topicMsg').innerHTML=
-      `<div class="ok">Đã xoá topic khỏi ${Number(result.deleted_session_count||1)} session liên quan.</div>`;
+      `<div class="ok">Topic removed from ${Number(result.deleted_session_count||1)} related sessions.</div>`;
 
     await loadSessions();
     renderTopicStatus();
@@ -1137,14 +1261,14 @@ async function deleteTopic(sessionId,btn){
 async function uploadTopic(){
   const msg=document.getElementById('topicMsg');msg.innerHTML='';
   const file=document.getElementById('topicFile').files[0];
-  if(!file){msg.innerHTML='<div class="error">Chọn PDF trước.</div>';return}
+  if(!file){msg.innerHTML='<div class="error">Choose a PDF first.</div>';return}
   const fd=new FormData();fd.append('session_id',topicSession.value);fd.append('title',topicTitle.value.trim());fd.append('file',file);
   try{
     const selectedSessionId=document.getElementById('topicSession').value;
     const result=await api('/api/admin?action=topic-upload',{method:'POST',body:fd});
     const count=Number(result.updated_session_count||1);
     window.lastUploadedTopicSessionId=selectedSessionId;
-    msg.innerHTML=`<div class="ok">Upload topic thành công · ${result.topic_title||''} · Vocabulary ${Number(result.vocabulary_count||0)}/10 · đã đồng bộ vào ${count} session liên quan.</div>`;
+    msg.innerHTML=`<div class="ok">Topic uploaded successfully · ${result.topic_title||''} · Vocabulary ${Number(result.vocabulary_count||0)}/10 · synced to ${count} related sessions.</div>`;
     document.getElementById('topicFile').value='';
     await loadSessions();
     document.getElementById('topicStatusFilter').value='UPLOADED';
