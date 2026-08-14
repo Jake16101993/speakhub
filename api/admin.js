@@ -604,24 +604,27 @@ async function handleCustomerSearch(request){
     return Response.json({customers:[]});
   }
 
-  const safeText=q.replace(/[%_,]/g,'');
   const digits=q.replace(/\D/g,'');
+  const safeText=q.replace(/[%_]/g,'').trim();
 
   let builder=supabase
     .from('customers')
     .select('id,full_name,phone,status,created_at')
-    .eq('status','ACTIVE')
     .order('created_at',{ascending:false})
     .limit(8);
 
-  if(digits.length>=3){
-    builder=builder.or(`phone.ilike.%${digits}%,full_name.ilike.%${safeText}%`);
+  // Phone-like input -> search phone only.
+  // Name-like input -> search full_name only.
+  // This avoids fragile PostgREST OR filter parsing.
+  if(digits.length>=3 && digits.length>=safeText.replace(/\s/g,'').length){
+    builder=builder.ilike('phone',`%${digits}%`);
   }else{
     builder=builder.ilike('full_name',`%${safeText}%`);
   }
 
   const {data,error}=await builder;
   if(error) throw error;
+
   return Response.json({customers:data||[]});
 }
 
