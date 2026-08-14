@@ -308,6 +308,83 @@ async function handleOverview(){
   });
 }
 
+
+async function handleDateDiscounts(request){
+  if(request.method==='GET'){
+    const {data,error}=await supabase
+      .from('date_discounts')
+      .select('discount_date,discount_percent,created_at,updated_at')
+      .order('discount_date',{ascending:true});
+    if(error) throw error;
+    return Response.json({discounts:data||[]});
+  }
+
+  if(request.method==='POST'){
+    const body=await request.json().catch(()=>({}));
+    const discountDate=String(body.discount_date||'').trim();
+    const discountPercent=Number(body.discount_percent);
+
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(discountDate)){
+      return Response.json({error:'INVALID_DISCOUNT_DATE',details:'Please choose a valid discount date.'},{status:400});
+    }
+    if(!Number.isFinite(discountPercent) || discountPercent<=0 || discountPercent>=100){
+      return Response.json({error:'INVALID_DISCOUNT_PERCENT',details:'Discount must be greater than 0% and less than 100%.'},{status:400});
+    }
+
+    const cleanPercent=Math.round(discountPercent*100)/100;
+    const {data,error}=await supabase
+      .from('date_discounts')
+      .upsert({
+        discount_date:discountDate,
+        discount_percent:cleanPercent,
+        updated_at:new Date().toISOString()
+      },{onConflict:'discount_date'})
+      .select('discount_date,discount_percent,created_at,updated_at')
+      .single();
+
+    if(error) throw error;
+    return Response.json({success:true,discount:data});
+  }
+
+  if(request.method==='DELETE'){
+    const body=await request.json().catch(()=>({}));
+    const discountDate=String(body.discount_date||'').trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(discountDate)){
+      return Response.json({error:'INVALID_DISCOUNT_DATE',details:'Discount date is required.'},{status:400});
+    }
+
+    const {error}=await supabase
+      .from('date_discounts')
+      .delete()
+      .eq('discount_date',discountDate);
+
+    if(error) throw error;
+    return Response.json({success:true});
+  }
+
+  return Response.json({error:'Method not allowed'},{status:405});
+}
+
+async function handlePublicDateDiscounts(){
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}).format(new Date());
+  const {data,error}=await supabase
+    .from('date_discounts')
+    .select('discount_date,discount_percent')
+    .gte('discount_date',today)
+    .order('discount_date',{ascending:true});
+
+  if(error) throw error;
+
+  return Response.json(
+    {discounts:data||[]},
+    {headers:{
+      'Cache-Control':'no-store, no-cache, must-revalidate, max-age=0',
+      'CDN-Cache-Control':'no-store',
+      'Vercel-CDN-Cache-Control':'no-store'
+    }}
+  );
+}
+
 async function handleSessions(request){
   if(request.method==='GET'){
     const [
@@ -2394,6 +2471,7 @@ export default {
       // Public read-only price config used by landing page and booking UI.
       // No admin secret is exposed; only landing_price + tiers are returned.
       if(action==='public-price') return await runAdminActionWithRetry(()=>handlePublicPrice());
+      if(action==='public-discounts') return await runAdminActionWithRetry(()=>handlePublicDateDiscounts());
 
       if(!requireAdmin(request)){
         return Response.json({error:'UNAUTHORIZED'},{status:401});
@@ -2401,6 +2479,7 @@ export default {
 
       if(action==='overview') return await runAdminActionWithRetry(()=>handleOverview());
       if(action==='reminders') return await runAdminActionWithRetry(()=>handleReminders());
+      if(action==='discounts') return await runAdminActionWithRetry(()=>handleDateDiscounts(request));
       if(action==='price') return await runAdminActionWithRetry(()=>handlePrice(request));
       if(action==='sessions') return await runAdminActionWithRetry(()=>handleSessions(request));
       if(action==='customers') return await runAdminActionWithRetry(()=>handleCustomers(request));
