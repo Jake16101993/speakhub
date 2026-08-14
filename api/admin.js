@@ -103,6 +103,127 @@ function fillRate(sessions,bookingCounts){
   }
   return seats>0?Math.round((booked/seats)*1000)/10:0;
 }
+
+async function getRenewalInsights(){
+  const nowMs=Date.now();
+
+  const {data,error}=await supabase
+    .from('orders')
+    .select(`
+      id,user_id,created_at,payment_status,order_status,
+      customers:user_id(full_name,phone,status),
+      bookings(
+        id,status,
+        class_sessions(session_date,starts_at,ends_at,programs(name))
+      )
+    `)
+    .eq('payment_status','PAID')
+    .order('created_at',{ascending:true})
+    .limit(5000);
+
+  if(error) throw error;
+
+  const byCustomer=new Map();
+
+  for(const order of (data||[])){
+    if(!order.user_id) continue;
+    const customer=order.customers||{};
+    if(String(customer.status||'ACTIVE')!=='ACTIVE') continue;
+
+    const lessons=(order.bookings||[])
+      .filter(b=>['CONFIRMED','ATTENDED','NO_SHOW'].includes(String(b.status||'')))
+      .map(b=>{
+        const s=b.class_sessions||{};
+        const date=String(s.session_date||'');
+        const start=String(s.starts_at||'').slice(0,8);
+        const end=String(s.ends_at||'').slice(0,8);
+        const whenStart=date&&start?new Date(`${date}T${start}+07:00`).getTime():0;
+        const whenEnd=date&&(end||start)?new Date(`${date}T${end||start}+07:00`).getTime():0;
+        return {
+          session_date:date,
+          starts_at:s.starts_at||'',
+          ends_at:s.ends_at||'',
+          program_name:s.programs?.name||'',
+          when_start:whenStart,
+          when_end:whenEnd
+        };
+      })
+      .filter(x=>x.when_start>0)
+      .sort((a,b)=>a.when_start-b.when_start);
+
+    if(!lessons.length) continue;
+
+    const item={
+      order_id:order.id,
+      created_at:order.created_at,
+      user_id:order.user_id,
+      full_name:customer.full_name||'',
+      phone:customer.phone||'',
+      lessons,
+      first_lesson:lessons[0],
+      last_lesson:lessons[lessons.length-1]
+    };
+
+    if(!byCustomer.has(order.user_id)) byCustomer.set(order.user_id,[]);
+    byCustomer.get(order.user_id).push(item);
+  }
+
+  let eligibleCustomers=0;
+  let renewedCustomers=0;
+  const reminders=[];
+
+  for(const [userId,orders] of byCustomer){
+    orders.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+
+    const endedOrders=orders.filter(o=>o.last_lesson.when_end<=nowMs);
+    if(endedOrders.length){
+      eligibleCustomers++;
+      if(orders.length>=2) renewedCustomers++;
+    }
+
+    // Remind = no future paid lesson and the latest paid lesson has already ended.
+    const allLessons=orders.flatMap(o=>o.lessons).sort((a,b)=>a.when_start-b.when_start);
+    const futureLessons=allLessons.filter(x=>x.when_start>nowMs);
+    const pastLessons=allLessons.filter(x=>x.when_end<=nowMs);
+
+    if(!futureLessons.length && pastLessons.length){
+      const last=pastLessons[pastLessons.length-1];
+      const latestOrder=orders[orders.length-1];
+      reminders.push({
+        customer_id:userId,
+        full_name:latestOrder.full_name,
+        phone:latestOrder.phone,
+        last_session_date:last.session_date,
+        last_starts_at:last.starts_at,
+        last_ends_at:last.ends_at,
+        last_program_name:last.program_name,
+        last_lesson_at:last.when_start
+      });
+    }
+  }
+
+  reminders.sort((a,b)=>b.last_lesson_at-a.last_lesson_at);
+
+  return {
+    eligible_customers:eligibleCustomers,
+    renewed_customers:renewedCustomers,
+    renewal_rate:eligibleCustomers
+      ? Math.round((renewedCustomers/eligibleCustomers)*1000)/10
+      : 0,
+    reminders
+  };
+}
+
+async function handleReminders(){
+  const insights=await getRenewalInsights();
+  return Response.json({
+    reminders:insights.reminders,
+    renewal_rate:insights.renewal_rate,
+    renewed_customers:insights.renewed_customers,
+    eligible_customers:insights.eligible_customers
+  });
+}
+
 async function handleOverview(){
   const w=currentWeekBounds(), month=monthBounds(), weekEndExclusive=addDaysISO(w.current_to,1);
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}).format(new Date());
@@ -165,6 +286,7 @@ async function handleOverview(){
   for(let i=0;i<30;i++)dailyMap[addDaysISO(chartFrom,i)]=new Set();
   for(const x of (chartRes.data||[])){if(dailyMap[x.visited_on]&&x.visitor_id)dailyMap[x.visited_on].add(x.visitor_id);}
   const visits30=Object.entries(dailyMap).map(([date,set])=>({date,visitors:set.size}));
+  const renewal=await getRenewalInsights();
   return Response.json({
     counts:{customers:c.count||0,paid_orders:o.count||0,confirmed_bookings:b.count||0,open_sessions:s.count||0},
     analytics:{
@@ -175,6 +297,11 @@ async function handleOverview(){
       tests_all:{placement:pa.count||0,progress:ga.count||0},
       paid_amount:{week:sum(mw.data),month:sum(mm.data)},
       fill_rate:{previous_week:fill(prev.data),current_week:fill(week.data),next_week:fill(next.data)},
+      renewal_rate:{
+        rate:renewal.renewal_rate,
+        renewed_customers:renewal.renewed_customers,
+        eligible_customers:renewal.eligible_customers
+      },
       ranges:w,
       website_visits:{day:visDay,week:visWeek,month:visMonth,online:onlineVisitors,daily_30:visits30}
     }
@@ -2273,6 +2400,7 @@ export default {
       }
 
       if(action==='overview') return await runAdminActionWithRetry(()=>handleOverview());
+      if(action==='reminders') return await runAdminActionWithRetry(()=>handleReminders());
       if(action==='price') return await runAdminActionWithRetry(()=>handlePrice(request));
       if(action==='sessions') return await runAdminActionWithRetry(()=>handleSessions(request));
       if(action==='customers') return await runAdminActionWithRetry(()=>handleCustomers(request));
