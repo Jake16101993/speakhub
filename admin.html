@@ -383,16 +383,11 @@ button.primary.ui-button-busy::after{
         <div class="row2">
           <div>
             <label>Full name</label>
-            <div style="margin-bottom:12px">
-          <label>Find existing customer</label>
-          <input id="manualCustomerFilter" placeholder="Filter by name or phone..." oninput="renderManualCustomerMatches()">
-          <div id="manualCustomerMatches" style="margin-top:6px"></div>
-        </div>
-        <input id="manualName" placeholder="Nguyễn Văn A">
+<input id="manualName" placeholder="Nguyễn Văn A">
           </div>
           <div>
             <label>Phone number</label>
-            <input id="manualPhone" inputmode="numeric" placeholder="09xxxxxxxx">
+            <input id="manualPhone" inputmode="numeric" placeholder="09xxxxxxxx" oninput="autoFillManualNameByPhone()">
           </div>
         </div>
         <div class="row2" style="margin-top:10px">
@@ -418,6 +413,12 @@ button.primary.ui-button-busy::after{
 
         <button class="btn primary" style="width:100%;margin-top:12px" onclick="addManualBooking()">+ Add student to selected sessions</button>
         <div id="manualMsg"></div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <label>Find existing customer</label>
+        <input id="manualCustomerFilter" placeholder="Filter by name or phone..." oninput="renderManualCustomerMatches()" style="margin-top:6px">
+        <div id="manualCustomerMatches" style="margin-top:6px"></div>
       </div>
 
       <div class="card" style="margin-top:14px">
@@ -1107,6 +1108,28 @@ function fillManualSessionDropdown(sessions){
 }
 
 
+
+
+function normalizeManualPhone(value){
+  return String(value||'').replace(/\D/g,'');
+}
+
+function autoFillManualNameByPhone(){
+  const phoneInput=document.getElementById('manualPhone');
+  const nameInput=document.getElementById('manualName');
+  if(!phoneInput||!nameInput)return;
+
+  const phone=normalizeManualPhone(phoneInput.value);
+  if(phone.length<9)return;
+
+  const customer=(adminCustomersCache||[]).find(c=>
+    normalizeManualPhone(c.phone)===phone
+  );
+
+  if(customer && customer.full_name){
+    nameInput.value=customer.full_name;
+  }
+}
 
 function renderManualCustomerMatches(){
   const host=document.getElementById('manualCustomerMatches'); if(!host)return;
