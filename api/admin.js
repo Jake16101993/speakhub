@@ -2211,19 +2211,19 @@ async function handleCommunity(request){
     const body=await request.json().catch(()=>({}));
     customerId=body.customer_id||customerId;
     token=body.token||token;
-    const auth=await authenticateCustomer(customerId,token);
-    if(!auth) return Response.json({error:'UNAUTHORIZED'},{status:401});
+    const auth=await requireActiveCustomer(customerId,token);
+    if(auth.error) return Response.json({error:auth.error},{status:auth.status});
     const op=body.op||'post';
 
     if(op==='post'){
       const tag=String(body.tag||'Thảo luận').trim().slice(0,50);
       const title=String(body.title||'').trim().slice(0,500);
       if(!title) return Response.json({error:'TITLE_REQUIRED'},{status:400});
-      const since=new Date(); since.setHours(0,0,0,0);
+      const today=vnTodayBounds();
       const {count,error:cErr}=await supabase.from('community_posts').select('*',{count:'exact',head:true})
-        .eq('customer_id',customerId).gte('created_at',since.toISOString());
+        .eq('customer_id',customerId).gte('created_at',today.start).lt('created_at',today.end);
       if(cErr) throw cErr;
-      if((count||0)>=3) return Response.json({error:'DAILY_POST_LIMIT'},{status:429});
+      if(Number(count||0)>=3) return Response.json({error:'COMMUNITY_DAILY_LIMIT'},{status:429});
       const {error}=await supabase.from('community_posts').insert({customer_id:customerId,tag,title});
       if(error) throw error;
       return Response.json({ok:true});
@@ -2256,8 +2256,8 @@ async function handleCommunity(request){
     return Response.json({error:'INVALID_COMMUNITY_OPERATION'},{status:400});
   }
 
-  const auth=await authenticateCustomer(customerId,token);
-  if(!auth) return Response.json({error:'UNAUTHORIZED'},{status:401});
+  const auth=await requireActiveCustomer(customerId,token);
+  if(auth.error) return Response.json({error:auth.error},{status:auth.status});
 
   const {data:posts,error}=await supabase.from('community_posts')
     .select('id,tag,title,created_at,customers(full_name)').order('created_at',{ascending:false}).limit(100);
@@ -2614,7 +2614,12 @@ export default {
     }catch(err){
       console.error('admin api error',err);
       return Response.json(
-        {error:'ADMIN_API_ERROR',details:String(err?.message||err)},
+        {
+          error:'ADMIN_API_ERROR',
+          details:String(err?.message||err),
+          code:String(err?.code||''),
+          hint:String(err?.hint||'')
+        },
         {status:500}
       );
     }
