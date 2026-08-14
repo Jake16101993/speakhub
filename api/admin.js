@@ -1053,6 +1053,36 @@ Avoid obscure words and duplicate meanings. Keep situation concise and practical
   return items;
 }
 
+function topicImageFolder(pdfPath){return `${String(pdfPath||'').replace(/\.pdf$/i,'')}-pages`}
+function topicImageManifestPath(pdfPath){return `${topicImageFolder(pdfPath)}/manifest.json`}
+function topicImagePagePath(pdfPath,pageNo){return `${topicImageFolder(pdfPath)}/${String(pageNo).padStart(3,'0')}.jpg`}
+async function handleTopicPageUpload(request){
+  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
+  const fd=await request.formData();const sessionId=String(fd.get('session_id')||'');const pageNo=Number(fd.get('page_no')||0);const pageCount=Number(fd.get('page_count')||0);const image=fd.get('image');
+  if(!sessionId||!image||!Number.isInteger(pageNo)||!Number.isInteger(pageCount)||pageNo<1||pageCount<1||pageNo>pageCount||pageCount>30)return Response.json({error:'INVALID_TOPIC_IMAGE_UPLOAD'},{status:400});
+  if(image.type&&image.type!=='image/jpeg')return Response.json({error:'TOPIC_IMAGE_JPEG_ONLY'},{status:400});
+  if(Number(image.size||0)>3*1024*1024)return Response.json({error:'TOPIC_IMAGE_TOO_LARGE'},{status:413});
+  const {data:session,error:sErr}=await supabase.from('class_sessions').select('id,topic_storage_path').eq('id',sessionId).maybeSingle();
+  if(sErr)throw sErr;if(!session)return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
+  const pdfPath=String(session.topic_storage_path||'').trim();if(!pdfPath)return Response.json({error:'TOPIC_NOT_READY'},{status:409});
+  const folder=topicImageFolder(pdfPath);
+  if(pageNo===1){
+    const {data:oldFiles,error:listErr}=await supabase.storage.from('topics').list(folder,{limit:100});
+    if(!listErr&&Array.isArray(oldFiles)&&oldFiles.length){const removePaths=oldFiles.map(x=>`${folder}/${x.name}`).filter(Boolean);if(removePaths.length){const {error:rErr}=await supabase.storage.from('topics').remove(removePaths);if(rErr)console.error('old topic image cleanup warning',rErr)}}
+  }
+  const imagePath=topicImagePagePath(pdfPath,pageNo);const bytes=await image.arrayBuffer();
+  const {error:uploadErr}=await supabase.storage.from('topics').upload(imagePath,bytes,{contentType:'image/jpeg',cacheControl:'3600',upsert:true});if(uploadErr)throw uploadErr;
+  if(pageNo===pageCount){
+    const pages=Array.from({length:pageCount},(_,i)=>topicImagePagePath(pdfPath,i+1));
+    const manifestBytes=new TextEncoder().encode(JSON.stringify({version:1,page_count:pageCount,pages,generated_at:new Date().toISOString()}));
+    const {error:mErr}=await supabase.storage.from('topics').upload(topicImageManifestPath(pdfPath),manifestBytes,{contentType:'application/json',cacheControl:'3600',upsert:true});if(mErr)throw mErr;
+  }
+  return Response.json({success:true,page_no:pageNo,page_count:pageCount,image_path:imagePath});
+}
+async function removeTopicGeneratedImages(pdfPath){
+  const path=String(pdfPath||'').trim();if(!path)return;const folder=topicImageFolder(path);
+  try{const {data:files,error}=await supabase.storage.from('topics').list(folder,{limit:100});if(error)return;const paths=(files||[]).map(x=>`${folder}/${x.name}`).filter(Boolean);if(paths.length)await supabase.storage.from('topics').remove(paths)}catch(err){console.error('topic generated image cleanup warning',err)}
+}
 async function handleTopicUpload(request){
   if(request.method!=='POST'){
     return Response.json({error:'Method not allowed'},{status:405});
@@ -1195,6 +1225,7 @@ async function handleTopicDelete(request){
   if(uErr) throw uErr;
 
   if(path){
+    await removeTopicGeneratedImages(path);
     const {error:storageErr}=await supabase.storage.from('topics').remove([path]);
     if(storageErr){
       console.error('Topic storage delete warning',storageErr);
@@ -2602,6 +2633,7 @@ export default {
       }
       if(action==='manual-reschedule') return await runAdminActionWithRetry(()=>handleManualReschedule(request));
       if(action==='topic-upload') return await runAdminActionWithRetry(()=>handleTopicUpload(request));
+      if(action==='topic-page-upload') return await runAdminActionWithRetry(()=>handleTopicPageUpload(request));
       if(action==='topic-delete') return await runAdminActionWithRetry(()=>handleTopicDelete(request));
       if(action==='admin-chat') return await runAdminActionWithRetry(()=>handleAdminChat(request));
 

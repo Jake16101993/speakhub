@@ -52,33 +52,23 @@ async function verifyCustomerAndBooking(url){
   return {booking};
 }
 
+function topicImageFolder(pdfPath){return `${String(pdfPath||'').replace(/\.pdf$/i,'')}-pages`}
+function topicImageManifestPath(pdfPath){return `${topicImageFolder(pdfPath)}/manifest.json`}
+async function signedTopicImagePages(pdfPath,expiresIn=600){
+  const {data:file,error}=await supabase.storage.from('topics').download(topicImageManifestPath(pdfPath));if(error||!file)return [];
+  let manifest;try{manifest=JSON.parse(await file.text())}catch(_){return []}
+  const pages=Array.isArray(manifest?.pages)?manifest.pages.map(String).filter(Boolean).slice(0,30):[];if(!pages.length)return [];
+  const {data:signed,error:sErr}=await supabase.storage.from('topics').createSignedUrls(pages,expiresIn);if(sErr||!Array.isArray(signed))return [];
+  return signed.map((x,i)=>({page:i+1,url:x?.signedUrl||x?.signedURL||''})).filter(x=>x.url);
+}
 async function handleOpen(request,url){
-  if(request.method!=='GET'){
-    return Response.json({error:'Method not allowed'},{status:405});
-  }
-
-  const result=await verifyCustomerAndBooking(url);
-  if(result.error) return result.error;
-
-  const session=result.booking.class_sessions||{};
-  const path=String(session.topic_storage_path||'').trim();
-
-  if(!path){
-    return Response.json({error:'TOPIC_NOT_READY'},{status:404});
-  }
-
-  const {data:signed,error:signedErr}=await supabase
-    .storage
-    .from('topics')
-    .createSignedUrl(path,600);
-
-  if(signedErr) throw signedErr;
-
-  return Response.json({
-    title:session.topic_title||'SpeakHub Topic',
-    signed_url:signed.signedUrl,
-    expires_in:600
-  });
+  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
+  const result=await verifyCustomerAndBooking(url);if(result.error)return result.error;
+  const session=result.booking.class_sessions||{};const path=String(session.topic_storage_path||'').trim();if(!path)return Response.json({error:'TOPIC_NOT_READY'},{status:404});
+  const expiresIn=600;
+  const [pdfResult,imagePages]=await Promise.all([supabase.storage.from('topics').createSignedUrl(path,expiresIn),signedTopicImagePages(path,expiresIn).catch(()=>[])]);
+  if(pdfResult.error)throw pdfResult.error;
+  return Response.json({title:session.topic_title||'SpeakHub Topic',signed_url:pdfResult.data?.signedUrl||'',image_urls:imagePages.map(x=>x.url),page_count:imagePages.length,viewer:imagePages.length?'images':'pdf',expires_in:expiresIn},{headers:{'Cache-Control':'private, max-age=120'}});
 }
 
 async function handleFile(request,url){
