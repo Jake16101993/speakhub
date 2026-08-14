@@ -383,7 +383,12 @@ button.primary.ui-button-busy::after{
         <div class="row2">
           <div>
             <label>Full name</label>
-            <input id="manualName" placeholder="Nguyễn Văn A">
+            <div style="margin-bottom:12px">
+          <label>Find existing customer</label>
+          <input id="manualCustomerFilter" placeholder="Filter by name or phone..." oninput="renderManualCustomerMatches()">
+          <div id="manualCustomerMatches" style="margin-top:6px"></div>
+        </div>
+        <input id="manualName" placeholder="Nguyễn Văn A">
           </div>
           <div>
             <label>Phone number</label>
@@ -758,8 +763,14 @@ function adminFilterRows(rows,query,fields){
 }
 
 function renderSessionsTable(){
-  const q=document.getElementById('sessionsFilter')?.value||'';
-  const rows=adminFilterRows(adminSessionsCache,q,['session_date','starts_at','ends_at','program_name','teacher_name','status','session_type']);
+  const q=String(document.getElementById('sessionsFilter')?.value||'').trim().toLowerCase();
+  const rows=!q
+    ? adminSessionsCache
+    : adminSessionsCache.filter(x=>
+        ['session_date','starts_at','ends_at','program_name','teacher_name','status','session_type']
+          .some(field=>String(x?.[field]??'').toLowerCase().includes(q))
+      );
+
   const host=document.getElementById('sessionsTable'); if(!host)return;
   host.innerHTML=table(['Date','Time','Class','Type','Teacher','Seats','Status'],rows.map(x=>[
     x.session_date||'',
@@ -1096,6 +1107,48 @@ function fillManualSessionDropdown(sessions){
 }
 
 
+
+function renderManualCustomerMatches(){
+  const host=document.getElementById('manualCustomerMatches'); if(!host)return;
+  const q=String(document.getElementById('manualCustomerFilter')?.value||'').trim().toLowerCase();
+
+  if(!q){
+    host.innerHTML='';
+    return;
+  }
+
+  const matches=(adminCustomersCache||[])
+    .filter(c=>
+      String(c.full_name||'').toLowerCase().includes(q) ||
+      String(c.phone||'').toLowerCase().includes(q)
+    )
+    .slice(0,8);
+
+  if(!matches.length){
+    host.innerHTML='<div class="muted" style="font-size:12px">No matching customer.</div>';
+    return;
+  }
+
+  host.innerHTML=matches.map(c=>`
+    <button type="button" class="btn" style="width:100%;text-align:left;margin-bottom:5px"
+      onclick='pickManualCustomer(${JSON.stringify(c.full_name||"")},${JSON.stringify(c.phone||"")})'>
+      <b>${adminEscapeHtml(c.full_name||'')}</b> · ${adminEscapeHtml(c.phone||'')}
+    </button>
+  `).join('');
+}
+
+function pickManualCustomer(name,phone){
+  const nameInput=document.getElementById('manualName');
+  const phoneInput=document.getElementById('manualPhone');
+  if(nameInput) nameInput.value=name||'';
+  if(phoneInput) phoneInput.value=phone||'';
+
+  const filter=document.getElementById('manualCustomerFilter');
+  const host=document.getElementById('manualCustomerMatches');
+  if(filter) filter.value=phone||name||'';
+  if(host) host.innerHTML='';
+}
+
 function renderManualOrdersFromCache(){
   const box=document.getElementById('manualBookings'); if(!box)return;
   const q=String(document.getElementById('manualFilter')?.value||'').trim().toLowerCase();
@@ -1144,6 +1197,12 @@ function renderManualOrdersFromCache(){
 }
 
 async function loadManual(){
+  if(!Array.isArray(adminCustomersCache)||!adminCustomersCache.length){
+    try{
+      const customerData=await api('/api/admin?action=customers');
+      adminCustomersCache=customerData.customers||[];
+    }catch(_){}
+  }
   const box=document.getElementById('manualBookings');
 
   try{
