@@ -417,7 +417,7 @@ button.primary.ui-button-busy::after{
 
       <div class="card" style="margin-top:14px">
         <label>Find existing customer</label>
-        <input id="manualCustomerFilter" placeholder="Filter by name or phone..." oninput="renderManualCustomerMatches()" style="margin-top:6px">
+        <input id="manualCustomerFilter" placeholder="Filter by name or phone..." oninput="queueManualCustomerSearch()" style="margin-top:6px">
         <div id="manualCustomerMatches" style="margin-top:6px"></div>
       </div>
 
@@ -1114,38 +1114,59 @@ function normalizeManualPhone(value){
   return String(value||'').replace(/\D/g,'');
 }
 
+let manualPhoneLookupTimer=null;
+
 function autoFillManualNameByPhone(){
-  const phoneInput=document.getElementById('manualPhone');
-  const nameInput=document.getElementById('manualName');
-  if(!phoneInput||!nameInput)return;
+  clearTimeout(manualPhoneLookupTimer);
+  manualPhoneLookupTimer=setTimeout(async()=>{
+    const phoneInput=document.getElementById('manualPhone');
+    const nameInput=document.getElementById('manualName');
+    if(!phoneInput||!nameInput)return;
 
-  const phone=normalizeManualPhone(phoneInput.value);
-  if(phone.length<9)return;
+    const phone=normalizeManualPhone(phoneInput.value);
+    if(phone.length!==10)return;
 
-  const customer=(adminCustomersCache||[]).find(c=>
-    normalizeManualPhone(c.phone)===phone
-  );
+    try{
+      const d=await api(`/api/admin?action=customer-search&q=${encodeURIComponent(phone)}`);
+      const customer=(d.customers||[]).find(c=>normalizeManualPhone(c.phone)===phone);
+      if(customer?.full_name){
+        nameInput.value=customer.full_name;
+      }
+    }catch(_){}
+  },180);
+}
 
-  if(customer && customer.full_name){
-    nameInput.value=customer.full_name;
+function queueManualCustomerSearch(){
+  clearTimeout(manualCustomerSearchTimer);
+  manualCustomerSearchTimer=setTimeout(searchManualCustomersFromDB,180);
+}
+
+async function searchManualCustomersFromDB(){
+  const host=document.getElementById('manualCustomerMatches');
+  const input=document.getElementById('manualCustomerFilter');
+  if(!host||!input)return;
+
+  const q=String(input.value||'').trim();
+  if(!q){
+    manualCustomerSearchResults=[];
+    host.innerHTML='';
+    return;
+  }
+
+  host.innerHTML='<div class="muted" style="font-size:12px">Searching...</div>';
+
+  try{
+    const d=await api(`/api/admin?action=customer-search&q=${encodeURIComponent(q)}`);
+    manualCustomerSearchResults=d.customers||[];
+    renderManualCustomerMatches();
+  }catch(e){
+    host.innerHTML=`<div class="error">${adminEscapeHtml(e.message)}</div>`;
   }
 }
 
 function renderManualCustomerMatches(){
   const host=document.getElementById('manualCustomerMatches'); if(!host)return;
-  const q=String(document.getElementById('manualCustomerFilter')?.value||'').trim().toLowerCase();
-
-  if(!q){
-    host.innerHTML='';
-    return;
-  }
-
-  const matches=(adminCustomersCache||[])
-    .filter(c=>
-      String(c.full_name||'').toLowerCase().includes(q) ||
-      String(c.phone||'').toLowerCase().includes(q)
-    )
-    .slice(0,8);
+  const matches=manualCustomerSearchResults||[];
 
   if(!matches.length){
     host.innerHTML='<div class="muted" style="font-size:12px">No matching customer.</div>';
