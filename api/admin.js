@@ -312,9 +312,10 @@ async function handleOverview(){
 async function handleDateDiscounts(request){
   if(request.method==='GET'){
     const {data,error}=await supabase
-      .from('date_discounts')
-      .select('discount_date,discount_percent,created_at,updated_at')
-      .order('discount_date',{ascending:true});
+      .from('class_date_discounts')
+      .select('discount_date,program_name,discount_percent,created_at')
+      .order('discount_date',{ascending:true})
+      .order('program_name',{ascending:true});
     if(error) throw error;
     return Response.json({discounts:data||[]});
   }
@@ -322,10 +323,14 @@ async function handleDateDiscounts(request){
   if(request.method==='POST'){
     const body=await request.json().catch(()=>({}));
     const discountDate=String(body.discount_date||'').trim();
+    const programName=String(body.program_name||'').trim();
     const discountPercent=Number(body.discount_percent);
 
     if(!/^\d{4}-\d{2}-\d{2}$/.test(discountDate)){
       return Response.json({error:'INVALID_DISCOUNT_DATE',details:'Please choose a valid discount date.'},{status:400});
+    }
+    if(!programName){
+      return Response.json({error:'PROGRAM_REQUIRED',details:'Please choose a class.'},{status:400});
     }
     if(!Number.isFinite(discountPercent) || discountPercent<=0 || discountPercent>=100){
       return Response.json({error:'INVALID_DISCOUNT_PERCENT',details:'Discount must be greater than 0% and less than 100%.'},{status:400});
@@ -333,13 +338,13 @@ async function handleDateDiscounts(request){
 
     const cleanPercent=Math.round(discountPercent*100)/100;
     const {data,error}=await supabase
-      .from('date_discounts')
+      .from('class_date_discounts')
       .upsert({
         discount_date:discountDate,
-        discount_percent:cleanPercent,
-        updated_at:new Date().toISOString()
-      },{onConflict:'discount_date'})
-      .select('discount_date,discount_percent,created_at,updated_at')
+        program_name:programName,
+        discount_percent:cleanPercent
+      },{onConflict:'discount_date,program_name'})
+      .select('discount_date,program_name,discount_percent,created_at')
       .single();
 
     if(error) throw error;
@@ -349,14 +354,17 @@ async function handleDateDiscounts(request){
   if(request.method==='DELETE'){
     const body=await request.json().catch(()=>({}));
     const discountDate=String(body.discount_date||'').trim();
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(discountDate)){
-      return Response.json({error:'INVALID_DISCOUNT_DATE',details:'Discount date is required.'},{status:400});
+    const programName=String(body.program_name||'').trim();
+
+    if(!discountDate || !programName){
+      return Response.json({error:'DISCOUNT_KEY_REQUIRED',details:'Date and class are required.'},{status:400});
     }
 
     const {error}=await supabase
-      .from('date_discounts')
+      .from('class_date_discounts')
       .delete()
-      .eq('discount_date',discountDate);
+      .eq('discount_date',discountDate)
+      .eq('program_name',programName);
 
     if(error) throw error;
     return Response.json({success:true});
@@ -368,8 +376,8 @@ async function handleDateDiscounts(request){
 async function handlePublicDateDiscounts(){
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}).format(new Date());
   const {data,error}=await supabase
-    .from('date_discounts')
-    .select('discount_date,discount_percent')
+    .from('class_date_discounts')
+    .select('discount_date,program_name,discount_percent')
     .gte('discount_date',today)
     .order('discount_date',{ascending:true});
 
