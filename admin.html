@@ -453,10 +453,20 @@ button.primary.ui-button-busy::after{
           <button class="btn" onclick="loadDiscounts()">↻ Refresh</button>
         </div>
 
-        <div class="row2" style="margin-top:16px">
+        <div class="row" style="margin-top:16px">
           <div>
             <label>Class date</label>
             <input id="discountDate" type="date">
+          </div>
+          <div>
+            <label>Class</label>
+            <select id="discountProgram">
+              <option value="">Choose class</option>
+              <option value="Kid Starter">Kid Starter</option>
+              <option value="Kid Communicator">Kid Communicator</option>
+              <option value="Adult Beginner">Adult Beginner</option>
+              <option value="Adult Intermediate">Adult Intermediate</option>
+            </select>
           </div>
           <div>
             <label>Discount (%)</label>
@@ -822,11 +832,12 @@ function renderDiscountsTable(){
   }
 
   host.innerHTML=table(
-    ['Date','Discount','Action'],
+    ['Date','Class','Discount','Action'],
     adminDiscountsCache.map(x=>[
       x.discount_date||'',
+      adminEscapeHtml(x.program_name||''),
       `<b>-${Number(x.discount_percent||0)}%</b>`,
-      `<button class="btn" onclick="deleteDiscount('${x.discount_date}')">Delete</button>`
+      `<button class="btn" onclick='deleteDiscount(${JSON.stringify(x.discount_date)},${JSON.stringify(x.program_name)})'>Delete</button>`
     ])
   );
 }
@@ -835,12 +846,17 @@ async function saveDiscount(){
   const msg=document.getElementById('discountMsg');
   const btn=document.getElementById('saveDiscountBtn');
   const discount_date=document.getElementById('discountDate')?.value||'';
+  const program_name=document.getElementById('discountProgram')?.value||'';
   const discount_percent=Number(document.getElementById('discountPercent')?.value);
 
   if(msg) msg.innerHTML='';
 
   if(!discount_date){
     if(msg) msg.innerHTML='<div class="error">Please choose a class date.</div>';
+    return;
+  }
+  if(!program_name){
+    if(msg) msg.innerHTML='<div class="error">Please choose a class.</div>';
     return;
   }
   if(!Number.isFinite(discount_percent)||discount_percent<=0||discount_percent>=100){
@@ -853,7 +869,7 @@ async function saveDiscount(){
     await api('/api/admin?action=discounts',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({discount_date,discount_percent})
+      body:JSON.stringify({discount_date,program_name,discount_percent})
     });
     if(msg) msg.innerHTML='<div class="ok">Discount saved successfully.</div>';
     await loadDiscounts();
@@ -864,14 +880,14 @@ async function saveDiscount(){
   }
 }
 
-async function deleteDiscount(date){
-  if(!confirm(`Delete discount for ${date}?`)) return;
+async function deleteDiscount(date,programName){
+  if(!confirm(`Delete ${programName} discount for ${date}?`)) return;
   const msg=document.getElementById('discountMsg');
   try{
     await api('/api/admin?action=discounts',{
       method:'DELETE',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({discount_date:date})
+      body:JSON.stringify({discount_date:date,program_name:programName})
     });
     if(msg) msg.innerHTML='<div class="ok">Discount deleted.</div>';
     await loadDiscounts();
