@@ -2292,7 +2292,9 @@ async function handleCommunity(request){
       likes:pl.length,liked:pl.some(x=>String(x.customer_id)===String(customerId)),
       comments:pc.map(c=>({
         id:c.id,author:c.customers?.full_name||'Học viên',text:c.text,
-        time:new Date(c.created_at).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})
+        time:new Date(c.created_at).toLocaleTimeString('vi-VN',{
+          timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit'
+        })
       }))
     };
   });
