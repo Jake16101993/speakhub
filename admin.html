@@ -417,7 +417,13 @@ button.primary.ui-button-busy::after{
 
       <div class="card" style="margin-top:14px">
         <label>Find existing customer</label>
-        <input id="manualCustomerFilter" placeholder="Filter by name or phone..." oninput="queueManualCustomerSearch()" style="margin-top:6px">
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:6px">
+          <input id="manualCustomerFilter"
+            placeholder="Filter by name or phone..."
+            oninput="queueManualCustomerSearch()"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();searchManualCustomersFromDB()}">
+          <button type="button" class="btn" onclick="searchManualCustomersFromDB()">Search</button>
+        </div>
         <div id="manualCustomerMatches" style="margin-top:6px"></div>
       </div>
 
@@ -1153,14 +1159,14 @@ async function searchManualCustomersFromDB(){
     return;
   }
 
-  host.innerHTML='<div class="muted" style="font-size:12px">Searching...</div>';
+  host.innerHTML='<div class="muted" style="font-size:12px">Searching database...</div>';
 
   try{
     const d=await api(`/api/admin?action=customer-search&q=${encodeURIComponent(q)}`);
     manualCustomerSearchResults=d.customers||[];
     renderManualCustomerMatches();
   }catch(e){
-    host.innerHTML=`<div class="error">${adminEscapeHtml(e.message)}</div>`;
+    host.innerHTML=`<div class="error">Customer search failed: ${adminEscapeHtml(e.message)}</div>`;
   }
 }
 
@@ -1173,12 +1179,14 @@ function renderManualCustomerMatches(){
     return;
   }
 
-  host.innerHTML=matches.map(c=>`
-    <button type="button" class="btn" style="width:100%;text-align:left;margin-bottom:5px"
-      onclick='pickManualCustomer(${JSON.stringify(c.full_name||"")},${JSON.stringify(c.phone||"")})'>
-      <b>${adminEscapeHtml(c.full_name||'')}</b> · ${adminEscapeHtml(c.phone||'')}
-    </button>
-  `).join('');
+  host.innerHTML=
+    `<div class="muted" style="font-size:11px;margin-bottom:5px">${matches.length} matching customer${matches.length===1?'':'s'}</div>`+
+    matches.map(c=>`
+      <button type="button" class="btn" style="width:100%;text-align:left;margin-bottom:5px"
+        onclick='pickManualCustomer(${JSON.stringify(c.full_name||"")},${JSON.stringify(c.phone||"")})'>
+        <b>${adminEscapeHtml(c.full_name||'')}</b> · ${adminEscapeHtml(c.phone||'')}
+      </button>
+    `).join('');
 }
 
 function pickManualCustomer(name,phone){
