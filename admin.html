@@ -539,6 +539,7 @@ button.primary.ui-button-busy::after{
     </section>
   </main>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 
 function setButtonBusy(btn,busy=true){
@@ -1500,23 +1501,63 @@ async function deleteTopic(sessionId,btn){
 }
 
 
+async function topicPdfDocument(file){
+  if(!window.pdfjsLib) throw new Error('PDF_IMAGE_CONVERTER_NOT_READY');
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const bytes=await file.arrayBuffer();
+  return await window.pdfjsLib.getDocument({data:bytes}).promise;
+}
+async function topicPageBlob(page,targetWidth=1600){
+  const natural=page.getViewport({scale:1});
+  const scale=Math.min(2.6,Math.max(1,targetWidth/natural.width));
+  const viewport=page.getViewport({scale});
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.max(1,Math.floor(viewport.width));
+  canvas.height=Math.max(1,Math.floor(viewport.height));
+  const ctx=canvas.getContext('2d',{alpha:false});
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+  await page.render({canvasContext:ctx,viewport}).promise;
+  const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('TOPIC_IMAGE_ENCODE_FAILED')),'image/jpeg',0.82));
+  canvas.width=1;canvas.height=1;
+  return blob;
+}
+async function uploadTopicImagePages(file,sessionId,msg){
+  const pdf=await topicPdfDocument(file);
+  const pageCount=Number(pdf.numPages||0);
+  if(!pageCount) throw new Error('PDF_HAS_NO_PAGES');
+  if(pageCount>30) throw new Error('TOPIC_TOO_MANY_PAGES_MAX_30');
+  for(let pageNo=1;pageNo<=pageCount;pageNo++){
+    msg.innerHTML=`<div class="muted">Preparing mobile Topic images · page ${pageNo}/${pageCount}...</div>`;
+    const page=await pdf.getPage(pageNo);
+    const image=await topicPageBlob(page,1600);
+    const fd=new FormData();
+    fd.append('session_id',sessionId);fd.append('page_no',String(pageNo));fd.append('page_count',String(pageCount));
+    fd.append('image',image,`page-${String(pageNo).padStart(3,'0')}.jpg`);
+    await api('/api/admin?action=topic-page-upload',{method:'POST',body:fd});
+    try{page.cleanup?.()}catch(_){ }
+  }
+  try{pdf.cleanup?.();pdf.destroy?.()}catch(_){ }
+  return pageCount;
+}
 async function uploadTopic(){
   const msg=document.getElementById('topicMsg');msg.innerHTML='';
   const file=document.getElementById('topicFile').files[0];
   if(!file){msg.innerHTML='<div class="error">Choose a PDF first.</div>';return}
-  const fd=new FormData();fd.append('session_id',topicSession.value);fd.append('title',topicTitle.value.trim());fd.append('file',file);
+  const selectedSessionId=document.getElementById('topicSession').value;
+  const fd=new FormData();fd.append('session_id',selectedSessionId);fd.append('title',topicTitle.value.trim());fd.append('file',file);
   try{
-    const selectedSessionId=document.getElementById('topicSession').value;
+    msg.innerHTML='<div class="muted">Uploading Topic PDF and preparing vocabulary...</div>';
     const result=await api('/api/admin?action=topic-upload',{method:'POST',body:fd});
-    const count=Number(result.updated_session_count||1);
-    window.lastUploadedTopicSessionId=selectedSessionId;
-    msg.innerHTML=`<div class="ok">Topic uploaded successfully · ${result.topic_title||''} · Vocabulary ${Number(result.vocabulary_count||0)}/10 · synced to ${count} related sessions.</div>`;
-    document.getElementById('topicFile').value='';
-    await loadSessions();
-    document.getElementById('topicStatusFilter').value='UPLOADED';
-    renderTopicStatus();
+    const count=Number(result.updated_session_count||1);window.lastUploadedTopicSessionId=selectedSessionId;
+    let imageCount=0,imageWarning='';
+    try{imageCount=await uploadTopicImagePages(file,selectedSessionId,msg)}catch(imageErr){
+      console.error('topic image generation warning',imageErr);
+      imageWarning=` · Image viewer unavailable (${String(imageErr?.message||imageErr)}); PDF fallback remains active.`;
+    }
+    msg.innerHTML=`<div class="ok">Topic uploaded successfully · ${result.topic_title||''} · Vocabulary ${Number(result.vocabulary_count||0)}/10 · ${imageCount?`${imageCount} image pages ready · `:''}synced to ${count} related sessions.${imageWarning}</div>`;
+    document.getElementById('topicFile').value='';await loadSessions();document.getElementById('topicStatusFilter').value='UPLOADED';renderTopicStatus();
   }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
-  finally{stop();}
+  finally{try{stop?.()}catch(_){ }}
 }
 function table(headers,rows){return `<table><thead><tr>${headers.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(x=>`<td>${x??''}</td>`).join('')}</tr>`).join('')}</tbody></table>`}
 function fmt(x){return x?new Date(x).toLocaleString('vi-VN'):''}
