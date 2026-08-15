@@ -4343,13 +4343,23 @@ button.primary.ui-button-busy::after{
 
 /* ===== V93 Booking compact calendar header + today ===== */
 .day.today{
-  background:#f4fbf8 !important;
-  border-color:#9fd7c1 !important;
-  box-shadow:inset 0 0 0 1px rgba(15,142,101,.10);
+  background:#fff !important;
+  border-color:var(--line) !important;
+  box-shadow:none !important;
 }
 .day.today .daynum{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:26px;
+  height:26px;
+  padding:0 6px;
+  margin:-2px 0 5px -2px;
+  border-radius:999px;
+  background:var(--gs);
   color:var(--gd) !important;
   font-weight:950 !important;
+  box-shadow:inset 0 0 0 1px #b8dccf;
 }
 .booking-calendar-top{
   align-items:center !important;
@@ -4447,6 +4457,139 @@ button.primary.ui-button-busy::after{
   .compact-status-legend{
     gap:4px !important;
     font-size:7px !important;
+  }
+}
+
+/* ===== V94 Booking + Community polish ===== */
+
+/* Pricing tiers: label and price on one compact line */
+.booking-price-tiers{
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:7px !important;
+}
+.booking-price-tier{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:8px !important;
+  min-width:0;
+}
+.booking-tier-label{
+  font-size:13px !important;
+  font-weight:950 !important;
+  color:#34463f;
+  white-space:nowrap;
+}
+.booking-tier-price-inline{
+  display:inline-flex;
+  align-items:baseline;
+  justify-content:flex-end;
+  gap:5px;
+  min-width:0;
+  white-space:nowrap;
+}
+.booking-tier-price-inline>b{
+  font-size:17px !important;
+  margin:0 !important;
+}
+.booking-tier-price-inline small{
+  font-size:10px !important;
+}
+.booking-best-like{
+  font-size:13px;
+  line-height:1;
+  flex:0 0 auto;
+}
+.booking-price-guide-titleline{
+  margin-bottom:7px !important;
+}
+
+/* Selected lesson remove button */
+.cartchip-remove,
+.cartchip-remove:hover{
+  width:21px !important;
+  height:21px !important;
+  min-width:21px !important;
+  padding:0 !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  border-radius:50% !important;
+  background:#d92d20 !important;
+  color:#fff !important;
+  border:0 !important;
+  font-size:15px !important;
+  font-weight:900 !important;
+  line-height:21px !important;
+  text-align:center !important;
+}
+
+/* Full session is visibly darker gray */
+.slotline.full{
+  background:#cfd5d2 !important;
+  color:#555f5b !important;
+  text-decoration:line-through;
+}
+
+/* Deal total on its own line */
+.deal-total{
+  display:block;
+  margin-top:3px;
+  font-weight:900;
+}
+
+/* Community pagination */
+.community-pagination{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  padding:14px 16px 4px;
+  border-top:1px solid var(--line);
+  font-size:12px;
+  color:var(--muted);
+}
+.community-pagination button{
+  width:34px;
+  height:30px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:#fff;
+  color:var(--gd);
+  font-size:18px;
+  font-weight:900;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+.community-pagination button:disabled{
+  opacity:.35;
+  cursor:not-allowed;
+}
+
+@media(max-width:760px){
+  .booking-price-tiers{
+    grid-template-columns:1fr 1fr !important;
+  }
+  .booking-price-tier{
+    padding:8px 7px !important;
+    gap:4px !important;
+  }
+  .booking-tier-label{
+    font-size:10px !important;
+  }
+  .booking-tier-price-inline{
+    gap:3px;
+  }
+  .booking-tier-price-inline>b{
+    font-size:14px !important;
+  }
+  .booking-tier-price-inline small{
+    font-size:8px !important;
+  }
+  .booking-best-like{
+    font-size:11px;
   }
 }
 </style>
@@ -5582,16 +5725,15 @@ function pricingTierGuideHTML(){
     const isBest=Number(t.unit_price)===minPrice;
     return `
       <div class="booking-price-tier ${isBest?'best':''}">
-        <span>${pricingTierLabel(t)}</span>
-        <div class="booking-tier-price-line">
+        <b class="booking-tier-label">${pricingTierLabel(t)}</b>
+        <div class="booking-tier-price-inline">
           <b>${compactPrice(t.unit_price)} <small>/ buổi</small></b>
-          ${isBest?'<em>Giá tốt nhất</em>':''}
+          ${isBest?'<span class="booking-best-like" title="Mức giá tốt nhất">👍</span>':''}
         </div>
       </div>
     `;
   }).join('');
 }
-
 function pricingDealHTML(n){
   const count=Number(n)||0;
   if(count<=0) return '';
@@ -5602,7 +5744,7 @@ function pricingDealHTML(n){
 
   const need=Math.max(1,next.min_sessions-count);
   const total=next.min_sessions*next.unit_price;
-  return `<div class="deal">🎁 Chọn thêm ${need} buổi để còn ${compactPrice(next.unit_price)} / buổi — ${next.min_sessions} buổi chỉ còn ${money(total)}</div>`;
+  return `<div class="deal">🎁 Chọn thêm ${need} buổi để còn ${compactPrice(next.unit_price)} / buổi<span class="deal-total">${next.min_sessions} buổi chỉ còn ${money(total)}</span></div>`;
 }
 
 function updateLandingPriceUI(){
@@ -6688,7 +6830,6 @@ async function renderBooking(rv){
     <section class="booking-price-guide compact">
       <div class="booking-price-guide-titleline">
         <span class="badge green">Học phí theo số buổi</span>
-        <b>Chọn nhiều buổi, học phí tốt hơn</b>
       </div>
       <div class="booking-price-tiers">
         ${pricingTierGuideHTML()}
@@ -10857,9 +10998,18 @@ function normalizeCommunity(){
     p.comments=(p.comments||[]).map(c=>typeof c==='string'?{author:'Học viên',time:'vừa xong',text:c}:c);
   });
 }
+let communityPage=1;
+const COMMUNITY_PAGE_SIZE=5;
+
 function communityPostsHTML(){
   normalizeCommunity();
-  return state.communityPosts.map((p,i)=>{
+  const total=Math.max(1,Math.ceil(state.communityPosts.length/COMMUNITY_PAGE_SIZE));
+  communityPage=Math.min(Math.max(1,communityPage),total);
+  const from=(communityPage-1)*COMMUNITY_PAGE_SIZE;
+  const pageItems=state.communityPosts.slice(from,from+COMMUNITY_PAGE_SIZE);
+
+  const posts=pageItems.map((p,localIndex)=>{
+    const i=from+localIndex;
     const recent=[...(p.comments||[])].slice(-2).reverse();
     const initial=(p.author||'H').trim().charAt(0).toUpperCase();
     return `<article class="community-post-card">
@@ -10893,8 +11043,23 @@ function communityPostsHTML(){
       </div>
     </article>`;
   }).join('');
+
+  const pager=state.communityPosts.length>COMMUNITY_PAGE_SIZE?`
+    <div class="community-pagination">
+      <button type="button" ${communityPage<=1?'disabled':''} onclick="setCommunityPage(${communityPage-1})">‹</button>
+      <span>Trang <b>${communityPage}</b> / ${total}</span>
+      <button type="button" ${communityPage>=total?'disabled':''} onclick="setCommunityPage(${communityPage+1})">›</button>
+    </div>`:'';
+
+  return posts+pager;
 }
 
+function setCommunityPage(page){
+  const total=Math.max(1,Math.ceil((state.communityPosts||[]).length/COMMUNITY_PAGE_SIZE));
+  communityPage=Math.min(total,Math.max(1,Number(page)||1));
+  communityPostsRefreshOnly();
+  document.querySelector('.community-feed')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
 function communityPostsRefreshOnly(){
   const feed=document.getElementById('communityPostsHost');
   if(feed)feed.innerHTML=communityPostsHTML();
@@ -10914,6 +11079,7 @@ async function submitCommunityPost(){
   if(!t.value.trim()) return;
   normalizeCommunity();
   try{
+    communityPage=1;
     await submitCommunityPostServer(tag.value,t.value.trim());
     incrementCommunityPostQuota();
     await loadCommunityServer(false);
