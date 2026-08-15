@@ -592,6 +592,118 @@ async function handleSessions(request){
     },{status:201});
   }
 
+
+  if(request.method==='PATCH'){
+    const b=await request.json().catch(()=>({}));
+    const sessionId=String(b.session_id||'').trim();
+    const operation=String(b.operation||'').toUpperCase();
+
+    if(!sessionId){
+      return Response.json({error:'SESSION_ID_REQUIRED'},{status:400});
+    }
+
+    if(operation!=='CHANGE_TEACHER'){
+      return Response.json({error:'INVALID_SESSION_OPERATION'},{status:400});
+    }
+
+    const teacherId=b.teacher_id?String(b.teacher_id):null;
+
+    // Validate teacher before changing the session.
+    if(teacherId){
+      const {data:teacher,error:tErr}=await supabase
+        .from('teachers')
+        .select('id,is_active')
+        .eq('id',teacherId)
+        .maybeSingle();
+
+      if(tErr) throw tErr;
+      if(!teacher || teacher.is_active===false){
+        return Response.json({error:'TEACHER_NOT_AVAILABLE'},{status:400});
+      }
+    }
+
+    const {data:updated,error}=await supabase
+      .from('class_sessions')
+      .update({teacher_id:teacherId})
+      .eq('id',sessionId)
+      .select(`
+        id,session_date,starts_at,ends_at,teacher_id,
+        teachers(full_name,country)
+      `)
+      .maybeSingle();
+
+    if(error) throw error;
+    if(!updated){
+      return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
+    }
+
+    // Teacher portal reads class_sessions.teacher_id directly,
+    // so no duplicate/sync table write is needed.
+    return Response.json({
+      success:true,
+      session:{
+        ...updated,
+        teacher_name:updated.teachers?.full_name||'',
+        teacher_country:updated.teachers?.country||''
+      }
+    });
+  }
+
+  if(request.method==='DELETE'){
+    const b=await request.json().catch(()=>({}));
+    const sessionId=String(b.session_id||'').trim();
+
+    if(!sessionId){
+      return Response.json({error:'SESSION_ID_REQUIRED'},{status:400});
+    }
+
+    const {data:session,error:sErr}=await supabase
+      .from('class_sessions')
+      .select('id')
+      .eq('id',sessionId)
+      .maybeSingle();
+
+    if(sErr) throw sErr;
+    if(!session){
+      return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
+    }
+
+    // Stronger than the UI check: reject if ANY non-cancelled booking exists.
+    // This protects against stale admin screens and concurrent bookings.
+    const {count:bookingCount,error:bErr}=await supabase
+      .from('bookings')
+      .select('*',{count:'exact',head:true})
+      .eq('session_id',sessionId)
+      .neq('status','CANCELLED');
+
+    if(bErr) throw bErr;
+
+    if(Number(bookingCount||0)>0){
+      return Response.json({
+        error:'SESSION_HAS_BOOKINGS',
+        booking_count:Number(bookingCount||0)
+      },{status:409});
+    }
+
+    const {error:deleteErr}=await supabase
+      .from('class_sessions')
+      .delete()
+      .eq('id',sessionId);
+
+    if(deleteErr){
+      // Foreign-key or other linked-data protection: do not force/cascade it here.
+      if(String(deleteErr.code||'')==='23503'){
+        return Response.json({
+          error:'SESSION_DELETE_BLOCKED',
+          details:String(deleteErr.message||'')
+        },{status:409});
+      }
+      throw deleteErr;
+    }
+
+    return Response.json({success:true,deleted_session_id:sessionId});
+  }
+
   return Response.json({error:'Method not allowed'},{status:405});
 }
 
