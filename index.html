@@ -4340,6 +4340,115 @@ button.primary.ui-button-busy::after{
   padding:7px 10px;
   font-weight:900;
 }
+
+/* ===== V93 Booking compact calendar header + today ===== */
+.day.today{
+  background:#f4fbf8 !important;
+  border-color:#9fd7c1 !important;
+  box-shadow:inset 0 0 0 1px rgba(15,142,101,.10);
+}
+.day.today .daynum{
+  color:var(--gd) !important;
+  font-weight:950 !important;
+}
+.booking-calendar-top{
+  align-items:center !important;
+}
+.booking-calendar-heading{
+  flex:1;
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:18px;
+}
+.booking-calendar-heading h2{
+  margin:0 !important;
+  flex:0 0 auto;
+  white-space:nowrap;
+}
+.booking-calendar-legends{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+  gap:5px;
+  min-width:0;
+}
+.compact-period-legend{
+  display:flex !important;
+  align-items:center;
+  gap:5px;
+  margin:0 !important;
+}
+.compact-period-legend b{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:3px 7px;
+  border-radius:999px;
+  background:#eef8f4;
+  color:#3f6558;
+  font-size:10px;
+  line-height:1;
+  white-space:nowrap;
+}
+.compact-status-legend{
+  margin:0 !important;
+  display:flex !important;
+  align-items:center;
+  gap:9px !important;
+  font-size:10px !important;
+  white-space:nowrap;
+}
+.compact-status-legend span{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+}
+@media(max-width:760px){
+  .booking-calendar-heading{
+    gap:8px;
+    justify-content:center;
+  }
+  .booking-calendar-heading h2{
+    font-size:18px !important;
+  }
+  .booking-calendar-legends{
+    gap:3px;
+  }
+  .compact-period-legend{
+    gap:3px;
+  }
+  .compact-period-legend b{
+    padding:3px 5px;
+    font-size:8px;
+  }
+  .compact-status-legend{
+    gap:5px !important;
+    font-size:8px !important;
+  }
+  .compact-status-legend .legend-dot{
+    width:6px !important;
+    height:6px !important;
+  }
+}
+@media(max-width:390px){
+  .booking-calendar-heading{
+    gap:5px;
+  }
+  .booking-calendar-heading h2{
+    font-size:16px !important;
+  }
+  .compact-period-legend b{
+    padding:2px 4px;
+    font-size:7px;
+  }
+  .compact-status-legend{
+    gap:4px !important;
+    font-size:7px !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -5845,7 +5954,8 @@ function upcomingLessonsHTML(){
 
 function renderDashboard(rv){
   updateAccountStatusBadges();
-  setTitle(state.firstTimeName?('Chào buổi tối, '+state.firstTimeName+'! 👋'):'Chào buổi tối! 👋','Sẵn sàng nói tiếng Anh hôm nay chưa?');
+  const greeting=vietnamGreeting();
+  setTitle(state.firstTimeName?(`${greeting}, ${state.firstTimeName}! 👋`):`${greeting}! 👋`,'Ready to speak English today?');
   rv.innerHTML=`
   <div class="dashboard-grid">
     <div>
@@ -6145,6 +6255,25 @@ function slotIconFromPeriod(period){
 }
 function shortTime(t){
   return String(t||'').slice(0,5);
+}
+function vietnamNowParts(){
+  const parts=new Intl.DateTimeFormat('en-CA',{
+    timeZone:'Asia/Ho_Chi_Minh',
+    year:'numeric',month:'numeric',day:'numeric',
+    hour:'numeric',hourCycle:'h23'
+  }).formatToParts(new Date());
+  const get=type=>Number(parts.find(x=>x.type===type)?.value||0);
+  return {year:get('year'),month:get('month'),day:get('day'),hour:get('hour')};
+}
+function isVietnamToday(year,month,day){
+  const vn=vietnamNowParts();
+  return Number(year)===vn.year && Number(month)===vn.month && Number(day)===vn.day;
+}
+function vietnamGreeting(){
+  const h=vietnamNowParts().hour;
+  if(h<12) return 'Good Morning';
+  if(h<18) return 'Good Afternoon';
+  return 'Good Evening';
 }
 function isPastCalendarDate(year,month,day){
   const now=new Date();
@@ -6501,7 +6630,7 @@ async function renderBooking(rv){
   // This prevents the old hard-coded fallback from flashing/sticking on screen.
   if(!publicPricingLoaded) await loadPublicPricing(false);
   if(state.logged && !accountStatusLoaded) preloadAccountStatus(false);
-  setTitle('Đặt chỗ','Chọn nhiều ca trong cùng một lần đặt');
+  setTitle('Đặt chỗ','Chọn nhiều buổi trong cùng một lần đặt');
 
   const key=`${state.bookingYear}-${String(state.bookingMonth).padStart(2,'0')}`;
   if(state.sessionsLoadedKey!==key && !state.sessionsLoading){
@@ -6517,6 +6646,7 @@ async function renderBooking(rv){
   const totalDays=monthDays(state.bookingYear,state.bookingMonth);
   for(let d=1;d<=totalDays;d++){
     const isPast=isPastCalendarDate(state.bookingYear,state.bookingMonth,d);
+    const isToday=isVietnamToday(state.bookingYear,state.bookingMonth,d);
     const daySessions=isPast?[]:sessionsForDay(d);
     const sel=!isPast && state.selected.some(x=>x.day===d && x.month===state.bookingMonth && x.year===state.bookingYear);
 
@@ -6530,7 +6660,7 @@ async function renderBooking(rv){
 
     const clickable=!isPast && daySessions.some(s=>Number(s.available_seats)>0);
     const isoDate=`${state.bookingYear}-${String(state.bookingMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    daysHtml+=`<div class="day ${isPast?'past':''} ${sel?'selected':''} ${!clickable&&!isPast?'mutedday':''}" ${clickable?`onclick="openSlotModal(${d})"`:''}>
+    daysHtml+=`<div class="day ${isPast?'past':''} ${isToday?'today':''} ${sel?'selected':''} ${!clickable&&!isPast?'mutedday':''}" ${clickable?`onclick="openSlotModal(${d})"`:''}>
       <div class="daynum">${d}</div>${lines}${!isPast?discountStickerHTML(isoDate,state.classFilter,'booking-date-discount'):''}
     </div>`;
   }
@@ -6566,15 +6696,19 @@ async function renderBooking(rv){
     </section>
 
     <section class="card calendar-card">
-      <div class="calendar-top">
+      <div class="calendar-top booking-calendar-top">
         <button class="filter" onclick="nextBookingMonth(-1)">‹</button>
-        <div style="text-align:center">
+        <div class="booking-calendar-heading">
           <h2>Tháng ${state.bookingMonth}/${state.bookingYear}</h2>
-          <div class="schedule-live-line"><span class="schedule-live-badge">● Lịch thật từ SpeakHub</span><span class="schedule-period-legend"><b>S = Sáng</b> · <b>C = Chiều</b> · <b>T = Tối</b></span></div>
-          <div class="booking-status-legend">
-            <span><i class="legend-dot open"></i>Còn chỗ</span>
-            <span><i class="legend-dot booked"></i>Đã thanh toán</span>
-            <span><i class="legend-dot full"></i>Đã full</span>
+          <div class="booking-calendar-legends">
+            <div class="schedule-period-legend compact-period-legend">
+              <b>S = Sáng</b><b>C = Chiều</b><b>T = Tối</b>
+            </div>
+            <div class="booking-status-legend compact-status-legend">
+              <span><i class="legend-dot open"></i>Còn chỗ</span>
+              <span><i class="legend-dot booked"></i>Đã thanh toán</span>
+              <span><i class="legend-dot full"></i>Đã full</span>
+            </div>
           </div>
         </div>
         <button class="filter" onclick="nextBookingMonth(1)">›</button>
@@ -6584,13 +6718,13 @@ async function renderBooking(rv){
 
     <div class="cartbar">
       <div style="flex:1">
-        <b>${state.selected.length} ca đã chọn</b>
+        <b>${state.selected.length} buổi đã chọn</b>
         <div class="cartchips">${state.selected.slice(0,5).map(x=>`
           <span class="cartchip selected-cartchip">
             <span>${String(x.day).padStart(2,'0')}/${String(x.month).padStart(2,'0')} · ${x.slot}</span>
             <button type="button"
               class="cartchip-remove"
-              aria-label="Xóa ca đã chọn"
+              aria-label="Xóa buổi đã chọn"
               onclick="event.stopPropagation();removeSelectedBooking('${String(x.sessionId||'').replace(/'/g,"\\'")}')">×</button>
           </span>
         `).join('')}</div>
@@ -10359,13 +10493,20 @@ function renderRealReschedule(){
 function openRealRescheduleDay(day){
   const sessions=rescheduleSessionsForDay(day);
   const box=document.getElementById('realRescheduleChoice');
+  if(!box||!sessions.length)return;
   box.style.display='block';
 
+  // Same UX as Booking: if this date has only one available lesson,
+  // select it automatically so the learner only needs to confirm.
+  const autoSessionId=sessions.length===1?String(sessions[0].session_id):null;
+  state.reschedulePickSession=autoSessionId;
+
   box.innerHTML=`<h3>Ngày ${String(day).padStart(2,'0')}/${String(state.rescheduleMonth).padStart(2,'0')}/${state.rescheduleYear}</h3>
-    <p class="tiny">Chọn ca mới</p>
+    <p class="tiny">${autoSessionId?'✓ Chỉ có 1 lớp — SpeakHub đã chọn sẵn cho bạn.':'Chọn buổi mới'}</p>
     ${sessions.map(s=>{
       const teacher=s.teacher_name?`${s.teacher_name}${s.teacher_country?` (${s.teacher_country})`:''}`:'Đang cập nhật GV';
-      return `<div class="slotchoice" onclick="pickRealReschedule(this,'${s.session_id}')">
+      const isAuto=autoSessionId===String(s.session_id);
+      return `<div class="slotchoice ${isAuto?'on':''}" onclick="pickRealReschedule(this,'${s.session_id}')">
         <div>
           <b>${slotIconFromPeriod(s.session_period)} ${slotLabelFromPeriod(s.session_period)}</b>
           <div class="tiny" style="color:var(--gd);font-weight:800">${s.program_name||state.rescheduleBooking?.class_sessions?.programs?.name||''}</div>
@@ -10375,11 +10516,10 @@ function openRealRescheduleDay(day){
         <b style="color:var(--gd)">Còn ${s.available_seats} chỗ</b>
       </div>`;
     }).join('')}
-    <button class="btn primary" style="width:100%;margin-top:10px" onclick="confirmRealReschedule()">Xác nhận đổi ca</button>`;
+    <button class="btn primary" style="width:100%;margin-top:10px" onclick="confirmRealReschedule()">${autoSessionId?'Xác nhận đổi buổi':'Xác nhận đổi buổi'}</button>`;
 
   box.scrollIntoView({behavior:'smooth',block:'center'});
 }
-
 function pickRealReschedule(el,sessionId){
   document.querySelectorAll('#realRescheduleChoice .slotchoice').forEach(x=>x.classList.remove('on'));
   el.classList.add('on');
