@@ -4778,6 +4778,68 @@ button.primary.ui-button-busy::after{
   vertical-align:baseline !important;
   transform:translateY(1px);
 }
+
+/* ===== V99 notification badge visibility ===== */
+.top-notification-btn{
+  position:relative;
+  width:38px;
+  height:38px;
+  padding:0;
+  border:0;
+  background:transparent;
+  font-size:21px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+}
+.top-notification-badge{
+  position:absolute;
+  right:-1px;
+  top:-3px;
+  min-width:18px;
+  height:18px;
+  padding:0 5px;
+  border-radius:999px;
+  background:#e93636;
+  color:#fff;
+  border:2px solid #fff;
+  font-size:10px;
+  font-weight:900;
+  line-height:14px;
+  align-items:center;
+  justify-content:center;
+  z-index:3;
+  box-sizing:border-box;
+}
+#homeNotificationBadge{
+  margin-left:5px;
+}
+.mobile-home-icon{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:22px;
+}
+.notification-home-badge{
+  position:absolute !important;
+  right:-11px;
+  top:-8px;
+  min-width:17px;
+  height:17px;
+  padding:0 4px !important;
+  border-radius:999px;
+  background:#e93636 !important;
+  color:#fff !important;
+  border:2px solid #fff;
+  font-size:9px !important;
+  font-weight:900;
+  align-items:center;
+  justify-content:center;
+  line-height:13px;
+  z-index:2;
+}
 </style>
 </head>
 <body>
@@ -5110,7 +5172,7 @@ button.primary.ui-button-busy::after{
   <aside class="sidebar">
     <div class="logo side-logo">Speak<span>Hub</span>💬</div>
     <div class="side-nav">
-      <button data-route="dashboard" onclick="go('dashboard')">🏠 Trang chủ</button>
+      <button data-route="dashboard" onclick="go('dashboard')">🏠 Trang chủ <span id="homeNotificationBadge" class="count" style="display:none">0</span></button>
       <button data-route="placement" onclick="go('placement')">📝 Kiểm tra xếp lớp</button>
       <button data-route="weekly" onclick="go('weekly')">📈 Kiểm tra tiến độ <span id="testPendingBadge" class="badge" style="display:none">0</span></button>
       <button data-route="booking" class="booking-nav-important booking-emphasis" onclick="go('booking')"><span class="booking-nav-icon">📅</span> Đặt chỗ <span class="booking-nav-tag">Booking</span></button>
@@ -5124,13 +5186,13 @@ button.primary.ui-button-busy::after{
   <main class="appmain">
     <div class="topbar">
       <div><h1 id="pageTitle">SpeakHub</h1><div class="muted" id="pageSub"></div></div>
-      <div style="display:flex;gap:12px;align-items:center"><button onclick="go('notifications')" style="border:0;background:none;font-size:20px;position:relative" title="Thông báo">🔔<span id="topNotificationUnreadBadge" style="display:none;position:absolute;right:-3px;top:-4px;background:#e93636;color:#fff;font-size:9px;border-radius:99px;padding:2px 5px">0</span></button><div class="avatar">T</div></div>
+      <div style="display:flex;gap:12px;align-items:center"><button class="top-notification-btn" onclick="go('notifications')" title="Thông báo">🔔<span id="topNotificationUnreadBadge" class="top-notification-badge" style="display:none">0</span></button><div class="avatar">T</div></div>
     </div>
     <div id="routeView"></div>
   </main>
 </div>
 <nav class="mobile-nav">
-  <button onclick="go('dashboard')">🏠<br>Trang chủ</button>
+  <button id="mobileHomeTab" onclick="go('dashboard')"><span class="mobile-home-icon">🏠<span id="mobileHomeNotificationBadge" class="mobile-status-count notification-home-badge" style="display:none">0</span></span><br>Trang chủ</button>
   <button id="mobileMyScheduleTab" onclick="go('history')">📅<br>Lịch học</button>
   <button class="book-wrap booking-mobile-important" onclick="go('booking')"><span class="book">＋</span><span class="book-label">Đặt chỗ</span></button>
   <button onclick="go('weekly')"><span class="mobile-progress-icon">📈<span id="mobileTestPendingBadge" class="mobile-test-badge" style="display:none">0</span></span><br>Kiểm tra</button>
@@ -10951,8 +11013,11 @@ function updateServerBadgesUI(){
     notification_unread:0,community_unread:0,chat_unread:0,
     placement:{used:0,remaining:3,limit:3},progress:{used:0,remaining:3,limit:3}
   };
-  setTinyBadge('notificationUnreadBadge',meta.notification_unread);
-  setTinyBadge('topNotificationUnreadBadge',meta.notification_unread);
+  const notificationCount=Math.max(0,Number(meta.notification_unread||0));
+  setTinyBadge('notificationUnreadBadge',notificationCount);
+  setTinyBadge('topNotificationUnreadBadge',notificationCount);
+  setTinyBadge('homeNotificationBadge',notificationCount);
+  setTinyBadge('mobileHomeNotificationBadge',notificationCount);
   setTinyBadge('communityUnreadBadge',meta.community_unread);
   setTinyBadge('chatUnreadBadge',meta.chat_unread);
   const mobile=document.getElementById('mobileTestTab');
@@ -10976,7 +11041,18 @@ async function trackWebsiteVisit(){
     });
   }catch(e){}
 }
-document.addEventListener('DOMContentLoaded',()=>{trackWebsiteVisit();setInterval(()=>{if(document.visibilityState==='visible')trackWebsiteVisit()},30000);setTimeout(loadServerAccountMeta,400)});
+document.addEventListener('DOMContentLoaded',()=>{
+  trackWebsiteVisit();
+  setInterval(()=>{if(document.visibilityState==='visible')trackWebsiteVisit()},30000);
+  setTimeout(loadServerAccountMeta,400);
+  // Keep bell/home notification counters fresh without requiring a page reload.
+  setInterval(()=>{
+    if(document.visibilityState==='visible')loadServerAccountMeta();
+  },20000);
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible')setTimeout(loadServerAccountMeta,150);
+});
 
 let communityCacheLoadedAt=0;
 let communityTodayCount=0;
