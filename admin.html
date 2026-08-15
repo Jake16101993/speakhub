@@ -275,6 +275,44 @@ button.primary.ui-button-busy::after{
   .manual-order-session{grid-template-columns:1fr}
   .manual-order-session .btn{width:100%}
 }
+
+/* ===== V98 Session admin actions ===== */
+.session-admin-actions{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:245px;
+}
+.session-teacher-select{
+  min-width:135px;
+  max-width:170px;
+  padding:7px 8px !important;
+  font-size:11px !important;
+}
+.session-action-btn{
+  padding:7px 9px !important;
+  font-size:11px !important;
+  white-space:nowrap;
+}
+.session-delete-btn{
+  background:#fff3f1 !important;
+  color:#b42318 !important;
+  border:1px solid #f2b8b2 !important;
+}
+.session-delete-btn:disabled{
+  opacity:.38;
+  cursor:not-allowed;
+}
+@media(max-width:760px){
+  .session-admin-actions{
+    min-width:220px;
+    flex-wrap:wrap;
+  }
+  .session-teacher-select{
+    min-width:125px;
+    flex:1 1 125px;
+  }
+}
 </style>
 
 </head>
@@ -769,6 +807,16 @@ function adminFilterRows(rows,query,fields){
   return filtered.slice(0,10);
 }
 
+function sessionTeacherOptions(selectedId){
+  const teachers=Array.isArray(cache?.teachers)?cache.teachers:[];
+  const selected=String(selectedId||'');
+  return `<option value="">No teacher</option>`+teachers.map(t=>`
+    <option value="${adminEscapeHtml(String(t.id||''))}" ${String(t.id||'')===selected?'selected':''}>
+      ${adminEscapeHtml(t.full_name||'')}
+    </option>
+  `).join('');
+}
+
 function renderSessionsTable(){
   const q=String(document.getElementById('sessionsFilter')?.value||'').trim().toLowerCase();
   const rows=!q
@@ -779,17 +827,90 @@ function renderSessionsTable(){
       );
 
   const host=document.getElementById('sessionsTable'); if(!host)return;
-  host.innerHTML=table(['Date','Time','Class','Type','Teacher','Seats','Status'],rows.map(x=>[
-    x.session_date||'',
-    `${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)}`,
-    x.program_name||'',
-    `<span class="badge">${x.is_recurring?'Recurring':'One-off'}</span>`,
-    x.teacher_name||'',
-    `${Number(x.booked_count||0)}/${Number(x.capacity||0)}`,
-    `<span class="badge">${x.status||''}</span>`
-  ]));
+  host.innerHTML=table(
+    ['Date','Time','Class','Type','Teacher','Seats','Status','Actions'],
+    rows.map(x=>[
+      x.session_date||'',
+      `${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)}`,
+      x.program_name||'',
+      `<span class="badge">${x.is_recurring?'Recurring':'One-off'}</span>`,
+      x.teacher_name||'<span class="muted">No teacher</span>',
+      `${Number(x.booked_count||0)}/${Number(x.capacity||0)}`,
+      `<span class="badge">${x.status||''}</span>`,
+      `<div class="session-admin-actions">
+        <select id="sessionTeacher-${x.id}" class="session-teacher-select">
+          ${sessionTeacherOptions(x.teacher_id)}
+        </select>
+        <button class="btn secondary session-action-btn" onclick="changeSessionTeacher('${x.id}')">Change teacher</button>
+        <button
+          class="btn session-action-btn session-delete-btn"
+          onclick="deleteSession('${x.id}',${Number(x.booked_count||0)})"
+          ${Number(x.booked_count||0)>0?'disabled title="Cannot delete a session with bookings"':'title="Delete this empty session"'}
+        >Delete</button>
+      </div>`
+    ])
+  );
 }
 
+async function changeSessionTeacher(sessionId){
+  const select=document.getElementById(`sessionTeacher-${sessionId}`);
+  if(!select)return;
+
+  const teacherId=select.value||null;
+  const teacherName=select.selectedOptions?.[0]?.textContent?.trim()||'No teacher';
+
+  if(!confirm(`Change this session teacher to "${teacherName}"?`))return;
+
+  const oldDisabled=select.disabled;
+  select.disabled=true;
+  try{
+    await api('/api/admin?action=sessions',{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        operation:'CHANGE_TEACHER',
+        session_id:sessionId,
+        teacher_id:teacherId
+      })
+    });
+
+    await Promise.all([loadSessions(),loadOverview()]);
+    alert('Teacher updated. The teacher portal is synced automatically.');
+  }catch(e){
+    alert(e.message||'Could not change teacher.');
+    await loadSessions().catch(()=>{});
+  }finally{
+    select.disabled=oldDisabled;
+  }
+}
+
+async function deleteSession(sessionId,bookedCount){
+  if(Number(bookedCount||0)>0){
+    alert('This session already has bookings and cannot be deleted.');
+    return;
+  }
+
+  if(!confirm('Delete this session permanently? This is only allowed when nobody has booked it.'))return;
+
+  try{
+    await api('/api/admin?action=sessions',{
+      method:'DELETE',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:sessionId})
+    });
+
+    await Promise.all([loadSessions(),loadOverview()]);
+    alert('Session deleted.');
+  }catch(e){
+    const map={
+      SESSION_HAS_BOOKINGS:'This session has a booking and cannot be deleted.',
+      SESSION_NOT_FOUND:'Session not found.',
+      SESSION_DELETE_BLOCKED:'This session is linked to other data and cannot be deleted safely.'
+    };
+    alert(map[String(e.message)]||e.message||'Could not delete session.');
+    await loadSessions().catch(()=>{});
+  }
+}
 function renderCustomersTable(){
   const q=document.getElementById('customersFilter')?.value||'';
   const rows=adminFilterRows(adminCustomersCache,q,['full_name','phone','status','created_at']);
