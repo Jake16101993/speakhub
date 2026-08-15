@@ -4351,14 +4351,15 @@ button.primary.ui-button-busy::after{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  min-width:26px;
-  height:26px;
+  min-width:24px;
+  height:24px;
   padding:0 6px;
-  margin:-2px 0 5px -2px;
+  margin:0 0 7px 0 !important;
   border-radius:999px;
   background:var(--gs);
   color:var(--gd) !important;
   font-weight:950 !important;
+  line-height:24px;
   box-shadow:inset 0 0 0 1px #b8dccf;
 }
 .booking-calendar-top{
@@ -4592,6 +4593,89 @@ button.primary.ui-button-busy::after{
     font-size:11px;
   }
 }
+
+/* ===== V95 compact pricing typography ===== */
+.booking-price-guide-titleline .badge{
+  font-size:13px !important;
+  padding:6px 9px !important;
+  line-height:1 !important;
+}
+.booking-tier-label{
+  font-size:14px !important;
+  line-height:1 !important;
+}
+.booking-tier-price-inline>b{
+  font-size:18px !important;
+  line-height:1 !important;
+}
+.booking-tier-price-inline small{
+  font-size:10px !important;
+  line-height:1 !important;
+}
+.booking-price-tier{
+  min-height:38px !important;
+}
+@media(max-width:760px){
+  .booking-price-guide-titleline .badge{
+    font-size:12px !important;
+    padding:5px 8px !important;
+  }
+  .booking-tier-label{
+    font-size:11px !important;
+  }
+  .booking-tier-price-inline>b{
+    font-size:15px !important;
+  }
+  .booking-tier-price-inline small{
+    font-size:8px !important;
+  }
+  .booking-price-tier{
+    min-height:34px !important;
+  }
+}
+
+.booking-best-like{
+  display:inline-flex !important;
+  align-items:center;
+  justify-content:center;
+  width:19px;
+  height:19px;
+  border-radius:50%;
+  background:#fff4cc;
+  color:#c78c00;
+  font-size:13px !important;
+  line-height:1 !important;
+  font-weight:900;
+  flex:0 0 19px;
+}
+@media(max-width:760px){
+  .booking-best-like{
+    width:18px;
+    height:18px;
+    flex-basis:18px;
+    font-size:12px !important;
+  }
+}
+
+.landing-speak-line{
+  font-size:24px;
+  font-weight:900;
+  margin-bottom:10px;
+  white-space:nowrap;
+  letter-spacing:-.35px;
+}
+@media(max-width:760px){
+  .landing-speak-line{
+    font-size:18px;
+    letter-spacing:-.45px;
+  }
+}
+@media(max-width:390px){
+  .landing-speak-line{
+    font-size:16px;
+    letter-spacing:-.6px;
+  }
+}
 </style>
 </head>
 <body>
@@ -4610,7 +4694,7 @@ button.primary.ui-button-busy::after{
     <div class="container hero-grid">
       <div>
         <h1>Book → Meet → <span>Speak</span></h1>
-        <div style="font-size:27px;font-weight:900;margin-bottom:10px">Đặt chỗ. Gặp gỡ. Nói tiếng Anh.</div>
+        <div class="landing-speak-line">Đặt chỗ - Gặp gỡ - Nói Tiếng Anh</div>
         <p class="lead">Môi trường nói 100% tiếng Anh cùng giáo viên quốc tế để bạn tự tin giao tiếp tự nhiên mỗi ngày.</p>
         <div class="teacher-hero-highlight">
           <span class="teacher-hero-icon">🌍</span>
@@ -5728,7 +5812,7 @@ function pricingTierGuideHTML(){
         <b class="booking-tier-label">${pricingTierLabel(t)}</b>
         <div class="booking-tier-price-inline">
           <b>${compactPrice(t.unit_price)} <small>/ buổi</small></b>
-          ${isBest?'<span class="booking-best-like" title="Mức giá tốt nhất">👍</span>':''}
+          ${isBest?'<span class="booking-best-like" title="Mức giá tốt nhất">★</span>':''}
         </div>
       </div>
     `;
