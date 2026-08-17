@@ -1,0 +1,25 @@
+# Ownership rules. Replace the individual handles with an org team
+# (e.g. @ventra-rocket/speakhub-maintainers) once one exists — no team is
+# defined in the organisation today, and CODEOWNERS silently ignores
+# non-existent teams.
+
+# Default owner for everything not matched below.
+*                     @QuocHuannn
+
+# Payment, auth and database boundaries: review is not optional.
+/lib/api/payos/       @QuocHuannn
+/lib/api/orders/      @QuocHuannn
+/lib/api/customers/   @QuocHuannn
+/api/admin.js         @QuocHuannn
+/api/teacher.js       @QuocHuannn
+/supabase/            @QuocHuannn
+
+# Changing what is reachable without authentication, or how CI gates work,
+# requires an explicit owner sign-off.
+/.github/public-actions.txt  @QuocHuannn
+/.github/workflows/          @QuocHuannn
+
+# Product surfaces: original author reviews behaviour changes.
+/index.html           @QuocHuannn @Jake16101993
+/admin.html           @QuocHuannn @Jake16101993
+/teacher/             @QuocHuannn @Jake16101993

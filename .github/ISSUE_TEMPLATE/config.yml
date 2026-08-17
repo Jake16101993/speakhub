@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/ventra-rocket/speakhub/security/advisories/new
+    about: Private advisory. Never open a public issue for a vulnerability.
+  - name: Architecture and target state
+    url: https://github.com/ventra-rocket/speakhub/blob/main/docs/ARCHITECTURE-TARGET.md
+    about: Read the planned architecture before proposing a structural change.

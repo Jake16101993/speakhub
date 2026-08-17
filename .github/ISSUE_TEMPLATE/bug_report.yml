@@ -1,0 +1,61 @@
+name: Bug report
+description: Something behaves incorrectly in the student app, admin panel, teacher app, or an API.
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report a security vulnerability here. Use the private advisory
+        channel described in `SECURITY.md`.
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Student app (index.html)
+        - Admin panel (admin.html)
+        - Teacher app (teacher/index.html)
+        - API (api/ or lib/api/)
+        - Database (Supabase schema, RPC, trigger)
+        - Deployment / CI
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+      description: Observed behaviour, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Exact steps. Include the phone number or order code used if relevant.
+      placeholder: |
+        1. Open /?...
+        2. Select 2 sessions for Adult Beginner
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Error text, screenshot, Vercel log line, or affected `file:line`.
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Blocks a student from paying or attending
+        - Wrong money or wrong seat count
+        - Staff cannot do their job
+        - Cosmetic or minor
+    validations:
+      required: true

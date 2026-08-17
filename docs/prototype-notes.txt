@@ -1,3 +1,6 @@
+NOTE (2026-08-16): original prototype feature list, kept for history.
+Partly inaccurate — the OTP step described below was never implemented. See docs/ARCHITECTURE.md for verified behaviour.
+
 SpeakHub Complete Prototype
 - Landing page with 3 CTAs: booking, placement test, view schedule
 - Booking calendar with class filters, multi-slot selection, bundle pricing

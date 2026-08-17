@@ -1,0 +1,9 @@
+# Nothing here is needed at runtime; keeping it out of the deployment keeps the
+# static bundle small and avoids serving repository documentation publicly.
+.github/
+docs/
+supabase/
+CONTRIBUTING.md
+SECURITY.md
+README.md
+.env.example

@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: JS syntax + module graph
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Parse every serverless module
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            node --check "$f" || { echo "::error file=$f::syntax error"; fail=1; }
+          done < <(find api lib -name '*.js' -type f)
+          exit $fail
+
+      - name: Import every handler and assert it exports fetch()
+        run: |
+          node --input-type=module -e '
+            import { readdirSync, statSync } from "node:fs";
+            import { join } from "node:path";
+            const walk = (d) => readdirSync(d).flatMap((e) => {
+              const p = join(d, e);
+              return statSync(p).isDirectory() ? walk(p) : p.endsWith(".js") ? [p] : [];
+            });
+            const files = [...walk("api"), ...walk("lib")];
+            let bad = 0;
+            for (const f of files) {
+              try {
+                const m = await import("./" + f);
+                if (typeof m.default?.fetch !== "function") {
+                  console.error(`::error file=${f}::module does not export default.fetch()`);
+                  bad++;
+                }
+              } catch (err) {
+                // Handlers throw at import time when env vars are absent; that is
+                // expected in CI. Anything else is a real module-loading failure.
+                const msg = String(err?.message || err);
+                const envish = /supabaseUrl is required|supabaseKey is required|is required|MISSING/i.test(msg);
+                if (!envish) {
+                  console.error(`::error file=${f}::import failed: ${msg}`);
+                  bad++;
+                }
+              }
+            }
+            console.log(`checked ${files.length} handler modules`);
+            process.exit(bad ? 1 : 0);
+          '
+
+  config:
+    name: Config integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JSON files must parse
+        run: |
+          fail=0
+          for f in package.json vercel.json; do
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" \
+              || { echo "::error file=$f::invalid JSON"; fail=1; }
+          done
+          exit $fail
+
+      - name: Dependencies must be pinned to exact versions
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const { dependencies = {} } = JSON.parse(readFileSync("package.json", "utf8"));
+            const loose = Object.entries(dependencies)
+              .filter(([, v]) => !/^\d+\.\d+\.\d+$/.test(v));
+            if (loose.length) {
+              for (const [n, v] of loose) console.error(`::error::${n} is not pinned: "${v}"`);
+              process.exit(1);
+            }
+            console.log(`${Object.keys(dependencies).length} dependencies pinned`);
+          '
+
+      - name: Lockfile must be present and in sync
+        run: |
+          test -f package-lock.json || { echo "::error::package-lock.json is missing"; exit 1; }
+          npm ci --dry-run >/dev/null
+
+      - name: Vercel function count must stay under the plan limit
+        run: |
+          node --input-type=module -e '
+            import { readdirSync, statSync } from "node:fs";
+            import { join } from "node:path";
+            const walk = (d) => readdirSync(d).flatMap((e) => {
+              const p = join(d, e);
+              return statSync(p).isDirectory() ? walk(p) : p.endsWith(".js") ? [p] : [];
+            });
+            const fns = walk("api");
+            const LIMIT = 12;
+            console.log(`${fns.length}/${LIMIT} serverless functions:\n  ${fns.join("\n  ")}`);
+            if (fns.length > LIMIT) {
+              console.error(`::error::${fns.length} functions exceeds the Hobby plan limit of ${LIMIT}`);
+              process.exit(1);
+            }
+          '
+
+      - name: Every vercel.json rewrite must resolve to a real file
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, existsSync } from "node:fs";
+            const { rewrites = [] } = JSON.parse(readFileSync("vercel.json", "utf8"));
+            let bad = 0;
+            for (const r of rewrites) {
+              const dest = r.destination.split("?")[0].replace(/^\//, "");
+              const candidates = [dest, `${dest}.js`, `${dest}.html`, `${dest}/index.html`];
+              if (!candidates.some(existsSync)) {
+                console.error(`::error::rewrite ${r.source} -> ${r.destination} has no target file`);
+                bad++;
+              }
+            }
+            console.log(`${rewrites.length} rewrites checked`);
+            process.exit(bad ? 1 : 0);
+          '
+
+  static:
+    name: Static asset sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No environment file may be committed
+        run: |
+          if git ls-files | grep -E '^\.env($|\.)' | grep -v '^\.env\.example$'; then
+            echo "::error::an environment file is tracked in git"
+            exit 1
+          fi
+          echo "no tracked env files"
+
+      - name: Every local asset referenced by the HTML pages must exist
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, existsSync } from "node:fs";
+            const pages = ["index.html", "admin.html", "teacher/index.html"];
+            let bad = 0;
+            for (const page of pages) {
+              const html = readFileSync(page, "utf8");
+              const refs = new Set();
+              for (const m of html.matchAll(/(?:src|href)="([^"#?:]+\.(?:png|jpe?g|webp|svg|pdf|css|js))"/g)) {
+                refs.add(m[1].replace(/^\.?\//, ""));
+              }
+              for (const ref of refs) {
+                if (!existsSync(ref)) {
+                  console.error(`::error file=${page}::missing asset ${ref}`);
+                  bad++;
+                }
+              }
+              console.log(`${page}: ${refs.size} local asset references`);
+            }
+            process.exit(bad ? 1 : 0);
+          '
+
+      - name: Report page weight
+        run: |
+          for f in index.html admin.html teacher/index.html; do
+            printf "%-22s %8s bytes  %6s lines\n" "$f" "$(wc -c < $f)" "$(wc -l < $f)"
+          done

@@ -1,0 +1,97 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog (verified secrets only)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --results=verified,unknown --no-update
+
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: npm audit (fail on high or critical)
+        run: npm audit --audit-level=high
+
+  guardrails:
+    name: Project-specific guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Public action allowlist must not grow silently
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const src = readFileSync("api/admin.js", "utf8").split("\n");
+            const gate = src.findIndex((l) => l.includes("if(!requireAdmin(request))"));
+            if (gate === -1) {
+              console.error("::error file=api/admin.js::requireAdmin gate not found; guardrail cannot run");
+              process.exit(1);
+            }
+            const found = new Set();
+            for (const line of src.slice(0, gate)) {
+              for (const m of line.matchAll(/action===[\x27"]([a-z0-9-]+)[\x27"]/g)) found.add(m[1]);
+            }
+            const allowed = new Set(
+              readFileSync(".github/public-actions.txt", "utf8")
+                .split("\n").map((l) => l.trim())
+                .filter((l) => l && !l.startsWith("#"))
+            );
+            const added = [...found].filter((a) => !allowed.has(a));
+            const removed = [...allowed].filter((a) => !found.has(a));
+            for (const a of added) {
+              console.error(`::error file=api/admin.js::action "${a}" is reachable without admin auth but is not in .github/public-actions.txt`);
+            }
+            for (const a of removed) {
+              console.log(`note: "${a}" is allowlisted but no longer public — update .github/public-actions.txt`);
+            }
+            console.log(`${found.size} unauthenticated actions: ${[...found].sort().join(", ")}`);
+            process.exit(added.length ? 1 : 0);
+          '
+
+      - name: No personal data in log statements
+        run: |
+          if grep -rnE "console\.(log|info|warn)\([^)]*(phone|full_name|device_token|password)" api lib; then
+            echo "::error::a log statement references personal data or a credential"
+            exit 1
+          fi
+          echo "no PII in log statements"
+
+      - name: Service-role key must stay server-side
+        run: |
+          if grep -rn "SUPABASE_SECRET_KEY\|SPEAKHUB_ADMIN_SECRET\|PAYOS_CHECKSUM_KEY\|OPENAI_API_KEY" \
+              index.html admin.html teacher/index.html; then
+            echo "::error::a server-side secret name appears in a client-served HTML file"
+            exit 1
+          fi
+          echo "no server secrets referenced from client pages"

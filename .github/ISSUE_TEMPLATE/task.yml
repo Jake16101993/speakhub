@@ -1,0 +1,66 @@
+name: Task / feature / tech debt
+description: A unit of planned work — a new capability, a refactor, or debt repayment.
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Missing feature (a flow that was never built)
+        - Tech debt (works, but costs us every change)
+        - Infrastructure / CI / deployment
+        - Documentation
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 — blocks onboarding or risks data/money loss
+        - P1 — affects live operations
+        - P2 — schedule later
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is wrong or missing today. Cite `file:line` where possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who is affected and what it costs while unfixed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: work
+    attributes:
+      label: Work
+      description: Checklist of concrete steps.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance
+      description: The observable result that closes this issue. Not "code merged".
+    validations:
+      required: true
+
+  - type: input
+    id: depends
+    attributes:
+      label: Blocked by
+      description: Issue numbers this cannot start without.

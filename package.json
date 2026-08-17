@@ -2,9 +2,18 @@
   "name": "speakhub",
   "private": true,
   "type": "module",
+  "description": "SpeakHub — offline English speaking club: booking, payment, placement and progress assessment, teacher and admin tooling.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "check": "node --input-type=module -e \"import{readdirSync,statSync}from'node:fs';import{join}from'node:path';import{execFileSync}from'node:child_process';const w=d=>readdirSync(d).flatMap(e=>{const p=join(d,e);return statSync(p).isDirectory()?w(p):p.endsWith('.js')?[p]:[]});for(const f of [...w('api'),...w('lib')])execFileSync(process.execPath,['--check',f],{stdio:'inherit'});console.log('syntax ok')\"",
+    "audit:ci": "npm audit --audit-level=high"
+  },
   "dependencies": {
-    "@supabase/supabase-js": "^2.57.4",
-    "@payos/node": "latest",
-    "qrcode": "^1.5.4"
+    "@payos/node": "2.0.5",
+    "@supabase/supabase-js": "2.112.3",
+    "qrcode": "1.5.4"
   }
 }

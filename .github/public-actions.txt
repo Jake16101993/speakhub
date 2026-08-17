@@ -1,0 +1,30 @@
+# Actions in api/admin.js that are routed BEFORE the requireAdmin() gate and are
+# therefore reachable without any admin credential.
+#
+# Adding a line here is a security decision, not a formality. CI fails when a new
+# unauthenticated action appears without being listed. Each entry must state who
+# may call it and what limits protect it.
+#
+# reviewed: 2026-08-16
+
+# --- intentionally public, read-only -------------------------------------
+public-price          # landing + booking price tiers, no PII
+public-discounts      # upcoming date discounts, no PII
+
+# --- public writes, abuse-controlled by design ---------------------------
+track-visit           # anonymous analytics ping — spoofable, see advisory 10
+
+# --- guest-reachable, spends money: MUST get real quota control ----------
+placement-status      # daily quota lookup keyed by client-supplied visitor_id
+placement-transcribe  # OpenAI speech-to-text, no attempt recorded — advisory 03
+placement-score       # OpenAI scoring — advisory 03
+placement-history     # past guest results by visitor_id
+
+# --- customer-authenticated inside the handler (token checked in body) ---
+progress-status
+progress-score
+progress-history
+notifications
+community
+chat
+account-badges
