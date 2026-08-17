@@ -182,3 +182,89 @@ jobs:
           for f in index.html admin.html teacher/index.html; do
             printf "%-22s %8s bytes  %6s lines\n" "$f" "$(wc -c < $f)" "$(wc -l < $f)"
           done
+
+  selfhost:
+    name: Self-host route parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: server.mjs must serve every vercel.json rewrite
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const rewrites = JSON.parse(readFileSync("vercel.json", "utf8")).rewrites
+              .map((r) => r.source)
+              .filter((s) => s.startsWith("/api/"));
+            const src = readFileSync("server.mjs", "utf8");
+            const routes = new Set(
+              [...src.matchAll(/\[.(\/api\/[a-z\/-]+).,\s*\{/g)].map((m) => m[1])
+            );
+            const missing = rewrites.filter((r) => !routes.has(r));
+            if (missing.length) {
+              console.error("::error::server.mjs API_ROUTES is missing: " + missing.join(", "));
+              process.exit(1);
+            }
+            console.log(`${routes.size} routes in server.mjs cover all ${rewrites.length} api rewrites`);
+          '
+
+      - name: Boot server.mjs and probe it
+        env:
+          PORT: 8787
+          SUPABASE_URL: http://127.0.0.1:9
+          SUPABASE_SECRET_KEY: ci-dummy
+          SUPABASE_PUBLISHABLE_KEY: ci-dummy
+          SPEAKHUB_ADMIN_PASSWORD: ci-dummy
+          SPEAKHUB_ADMIN_SECRET: ci-dummy
+          SPEAKHUB_TEACHER_SECRET: ci-dummy
+          PAYOS_CLIENT_ID: ci-dummy
+          PAYOS_API_KEY: ci-dummy
+          PAYOS_CHECKSUM_KEY: ci-dummy
+          OPENAI_API_KEY: ci-dummy
+        run: |
+          node server.mjs & pid=$!
+          for i in $(seq 1 30); do
+            curl -fsS -o /dev/null http://127.0.0.1:8787/ && break
+            sleep 1
+          done
+
+          fail=0
+          probe() {
+            got=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8787$1")
+            if [ "$got" != "$2" ]; then
+              echo "::error::$1 returned $got, expected $2"
+              fail=1
+            else
+              printf "ok  %-42s %s\n" "$1" "$got"
+            fi
+          }
+
+          # Pages the three frontends are served from.
+          probe /               200
+          probe /admin          200
+          probe /teacher        200
+
+          # A self-hosted process serves a working copy, so these must never leak.
+          probe /package.json                 403
+          probe /.env.local                   403
+          probe /assets/../package.json       403
+          probe /server.mjs                   403
+          probe /.git/config                  403
+          probe /lib/api/customers/login.js   403
+
+          # Handler reached and its own validation ran: proof the body arrived intact.
+          code=$(curl -s -o /tmp/body -w '%{http_code}' -X POST \
+            http://127.0.0.1:8787/api/customers/login \
+            -H 'content-type: application/json' -d '{"phone":"123"}')
+          grep -q INVALID_PHONE /tmp/body || { echo "::error::request body did not reach the handler"; fail=1; }
+          [ "$code" = "400" ] || { echo "::error::login probe returned $code"; fail=1; }
+
+          kill $pid
+          exit $fail
