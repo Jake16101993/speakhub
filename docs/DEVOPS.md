@@ -2,19 +2,30 @@
 
 ## Environments
 
-| Environment | Branch / trigger | Frontend | Database | Payment | Status |
+> **Amended 2026-08-17.** Vercel is being retired
+> ([ADR 0007](adr/0007-retire-vercel-and-self-host-the-frontend.md)). Production still runs
+> there and this section still describes it, because a document that describes the target
+> instead of the running system is how an incident gets handled against the wrong runbook.
+> Rows are marked with what is true today.
+
+| Environment | Branch / trigger | Frontend + API | Database | Payment | Status |
 |---|---|---|---|---|---|
-| Production | `main` | Vercel production | Supabase production | PayOS live | live |
+| Production | `main` | Vercel production | Supabase production | PayOS live | live, being migrated |
+| **Staging** | `ops/deploy.sh` | **Ventra Server 1, `server.mjs` in Docker** | own Postgres 17, **empty** | none configured | live, no public hostname yet |
 | Preview | any pull request | Vercel preview URL | **shares production today** | PayOS live | ⚠️ unsafe |
-| Local | working tree | `vercel dev` | whatever `.env.local` points at | PayOS live | ⚠️ unsafe |
+| Local | working tree | `vercel dev`, or `npm start` | whatever `.env.local` points at | PayOS live | ⚠️ unsafe |
 
-**Known gap, highest operational priority after the schema dump:** there is no staging
-database. A preview deployment and a developer's laptop both talk to production Supabase and
-live PayOS. Until a staging project exists, treat every local run as production access:
-never create test orders, never mutate `class_sessions`.
+Staging is deployed and verified but is **not** a substitute for the preview problem yet: its
+database has no data, because that is blocked on the schema dump (Phase 0). Stack, scripts and
+runbook are in [`ventra-rocket/speakhub-infra`](https://github.com/ventra-rocket/speakhub-infra).
 
-Target: a `speakhub-staging` Supabase project plus PayOS sandbox credentials wired to Vercel
-preview environments, so previews are safe by default.
+**Known gap, highest operational priority after the schema dump:** preview deployments and a
+developer's laptop both talk to production Supabase and live PayOS. Until staging holds real
+data, treat every local run as production access: never create test orders, never mutate
+`class_sessions`.
+
+Staging already has its own generated admin, teacher and HMAC secrets — production values are
+never copied into it, or a staging token would be valid against production.
 
 ## Secrets
 

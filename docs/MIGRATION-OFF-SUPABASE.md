@@ -267,22 +267,51 @@ teacher app streams the same PDF; admin re-uploads a PDF and the manifest regene
 identical requests; an existing phone never creates a second row.
 **Rollback:** the migration is reversible while Supabase still holds the old rows.
 
-### Phase 6 — Production cutover
+### Phase 6 — Production cutover, and Vercel is retired with it
+
+> **Amended 2026-08-17** by [ADR 0007](adr/0007-retire-vercel-and-self-host-the-frontend.md).
+> The product owner dropped Vercel entirely, so this phase no longer repoints `vercel.json`
+> rewrites at the server — it moves the origin itself and ends with the Vercel project deleted.
+> `server.mjs` already serves the pages, so this is a DNS and readiness exercise, not new code.
+
+**Before the window — DNS, which is a prerequisite and not part of the cutover.** The
+`speakhub.vn` zone moves onto Cloudflare nameservers with its records byte-identical to today,
+so Vercel keeps serving throughout. The zone must land in the **same** Cloudflare account as
+the tunnel: a CNAME to `cfargotunnel.com` from a different account is refused with Error 1014.
+`speakhub-infra/ops/dns-cutover.sh` captures the current zone, then rehearses the new one
+against Cloudflare's own nameservers *before* the registrar is touched, because a Cloudflare
+zone answers on its assigned nameservers while the old ones are still authoritative. Rollback
+is pointing the nameservers back at Mắt Bão.
+
+**Also before the window — the host has to deserve production traffic.** ADR 0007 lists the
+preconditions with their measurements: backups with a rehearsed restore, Postgres on the SSD
+rather than the spinning disk, a UPS, a stated RAM budget that cannot OOM the crawler, edge
+cache rules that cover the landing page but never `/admin` or `/teacher`, and the two
+host-level security findings closed. None of these are follow-ups; the host holds the payment
+record after this phase.
+
+Then the window itself:
 
 1. Announce a 45-minute window at a genuinely dead hour. There is no dual-write; the window
    is the whole plan.
 2. Freeze writes: put the booking and payment routes behind a maintenance response.
 3. Final `pg_dump` → restore → row-count and checksum comparison per table.
-4. Repoint `vercel.json` rewrites to the VPS, route by route, reads before writes.
+4. Point the apex and `www` at the tunnel as proxied records, reads verified before writes are
+   unfrozen. TTLs stay short until the cutover has held for a week.
 5. Move the PayOS webhook URL last. In-flight payments during the window are covered by PayOS
    retries **and** by the existing `payos:reconcile` endpoint — verify both after the flip.
-6. Watch for one week with Supabase still live and untouched as the rollback target.
+6. Watch for one week with Supabase still live and untouched as the rollback target, and with
+   the Vercel deployment still built and reachable by its `*.vercel.app` hostname.
+7. Only then delete the Vercel project and `vercel.json`. `server.mjs` becomes the route
+   contract and the `Self-host route parity` CI job inverts to check it directly.
 
 **Verification:** run the full manual flow on production — book → hold → PayOS → confirm →
 topic PDF → reschedule → attendance → admin overview — plus a real paid booking of the
-smallest amount, and reconcile it.
-**Rollback:** revert the rewrites. Any writes that landed on the VPS during the incident must
-be replayed by hand, which is exactly why payment routes move last and only after a week.
+smallest amount, and reconcile it. Then `ops/dns-cutover.sh after` with `EXPECT=tunnel`, which
+fails if any record from the baseline was lost in the move.
+**Rollback:** DNS back to the Vercel records, which is why the Vercel project is deleted a week
+late and not on the day. Any writes that landed on the server during an incident must be
+replayed by hand, which is exactly why payment routes move last.
 
 ### Phase 7 — Capabilities that only exist after the move
 
