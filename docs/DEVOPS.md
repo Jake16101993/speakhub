@@ -11,13 +11,18 @@
 | Environment | Branch / trigger | Frontend + API | Database | Payment | Status |
 |---|---|---|---|---|---|
 | Production | `main` | Vercel production | Supabase production | PayOS live | live, being migrated |
-| **Staging** | `ops/deploy.sh` | **Ventra Server 1, `server.mjs` in Docker** | own Postgres 17, **empty** | none configured | live, no public hostname yet |
+| **Staging** | `ops/deploy.sh` | **Ventra Server 1, `server.mjs` in Docker** | own Postgres 17, **empty** | none configured | live at **<https://staging.speakhub.vn>** |
 | Preview | any pull request | Vercel preview URL | **shares production today** | PayOS live | ⚠️ unsafe |
 | Local | working tree | `vercel dev`, or `npm start` | whatever `.env.local` points at | PayOS live | ⚠️ unsafe |
 
-Staging is deployed and verified but is **not** a substitute for the preview problem yet: its
-database has no data, because that is blocked on the schema dump (Phase 0). Stack, scripts and
-runbook are in [`ventra-rocket/speakhub-infra`](https://github.com/ventra-rocket/speakhub-infra).
+Staging is deployed, publicly reachable through a Cloudflare Tunnel, and `noindex`ed at the
+proxy, but it is **not** a substitute for the preview problem yet: its database has no data,
+because that is blocked on the schema dump (Phase 0), so the API answers `500`. Stack, scripts
+and runbook are in [`ventra-rocket/speakhub-infra`](https://github.com/ventra-rocket/speakhub-infra).
+
+`speakhub.vn` moved to Cloudflare nameservers on 2026-08-17 to make that hostname possible.
+The apex and `www` are still **DNS-only and still served by Vercel** — that origin move is
+Phase 6, and it is a separate change on purpose.
 
 **Known gap, highest operational priority after the schema dump:** preview deployments and a
 developer's laptop both talk to production Supabase and live PayOS. Until staging holds real
