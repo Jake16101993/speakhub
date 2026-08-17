@@ -164,37 +164,59 @@ exclusions.
 **Rollback:** none needed; nothing in production changes.
 **Blocked on:** Supabase database credentials, or a dump produced by you.
 
-### Phase 1 — VPS baseline and staging database
+### Phase 1 — VPS baseline and staging database — **partly done 2026-08-17**
 
-- Provision Postgres (matching major version), MinIO, Caddy, Node 22, all under systemd.
-  Postgres listens on a unix socket only — `listen_addresses = ''`.
-- Three DB roles from day one: `speakhub_owner` (DDL, migrations only), `speakhub_app`
-  (DML, `NOBYPASSRLS`), `speakhub_ro` (read-only, for support queries). The app connects as
-  `speakhub_app`; this is what makes Phase 7 RLS actually enforceable.
-- Nightly `pg_dump` plus MinIO snapshot, encrypted, shipped **off** the VPS. Restore is
-  rehearsed once and written into `docs/DEVOPS.md`, not assumed.
-- Apply `db/migrations/*` to a **staging** database and point a staging Node process at it.
+The target host turned out to be Ventra Server 1 (`ventra-pc`): Ubuntu 26.04, i3-8100,
+**3.4Gi RAM shared with a live crawler pipeline**, 914G **HDD**, no `node`/`npm`/`nginx` on the
+host, everything in Docker, ingress only through an existing Cloudflare Tunnel. That replaces
+the systemd + apt + Caddy shape assumed when this plan was written; the stack, scripts and
+runbook live in [`ventra-rocket/speakhub-infra`](https://github.com/ventra-rocket/speakhub-infra).
 
-This finally gives the project the staging environment it has never had, which is a
-prerequisite for verifying anything else here.
+Done and verified on the host:
 
-**Verification:** staging answers a read-only endpoint with restored data; a restore drill
-from the encrypted backup succeeds into a scratch database.
-**Rollback:** destroy the VPS; production untouched.
+- `nginx` proxy on `127.0.0.1:8080`, app container, and **Postgres 17 with no published port**.
+  Docker writes iptables directly and bypasses `ufw`, so loopback-only publishing is enforced
+  by the compose file and asserted by `ops/verify.sh`.
+- The three roles, with `speakhub_app` confirmed `NOBYPASSRLS` — the precondition for Phase 7.
+- Memory ceilings 64m + 320m + 512m; measured usage **136MB**; logs capped at 10m × 3 files.
+- The six pre-existing containers and the `ufw` rule count are asserted unchanged after deploy.
 
-### Phase 2 — Run the existing handlers on Node, still against Supabase
+Not done, and why:
+
+- **MinIO deferred to Phase 4.** Presigned URLs embed the host that signed them and MinIO does
+  not support a path prefix, so exposure needs its own hostname or an app-side download proxy.
+  That is the storage layer's decision, not the baseline's.
+- **Backups not yet configured.** There is nothing to back up until the dump lands, and a
+  backup script whose restore has never been rehearsed is worse than none. Blocks Phase 6.
+- **Staging database is empty**, pending Phase 0. The Postgres major version may still need to
+  change to match the source.
+- **No public hostname yet:** `speakhub.vn` is on Mắt Bão nameservers, so a tunnel hostname is
+  impossible until the zone moves to Cloudflare — an owner action. See the infra runbook.
+
+**Rollback:** `docker compose down` in `/srv/apps/speakhub-staging`; nothing else on the host is
+affected.
+
+### Phase 2 — Run the existing handlers on Node, still against Supabase — **done 2026-08-17**
 
 The de-risking step: prove the transport layer works before changing the data layer.
 
-- `server.mjs`: `node:http` → build a `Request`, call `handler.fetch(request)`, write the
-  `Response`. Route table mirrors `vercel.json` exactly and reuses `api/router.js` unchanged.
-- No handler edits. Env still points at Supabase.
-- Add a CI job that boots `server.mjs` and asserts every route in `vercel.json` resolves —
-  the same contract `.github/workflows/ci.yml` already checks statically.
+`server.mjs` in the app repo hosts the unmodified handlers, mirrors the `vercel.json` route
+table including the `group`/`action` parameters its rewrites inject, and imports every handler
+eagerly so a missing environment variable stops the process instead of producing a 500 per
+request. The `Self-host route parity` CI job fails if a rewrite is added without a route.
 
-**Verification:** with the process on the VPS pointing at Supabase, `curl` every GET route and
-compare responses byte-for-byte against Vercel's. Zero traffic is switched yet.
-**Rollback:** stop the process.
+One defect this surfaced, absent on Vercel: Vercel serves only build output, but a self-hosted
+process serves a working copy, so an unguarded static handler answers `GET /.env.local`. Static
+resolution now denies dotfiles at any depth, `api/`, `lib/`, `node_modules/`, `docs/`, `.git/`,
+`*.mjs` and the dependency manifests. Verified both locally and on the host.
+
+**Verified on the host:** the three pages return 200 and render with zero broken images and
+zero JS errors; `/package.json`, `/.env.local`, `/assets/../package.json`, `/server.mjs`,
+`/.git/config` and `/lib/api/customers/login.js` all return 403; a POST with an invalid phone
+reaches the handler and returns `INVALID_PHONE`; a 30MB body is refused with 413; and
+`/api/admin?action=login` returns 401 for a wrong password and a signed HMAC token for the
+staging password — end-to-end proof of environment wiring without any database.
+**Rollback:** stop the process; Vercel is untouched and still serves production.
 
 ### Phase 3 — Data-access layer, ported handler by handler
 

@@ -39,15 +39,21 @@ Read in this order:
 ```bash
 cp .env.example .env.local     # fill in from Vercel / Supabase
 npm ci
-npx vercel dev
+npx vercel dev                 # Vercel runtime
+npm start                      # self-hosted runtime: node server.mjs on :8787
 ```
 
-`vercel dev` is the only faithful local runtime: it applies the `vercel.json` rewrites that
-map `/api/bookings/create` and friends onto `api/router.js`. Without Supabase credentials the
-pages render but every data-driven view stays empty — expected, not a bug.
+`vercel dev` applies the `vercel.json` rewrites that map `/api/bookings/create` and friends
+onto `api/router.js`. `npm start` runs the same handlers under `server.mjs`, which mirrors that
+route table for the self-hosted target; CI fails if the two disagree. Without Supabase
+credentials the pages render but every data-driven view stays empty — expected, not a bug.
 
-⚠️ There is no staging database yet. Local and preview deployments currently talk to
-production Supabase and live PayOS. See `docs/DEVOPS.md`.
+**Staging** runs the `server.mjs` path on Ventra Server 1. Its stack, deploy scripts and
+runbook live in [`ventra-rocket/speakhub-infra`](https://github.com/ventra-rocket/speakhub-infra);
+migrations and application code stay here.
+
+⚠️ Vercel production and preview deployments still talk to production Supabase and live PayOS.
+Staging does not. See `docs/DEVOPS.md`.
 
 ## Repository layout
 
