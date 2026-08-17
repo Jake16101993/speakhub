@@ -24,7 +24,7 @@ jobs:
       - name: TruffleHog (verified secrets only)
         uses: trufflesecurity/trufflehog@main
         with:
-          extra_args: --results=verified,unknown --no-update
+          extra_args: --results=verified,unknown
 
   dependencies:
     name: Dependency audit
@@ -64,8 +64,8 @@ jobs:
             }
             const allowed = new Set(
               readFileSync(".github/public-actions.txt", "utf8")
-                .split("\n").map((l) => l.trim())
-                .filter((l) => l && !l.startsWith("#"))
+                .split("\n").map((l) => l.replace(/#.*$/, "").trim())
+                .filter(Boolean)
             );
             const added = [...found].filter((a) => !allowed.has(a));
             const removed = [...allowed].filter((a) => !found.has(a));

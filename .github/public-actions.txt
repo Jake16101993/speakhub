@@ -14,6 +14,9 @@ public-discounts      # upcoming date discounts, no PII
 # --- public writes, abuse-controlled by design ---------------------------
 track-visit           # anonymous analytics ping — spoofable, see advisory 10
 
+# --- credential exchange: must be reachable to obtain a token ------------
+login                 # admin password -> 8h bearer token; no rate limit today (advisory 04)
+
 # --- guest-reachable, spends money: MUST get real quota control ----------
 placement-status      # daily quota lookup keyed by client-supplied visitor_id
 placement-transcribe  # OpenAI speech-to-text, no attempt recorded — advisory 03
