@@ -64,19 +64,54 @@ Each one encodes a defect that already exists in this codebase:
 
 ### Not enabled
 
-CodeQL and GitHub secret scanning require GitHub Advanced Security, which a private
-repository on this plan does not include. TruffleHog covers the secret-scanning case. Revisit
-CodeQL if the repository becomes public or GHAS is purchased.
+Three GitHub features this project wants are unavailable on the organisation's **Free** plan
+while the repository is **private**:
+
+| Feature | API result | Substitute in place |
+|---|---|---|
+| CodeQL / GitHub secret scanning (needs Advanced Security) | n/a | TruffleHog job in `security.yml` |
+| Repository security advisories | `POST /security-advisories` → `404` | `type:security` issues in this private repo — see `SECURITY.md` |
+| Branch protection / rulesets | `403 Upgrade to GitHub Pro…` | squash-only merges, CI on every PR, `CODEOWNERS`, and convention |
+
+Making the repository public would unlock protection and advisories, but would also publish an
+exploitable-weakness list with exact line numbers. Upgrade the plan instead.
 
 ## Branch protection
 
-`main` is protected by a repository ruleset:
+### Not enforceable on the current plan
 
-- pull request required, 1 approving review, stale approvals dismissed on new commits;
-- `CI / syntax`, `CI / config`, `CI / static`, `Security / guardrails` must pass;
-- conversation resolution required;
-- force-push and deletion blocked;
-- `CODEOWNERS` review required for payment, auth, workflow and database paths.
+`ventra-rocket` is on the GitHub **Free** plan, and this repository is **private**. Both the
+rulesets API and classic branch protection return:
+
+```
+403 Upgrade to GitHub Pro or make this repository public to enable this feature.
+```
+
+So `main` cannot technically require a review or a green check today. Making the repository
+public to unlock protection is not an acceptable trade: it would expose the endpoint surface
+and the vulnerabilities tracked in the private advisories.
+
+### What is enforced instead
+
+| Control | State |
+|---|---|
+| Squash-merge only, merge commits and rebase disabled | ✅ set via repo settings |
+| Branch deleted automatically on merge | ✅ set |
+| Dependabot alerts and automated security fixes | ✅ enabled |
+| CI + Security workflows run on every pull request | ✅ enabled — advisory, not blocking |
+| `CODEOWNERS` requests the right reviewer | ✅ present — advisory, not blocking |
+| Required approvals, required checks, force-push block | ❌ needs GitHub Team |
+
+Until the plan changes, this is **convention enforced by people**: no direct pushes to `main`,
+no merge with a red check, no self-merge on payment, auth or database paths.
+
+### To make it real
+
+Upgrade the organisation to GitHub **Team**, then apply the ruleset: pull request required,
+1 approving review, stale approvals dismissed, `CODEOWNERS` review required, conversation
+resolution required, force-push and deletion blocked, and these checks required:
+`JS syntax + module graph`, `Config integrity`, `Static asset sanity`,
+`Project-specific guardrails`, `Secret scan`.
 
 ## Deploying
 

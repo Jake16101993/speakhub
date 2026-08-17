@@ -2,13 +2,30 @@
 
 ## Reporting a vulnerability
 
-**Never open a public issue or pull request for a vulnerability.**
+**Never open an issue, pull request or discussion about a vulnerability in a public
+repository, fork or mirror of this project.**
 
-Report through GitHub's private channel:
-<https://github.com/ventra-rocket/speakhub/security/advisories/new>
+### Channel
 
-Include the affected `file:line`, the impact, and reproduction steps. You will get
-an acknowledgement within two business days.
+This repository is **private**, so a `type:security` issue here is visible only to its
+collaborators. That is the reporting channel:
+
+1. Open an issue in `ventra-rocket/speakhub`.
+2. Label it `type:security` and one of `P0` / `P1` / `P2`.
+3. Include the affected `file:line`, the impact, and reproduction steps.
+
+GitHub repository security advisories would be the better home for these, but
+`POST /repos/ventra-rocket/speakhub/security-advisories` returns `404` on the
+organisation's current Free plan for a private repository. Move the open security issues
+into advisories if the plan is upgraded, or before this repository is ever made public.
+
+You will get an acknowledgement within two business days.
+
+### If the repository becomes public
+
+Every open `type:security` issue must be converted to a private advisory **before** the
+visibility change, not after. Each one names an exploitable weakness with exact line
+numbers.
 
 ## What this codebase handles
 
