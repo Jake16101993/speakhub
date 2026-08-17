@@ -4,6 +4,15 @@ Companion to [`ARCHITECTURE.md`](ARCHITECTURE.md), which describes the system as
 This document states where it should go, in what order, and what is explicitly **not** being
 changed.
 
+> **Amended 2026-08-16.** The hosting and persistence half of this document is superseded by
+> [`MIGRATION-OFF-SUPABASE.md`](MIGRATION-OFF-SUPABASE.md) and
+> [ADR 0006](adr/0006-move-off-supabase-to-self-hosted-postgres.md): Postgres, object storage
+> and the API process move to a self-hosted VPS. Read that plan first — it changes the
+> mechanism of Phase 3 (RLS via a `NOBYPASSRLS` role instead of a request-scoped Supabase
+> client), Phase 4 (systemd timers instead of `vercel.json` crons) and Phase 6 (the
+> 12-function ceiling that motivates `router.js` disappears). Everything else below —
+> the risk ordering, the frontend position, the non-goals — still holds.
+
 ## Design position
 
 The current stack is not the problem. Static pages plus serverless functions plus Postgres is
@@ -17,8 +26,10 @@ be validated before it reaches paying customers.
 
 So the plan is deliberately conservative:
 
-- **Keep**: Vercel serverless, Supabase Postgres + Storage, PayOS, business logic in RPCs,
-  vanilla-JS frontends, the `router.js` multiplexing pattern.
+- **Keep**: Postgres with business logic in RPCs, PayOS, vanilla-JS frontends, static hosting
+  on Vercel. *(Amended: Supabase and Vercel serverless functions are being replaced — see the
+  migration plan. The `router.js` multiplexing pattern becomes optional once the function
+  ceiling is gone.)*
 - **Fix**: the database becomes code, RLS becomes the authorization backstop, scheduled work
   becomes real, identity gets a second factor, staging exists.
 - **Refactor later, only where it pays**: split `index.html`, split `api/admin.js`.

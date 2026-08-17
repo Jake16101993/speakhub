@@ -26,10 +26,13 @@ Read in this order:
    `file:line` references throughout.
 2. [`docs/ARCHITECTURE-TARGET.md`](docs/ARCHITECTURE-TARGET.md) — target state, phased
    migration plan, and explicit non-goals.
-3. [`docs/DEVOPS.md`](docs/DEVOPS.md) — environments, CI gates, deploy, rollback, runbook.
-4. [`SECURITY.md`](SECURITY.md) — reporting channel and the rules for contributors.
-5. [`CONTRIBUTING.md`](CONTRIBUTING.md) — workflow and what "done" means here.
-6. [`docs/adr/`](docs/adr) — architecture decision records.
+3. [`docs/MIGRATION-OFF-SUPABASE.md`](docs/MIGRATION-OFF-SUPABASE.md) — **in progress
+   decision**: Postgres, object storage and the API move to a self-hosted VPS. Read this
+   before touching any data-access code.
+4. [`docs/DEVOPS.md`](docs/DEVOPS.md) — environments, CI gates, deploy, rollback, runbook.
+5. [`SECURITY.md`](SECURITY.md) — reporting channel and the rules for contributors.
+6. [`CONTRIBUTING.md`](CONTRIBUTING.md) — workflow and what "done" means here.
+7. [`docs/adr/`](docs/adr) — architecture decision records.
 
 ## Quick start
 

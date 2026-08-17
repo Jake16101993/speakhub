@@ -1,6 +1,6 @@
 # ADR 0001 — Keep the serverless + Supabase stack
 
-- **Status:** accepted
+- **Status:** accepted; backend scope amended by [ADR 0006](0006-move-off-supabase-to-self-hosted-postgres.md) on 2026-08-16
 - **Date:** 2026-08-16
 - **Context:** first architecture review after the repository moved to `ventra-rocket`
 
@@ -37,7 +37,12 @@ bundler as part of remediation work.
 - Remediation is sequenced by risk (see `ARCHITECTURE-TARGET.md`), not by technology.
 - `index.html` is split incrementally into plain ES modules, only where a seam pays for
   itself; the audio recorder duplicated between placement and progress tests is the first.
-- The 12-function Vercel budget stays a hard architectural constraint; new endpoints are
-  actions on existing handlers, enforced by CI.
-- Revisit only on a concrete trigger: a native or offline client requirement, or a second
-  venue with genuinely different scheduling rules.
+- ~~The 12-function Vercel budget stays a hard architectural constraint; new endpoints are
+  actions on existing handlers, enforced by CI.~~ Superseded by ADR 0006: the API moves to a
+  self-hosted Node process, so the ceiling disappears. The CI gate stays until the cutover
+  completes.
+- The trigger clause below fired on 2026-08-16 — not for a technical reason, but because the
+  product owner requires the database on owned infrastructure. See ADR 0006. **The frontend
+  half of this decision is unaffected: still no framework, still no bundler.**
+- Revisit the frontend only on a concrete trigger: a native or offline client requirement, or a
+  second venue with genuinely different scheduling rules.
