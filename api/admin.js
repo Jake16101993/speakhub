@@ -95,7 +95,7 @@ async function handleSupporterRegistrationSessions(){
   const rows=(data||[]).filter(x=>String(x.session_date)>today||(String(x.session_date)===today&&String(x.ends_at||'23:59').slice(0,5)>nowTime));
   const ids=rows.map(x=>x.id),counts={};
   if(ids.length){const {data:bs,error:bErr}=await supabase.from('bookings').select('session_id').in('session_id',ids).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);if(bErr)throw bErr;for(const b of (bs||[]))counts[b.session_id]=(counts[b.session_id]||0)+1;}
-  return Response.json({sessions:rows.map(x=>({id:x.id,session_date:x.session_date,starts_at:x.starts_at,ends_at:x.ends_at,capacity:Number(x.capacity||0),booked_count:Number(counts[x.id]||0),program_name:x.programs?.name||'',room_name:x.rooms?.name||''}))});
+  return Response.json({sessions:rows.map(x=>({id:x.id,session_date:x.session_date,starts_at:x.starts_at,ends_at:x.ends_at,capacity:Number(x.capacity||0),booked_count:Number(counts[x.id]||0),program_name:x.programs?.name||'',room_name:x.rooms?.name||''})).filter(x=>x.capacity>0&&x.booked_count<x.capacity)});
 }
 
 function slug(s){

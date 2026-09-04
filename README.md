@@ -77,3 +77,9 @@ docs/                 architecture, devops, ADRs
 Under active remediation. Known defects, missing flows and technical debt are tracked as
 issues and mapped to the project board; security findings are tracked as **private security
 advisories**, never as public issues.
+
+## V106 fixes
+- Fixed `/cs` login crash caused by the login function shadowing the login DOM element.
+- Hỗ trợ đăng ký now hides sessions that are already full.
+- Added class filter to Hỗ trợ đăng ký in both Admin and CS.
+- Removed the `ADMIN MENU` label from the Admin left sidebar.
