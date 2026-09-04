@@ -944,6 +944,17 @@ function adminFilterRows(rows,query,fields){
   return filtered.slice(0,10);
 }
 
+function adminNowVN(){
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());
+  const get=t=>parts.find(x=>x.type===t)?.value||'';
+  return {date:`${get('year')}-${get('month')}-${get('day')}`,time:`${get('hour')}:${get('minute')}`};
+}
+function adminSessionNotFinished(row){
+  const now=adminNowVN(),date=String(row?.session_date||''),end=String(row?.ends_at||'23:59').slice(0,5);
+  if(!date)return false;
+  return date>now.date || (date===now.date && end>now.time);
+}
+
 function sessionTeacherOptions(selectedId){
   const teachers=Array.isArray(cache?.teachers)?cache.teachers:[];
   const selected=String(selectedId||'');
@@ -956,9 +967,10 @@ function sessionTeacherOptions(selectedId){
 
 function renderSessionsTable(){
   const q=String(document.getElementById('sessionsFilter')?.value||'').trim().toLowerCase();
+  const upcoming=adminSessionsCache.filter(adminSessionNotFinished);
   const rows=!q
-    ? adminSessionsCache
-    : adminSessionsCache.filter(x=>
+    ? upcoming
+    : upcoming.filter(x=>
         ['session_date','starts_at','ends_at','program_name','teacher_name','status','session_type']
           .some(field=>String(x?.[field]??'').toLowerCase().includes(q))
       );
@@ -1059,7 +1071,7 @@ function renderCustomersTable(){
 
 function renderBookingsTable(){
   const q=document.getElementById('bookingsFilter')?.value||'';
-  const rows=adminFilterRows(adminBookingsCache,q,['full_name','phone','session_date','starts_at','ends_at','program_name','payment_status']);
+  const rows=adminFilterRows(adminBookingsCache.filter(adminSessionNotFinished),q,['full_name','phone','session_date','starts_at','ends_at','program_name','payment_status']);
   const host=document.getElementById('bookingsTable'); if(!host)return;
   host.innerHTML=table(['Student','Phone','Date','Time','Class','Payment'],rows.map(x=>[
     x.full_name||'',x.phone||'',x.session_date||'',
@@ -1228,8 +1240,10 @@ async function loadOverview(){
         <div><span>Next week</span><b>${pct(a.fill_rate?.next_week)}</b></div>
       </div>
     </div>
-    <div class="card visit-chart-card"><h3 style="margin:0">Visitors in the last 30 days</h3><div class="muted" style="font-size:12px;margin-top:4px">Unique visitors per day</div><div class="visit-chart-wrap"><canvas id="visit30Chart"></canvas></div></div>`;
+    <div class="card visit-chart-card"><h3 style="margin:0">Visitors in the last 30 days</h3><div class="muted" style="font-size:12px;margin-top:4px">Unique visitors per day</div><div class="visit-chart-wrap"><canvas id="visit30Chart"></canvas></div></div>
+    <div class="card visit-chart-card" style="margin-top:14px"><h3 style="margin:0">Daily fill rate in the last 30 days</h3><div class="muted" style="font-size:12px;margin-top:4px">Booked seats / total session capacity per day</div><div class="visit-chart-wrap"><canvas id="fill30Chart"></canvas></div></div>`;
   drawVisit30Chart(a.website_visits?.daily_30||[]);
+  drawFill30Chart(a.fill_rate_daily_30||[]);
 }
 function drawVisit30Chart(rows){
   const c=document.getElementById('visit30Chart');if(!c)return;
@@ -1243,6 +1257,21 @@ function drawVisit30Chart(rows){
   ctx.strokeStyle='#0b7a5b';ctx.lineWidth=2.5;ctx.beginPath();rows.forEach((r,i)=>{const x=p.l+i*step,y=p.t+ih-(Number(r.visitors||0)/max)*ih;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();
   ctx.fillStyle='#0b7a5b';rows.forEach((r,i)=>{const x=p.l+i*step,y=p.t+ih-(Number(r.visitors||0)/max)*ih;ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill()});
   ctx.font='bold 10px system-ui';ctx.textAlign='center';rows.forEach((r,i)=>{const v=Number(r.visitors||0);if(v>0){const x=p.l+i*step,y=p.t+ih-(v/max)*ih;ctx.fillText(String(v),x,Math.max(7,y-9))}});ctx.textAlign='start';
+  ctx.fillStyle='#6b7772';ctx.textAlign='center';rows.forEach((r,i)=>{if(i%5===0||i===rows.length-1){const d=String(r.date||'').split('-');ctx.fillText(`${d[2]}/${d[1]}`,p.l+i*step,H-13)}});ctx.textAlign='start';
+}
+
+function drawFill30Chart(rows){
+  const c=document.getElementById('fill30Chart');if(!c)return;
+  const box=c.parentElement.getBoundingClientRect(),dpr=Math.max(1,window.devicePixelRatio||1);
+  c.width=Math.max(300,Math.floor(box.width*dpr));c.height=Math.max(180,Math.floor(box.height*dpr));
+  const ctx=c.getContext('2d');ctx.scale(dpr,dpr);const W=box.width,H=box.height,p={l:42,r:12,t:16,b:34};
+  const iw=W-p.l-p.r,ih=H-p.t-p.b,max=100;
+  ctx.font='11px system-ui';ctx.textBaseline='middle';ctx.strokeStyle='#e3ebe7';ctx.fillStyle='#6b7772';ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){const y=p.t+ih*i/4;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(W-p.r,y);ctx.stroke();ctx.fillText(`${Math.round(max*(1-i/4))}%`,5,y)}
+  if(!rows.length)return;const step=rows.length>1?iw/(rows.length-1):iw;
+  ctx.strokeStyle='#0b7a5b';ctx.lineWidth=2.5;ctx.beginPath();rows.forEach((r,i)=>{const x=p.l+i*step,y=p.t+ih-(Math.max(0,Math.min(100,Number(r.rate||0)))/100)*ih;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();
+  ctx.fillStyle='#0b7a5b';rows.forEach((r,i)=>{const v=Math.max(0,Math.min(100,Number(r.rate||0))),x=p.l+i*step,y=p.t+ih-(v/100)*ih;ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill()});
+  ctx.font='bold 10px system-ui';ctx.textAlign='center';rows.forEach((r,i)=>{const v=Number(r.rate||0);if(Number(r.capacity||0)>0){const x=p.l+i*step,y=p.t+ih-(Math.max(0,Math.min(100,v))/100)*ih;ctx.fillText(`${v.toFixed(1).replace('.0','')}%`,x,Math.max(7,y-9))}});ctx.textAlign='start';
   ctx.fillStyle='#6b7772';ctx.textAlign='center';rows.forEach((r,i)=>{if(i%5===0||i===rows.length-1){const d=String(r.date||'').split('-');ctx.fillText(`${d[2]}/${d[1]}`,p.l+i*step,H-13)}});ctx.textAlign='start';
 }
 
@@ -1486,9 +1515,12 @@ function pickManualCustomer(name,phone){
 function renderManualOrdersFromCache(){
   const box=document.getElementById('manualBookings'); if(!box)return;
   const q=String(document.getElementById('manualFilter')?.value||'').trim().toLowerCase();
+  const upcomingOrders=(adminManualOrdersCache||[])
+    .map(o=>({...o,bookings:(o.bookings||[]).filter(adminSessionNotFinished)}))
+    .filter(o=>o.bookings.length>0);
   const filtered=!q
-    ? adminManualOrdersCache
-    : adminManualOrdersCache.filter(o=>
+    ? upcomingOrders
+    : upcomingOrders.filter(o=>
         [o.full_name,o.phone,o.order_code,o.paid_date,...(o.bookings||[]).flatMap(b=>[b.session_date,b.starts_at,b.program_name])]
           .some(v=>String(v||'').toLowerCase().includes(q))
       );

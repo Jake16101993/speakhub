@@ -39,7 +39,31 @@ function requireAdmin(request){
 function signSupporterToken(){const secret=process.env.SPEAKHUB_SUPPORTER_SECRET||process.env.SPEAKHUB_ADMIN_SECRET;if(!secret)throw new Error('SUPPORTER_SECRET_MISSING');const payload=Buffer.from(JSON.stringify({role:'supporter',exp:Date.now()+12*60*60*1000})).toString('base64url');const sig=crypto.createHmac('sha256',secret).update(payload).digest('base64url');return `${payload}.${sig}`}
 function requireSupporter(request){const secret=process.env.SPEAKHUB_SUPPORTER_SECRET||process.env.SPEAKHUB_ADMIN_SECRET;if(!secret)return false;const auth=request.headers.get('authorization')||'',token=auth.startsWith('Bearer ')?auth.slice(7):'', [payload,sig]=token.split('.');if(!payload||!sig)return false;const expected=crypto.createHmac('sha256',secret).update(payload).digest('base64url');try{if(sig.length!==expected.length||!crypto.timingSafeEqual(Buffer.from(sig),Buffer.from(expected)))return false;const d=JSON.parse(Buffer.from(payload,'base64url').toString('utf8'));return d.role==='supporter'&&Number(d.exp)>Date.now()}catch{return false}}
 async function handleSupporterLogin(request){if(request.method!=='POST')return Response.json({error:'METHOD_NOT_ALLOWED'},{status:405});const b=await request.json().catch(()=>({})),expected=process.env.SPEAKHUB_SUPPORTER_PASSWORD;if(!expected)return Response.json({error:'SUPPORTER_PASSWORD_MISSING'},{status:500});if(String(b.password||'')!==expected)return Response.json({error:'INVALID_PASSWORD'},{status:401});return Response.json({token:signSupporterToken()})}
-async function handleSupporterSessions(){const today=vnTodayBounds().day;const {data,error}=await supabase.from('class_sessions').select('id,session_date,starts_at,ends_at,status,topic_title,topic_storage_path,programs(name),rooms(name),teachers(full_name)').gte('session_date',today).order('session_date').order('starts_at');if(error)throw error;const out=[];for(const x of (data||[]).filter(r=>String(r.status||'').toUpperCase()!=='CANCELLED')){let download_url='';if(x.topic_storage_path){const {data:signed,error:signedErr}=await supabase.storage.from('topics').createSignedUrl(x.topic_storage_path,3600);if(signedErr)console.error('supporter topic signed url warning',signedErr);download_url=signed?.signedUrl||''}out.push({id:x.id,session_date:x.session_date,starts_at:x.starts_at,ends_at:x.ends_at,topic_title:x.topic_title||'',program_name:x.programs?.name||'',room_name:x.rooms?.name||'',teacher_name:x.teachers?.full_name||'',download_url,has_material:Boolean(x.topic_storage_path)})}return Response.json({sessions:out})}
+async function handleSupporterSessions(){
+  const today=vnTodayBounds().day;
+  const {data,error}=await supabase.from('class_sessions')
+    .select('id,session_date,starts_at,ends_at,status,topic_title,topic_storage_path,programs(name),rooms(name),teachers(full_name)')
+    .gte('session_date',today)
+    .neq('status','CANCELLED')
+    .not('topic_storage_path','is',null)
+    .order('session_date',{ascending:true})
+    .order('starts_at',{ascending:true});
+  if(error)throw error;
+  const nowParts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());
+  const nowTime=`${nowParts.find(x=>x.type==='hour')?.value||'00'}:${nowParts.find(x=>x.type==='minute')?.value||'00'}`;
+  const out=[];
+  for(const x of (data||[]).filter(r=>String(r.topic_storage_path||'').trim()).filter(r=>String(r.session_date||'')>today || String(r.ends_at||'23:59').slice(0,5)>nowTime)){
+    const path=String(x.topic_storage_path||'').trim();
+    const {data:signed,error:signedErr}=await supabase.storage.from('topics').createSignedUrl(path,6*60*60);
+    if(signedErr){console.error('supporter topic signed url warning',signedErr);continue;}
+    out.push({
+      id:x.id,session_date:x.session_date,starts_at:x.starts_at,ends_at:x.ends_at,
+      topic_title:x.topic_title||'',program_name:x.programs?.name||'',room_name:x.rooms?.name||'',
+      teacher_name:x.teachers?.full_name||'',download_url:signed?.signedUrl||'',has_material:true
+    });
+  }
+  return Response.json({sessions:out});
+}
 function slug(s){
   return String(s||'topic')
     .normalize('NFD')
@@ -282,23 +306,42 @@ async function handleOverview(request){
   const weekStart=`${w.current_from}T00:00:00+07:00`,weekEnd=`${weekEndExclusive}T00:00:00+07:00`;
   const monthStart=`${month.first}T00:00:00+07:00`,monthEnd=`${month.next}T00:00:00+07:00`;
   async function uniqueVisitors(from,to){
-    const {data,error}=await supabase.from('website_visits').select('visitor_id').gte('last_seen_at',from).lt('last_seen_at',to);
-    if(error)throw error;return new Set((data||[]).map(x=>String(x.visitor_id||'').replace(/::\d{4}-\d{2}-\d{2}$/,'')).filter(Boolean)).size;
+    const {data,error}=await supabase.from('website_visit_daily').select('visitor_id').gte('last_seen_at',from).lt('last_seen_at',to);
+    if(error)throw error;
+    return new Set((data||[]).map(x=>String(x.visitor_id||'')).filter(Boolean)).size;
   }
   const chartFrom=addDaysISO(today,-29);
   const onlineSince=new Date(Date.now()-75*1000).toISOString();
-  const [visDay,visWeek,visMonth,onlineRes,chartRes,latestVisitRes]=await Promise.all([
+  const [visDay,visWeek,visMonth,onlineRes,chartRes,latestVisitRes,fillSessionsRes]=await Promise.all([
     uniqueVisitors(dayStart,dayEnd),uniqueVisitors(weekStart,weekEnd),uniqueVisitors(monthStart,monthEnd),
-    supabase.from('website_visits').select('visitor_id').gte('last_seen_at',onlineSince),
-    supabase.from('website_visits').select('visitor_id,visited_on').gte('visited_on',chartFrom).lte('visited_on',today),
-    supabase.from('website_visits').select('last_seen_at,visited_on').order('last_seen_at',{ascending:false}).limit(1)
+    supabase.from('website_visit_daily').select('visitor_id').gte('last_seen_at',onlineSince),
+    supabase.from('website_visit_daily').select('visitor_id,visited_on').gte('visited_on',chartFrom).lte('visited_on',today),
+    supabase.from('website_visit_daily').select('last_seen_at,visited_on').order('last_seen_at',{ascending:false}).limit(1),
+    sessionQ(supabase.from('class_sessions').select('id,session_date,capacity').gte('session_date',chartFrom).lte('session_date',today).neq('status','CANCELLED'))
   ]);
-  if(onlineRes.error)throw onlineRes.error;if(chartRes.error)throw chartRes.error;if(latestVisitRes.error)throw latestVisitRes.error;
-  const onlineVisitors=new Set((onlineRes.data||[]).map(x=>String(x.visitor_id||'').replace(/::\d{4}-\d{2}-\d{2}$/,'')).filter(Boolean)).size;
+  if(onlineRes.error)throw onlineRes.error;if(chartRes.error)throw chartRes.error;if(latestVisitRes.error)throw latestVisitRes.error;if(fillSessionsRes.error)throw fillSessionsRes.error;
+  const onlineVisitors=new Set((onlineRes.data||[]).map(x=>String(x.visitor_id||'')).filter(Boolean)).size;
   const dailyMap={};
   for(let i=0;i<30;i++)dailyMap[addDaysISO(chartFrom,i)]=new Set();
-  for(const x of (chartRes.data||[])){if(dailyMap[x.visited_on]&&x.visitor_id)dailyMap[x.visited_on].add(String(x.visitor_id).replace(/::\d{4}-\d{2}-\d{2}$/,''));}
+  for(const x of (chartRes.data||[])){if(dailyMap[x.visited_on]&&x.visitor_id)dailyMap[x.visited_on].add(String(x.visitor_id));}
   const visits30=Object.entries(dailyMap).map(([date,set])=>({date,visitors:set.size}));
+
+  const fillRows=fillSessionsRes.data||[];
+  const fillIds=fillRows.map(x=>x.id);
+  const fillCounts={};
+  if(fillIds.length){
+    const {data:fb,error:fbErr}=await supabase.from('bookings').select('session_id').in('session_id',fillIds).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
+    if(fbErr)throw fbErr;
+    for(const x of (fb||[]))fillCounts[x.session_id]=(fillCounts[x.session_id]||0)+1;
+  }
+  const fillDaily={};
+  for(let i=0;i<30;i++)fillDaily[addDaysISO(chartFrom,i)]={capacity:0,booked:0};
+  for(const x of fillRows){
+    if(!fillDaily[x.session_date])continue;
+    fillDaily[x.session_date].capacity+=Number(x.capacity||0);
+    fillDaily[x.session_date].booked+=Number(fillCounts[x.id]||0);
+  }
+  const fill30=Object.entries(fillDaily).map(([date,v])=>({date,rate:v.capacity?Math.round((v.booked/v.capacity)*1000)/10:0,booked:v.booked,capacity:v.capacity}));
   const renewal=await getRenewalInsights();
   return Response.json({
     counts:scopedRoomIds===null?{customers:c.count||0,paid_orders:o.count||0,confirmed_bookings:b.count||0,open_sessions:s.count||0}:{customers:activeStudents,paid_orders:0,confirmed_bookings:Object.values(counts).reduce((n,v)=>n+Number(v||0),0),open_sessions:s.count||0},
@@ -316,7 +359,8 @@ async function handleOverview(request){
         eligible_customers:renewal.eligible_customers
       },
       ranges:w,
-      website_visits:{day:visDay,week:visWeek,month:visMonth,online:onlineVisitors,daily_30:visits30,latest_seen_at:latestVisitRes.data?.[0]?.last_seen_at||null,latest_visited_on:latestVisitRes.data?.[0]?.visited_on||null}
+      website_visits:{day:visDay,week:visWeek,month:visMonth,online:onlineVisitors,daily_30:visits30,latest_seen_at:latestVisitRes.data?.[0]?.last_seen_at||null,latest_visited_on:latestVisitRes.data?.[0]?.visited_on||null},
+      fill_rate_daily_30:fill30
     }
   });
 }
@@ -2667,30 +2711,16 @@ async function handleStudentSchedule(request){
 async function handleTrackVisit(request){
   if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
   const b=await request.json().catch(()=>({}));
-  const baseVisitor=String(b.visitor_id||'').trim().slice(0,100);
-  if(!baseVisitor)return Response.json({error:'VISITOR_REQUIRED'},{status:400});
+  const visitor=String(b.visitor_id||'').trim().slice(0,120);
+  if(!visitor)return Response.json({error:'VISITOR_REQUIRED'},{status:400});
   const day=vnTodayBounds().day;
-  const visitor=`${baseVisitor}::${day}`;
   const lastSeen=new Date().toISOString();
 
-  // Daily-suffixed visitor IDs keep tracking working even on older databases
-  // that still have a legacy UNIQUE(visitor_id) constraint. Analytics strips
-  // the suffix again when it needs unique browsers across a week/month.
-  const {data:existing,error:findErr}=await supabase.from('website_visits')
-    .select('visitor_id').eq('visitor_id',visitor).eq('visited_on',day).limit(1);
-  if(findErr)throw findErr;
-  if((existing||[]).length){
-    const {error:updateErr}=await supabase.from('website_visits').update({last_seen_at:lastSeen})
-      .eq('visitor_id',visitor).eq('visited_on',day);
-    if(updateErr)throw updateErr;
-  }else{
-    const {error:insertErr}=await supabase.from('website_visits').insert({visitor_id:visitor,visited_on:day,last_seen_at:lastSeen});
-    if(insertErr){
-      const {error:retryErr}=await supabase.from('website_visits').update({last_seen_at:lastSeen})
-        .eq('visitor_id',visitor).eq('visited_on',day);
-      if(retryErr)throw insertErr;
-    }
-  }
+  const {error}=await supabase.from('website_visit_daily').upsert(
+    {visitor_id:visitor,visited_on:day,last_seen_at:lastSeen},
+    {onConflict:'visitor_id,visited_on'}
+  );
+  if(error)throw error;
   return Response.json({success:true,visited_on:day,last_seen_at:lastSeen});
 }
 
@@ -2808,6 +2838,7 @@ export default {
       if(action==='supporter-login') return await handleSupporterLogin(request);
       if(action==='supporter-sessions'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await handleSupporterSessions()}
       if(action==='supporter-student-schedule'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await handleStudentSchedule(request)}
+      if(action==='supporter-chat'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await runAdminActionWithRetry(()=>handleAdminChat(request))}
 
       // Customer-authenticated public AI placement actions.
       // Kept inside existing /api/admin.js so SpeakHub does not add another
