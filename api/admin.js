@@ -64,6 +64,40 @@ async function handleSupporterSessions(){
   }
   return Response.json({sessions:out});
 }
+
+async function resolveAdminScope(scope='overall'){
+  scope=String(scope||'overall').toLowerCase();
+  if(scope==='overall') return {scope:'overall',location_id:null,room_ids:null};
+  const {data:locs,error:lErr}=await supabase.from('locations').select('id,name,district');
+  if(lErr) throw lErr;
+  let loc=null;
+  if(scope==='district-2') loc=(locs||[]).find(x=>/district\s*2|quận\s*2|quan\s*2|thu duc|thủ đức/i.test(`${x.name||''} ${x.district||''}`));
+  if(scope==='go-vap') loc=(locs||[]).find(x=>/go\s*vap|gò\s*vấp|khoi\s*coffee|khói\s*coffee/i.test(`${x.name||''} ${x.district||''}`));
+  if(!loc) return {scope,location_id:null,room_ids:[]};
+  const {data:rooms,error:rErr}=await supabase.from('rooms').select('id').eq('location_id',loc.id);
+  if(rErr) throw rErr;
+  return {scope,location_id:loc.id,room_ids:(rooms||[]).map(x=>x.id)};
+}
+function scopeQuery(q,scopeInfo,column='room_id'){
+  if(scopeInfo?.room_ids===null) return q;
+  return scopeInfo?.room_ids?.length?q.in(column,scopeInfo.room_ids):q.eq('id','00000000-0000-0000-0000-000000000000');
+}
+
+
+async function handleSupporterRegistrationSessions(){
+  const today=vnTodayBounds().day;
+  const {data,error}=await supabase.from('class_sessions')
+    .select('id,session_date,starts_at,ends_at,capacity,status,programs(name),rooms(name)')
+    .gte('session_date',today).eq('status','OPEN')
+    .order('session_date',{ascending:true}).order('starts_at',{ascending:true}).limit(500);
+  if(error)throw error;
+  const nowTime=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date());
+  const rows=(data||[]).filter(x=>String(x.session_date)>today||(String(x.session_date)===today&&String(x.ends_at||'23:59').slice(0,5)>nowTime));
+  const ids=rows.map(x=>x.id),counts={};
+  if(ids.length){const {data:bs,error:bErr}=await supabase.from('bookings').select('session_id').in('session_id',ids).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);if(bErr)throw bErr;for(const b of (bs||[]))counts[b.session_id]=(counts[b.session_id]||0)+1;}
+  return Response.json({sessions:rows.map(x=>({id:x.id,session_date:x.session_date,starts_at:x.starts_at,ends_at:x.ends_at,capacity:Number(x.capacity||0),booked_count:Number(counts[x.id]||0),program_name:x.programs?.name||'',room_name:x.rooms?.name||''}))});
+}
+
 function slug(s){
   return String(s||'topic')
     .normalize('NFD')
@@ -256,12 +290,8 @@ async function handleOverview(request){
   const url=new URL(request.url), scope=String(url.searchParams.get('scope')||'overall');
   const w=currentWeekBounds(), month=monthBounds(), weekEndExclusive=addDaysISO(w.current_to,1);
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}).format(new Date());
-  let scopedRoomIds=null;
-  if(scope==='district-2'){
-    const {data:locs,error:lErr}=await supabase.from('locations').select('id,name');if(lErr)throw lErr;
-    const loc=(locs||[]).find(x=>/district\s*2|quận\s*2|thu duc|thủ đức/i.test(String(x.name||'')));
-    if(loc){const {data:rs,error:rErr}=await supabase.from('rooms').select('id').eq('location_id',loc.id);if(rErr)throw rErr;scopedRoomIds=(rs||[]).map(x=>x.id)}else scopedRoomIds=[];
-  }
+  const scopeInfo=await resolveAdminScope(scope);
+  const scopedRoomIds=scopeInfo.room_ids;
   const sessionQ=(q)=>scopedRoomIds===null?q:(scopedRoomIds.length?q.in('room_id',scopedRoomIds):q.eq('id','00000000-0000-0000-0000-000000000000'));
   const results=await Promise.all([
     supabase.from('customers').select('*',{count:'exact',head:true}),
@@ -342,16 +372,34 @@ async function handleOverview(request){
     fillDaily[x.session_date].booked+=Number(fillCounts[x.id]||0);
   }
   const fill30=Object.entries(fillDaily).map(([date,v])=>({date,rate:v.capacity?Math.round((v.booked/v.capacity)*1000)/10:0,booked:v.booked,capacity:v.capacity}));
+  let scopedCounts=null,scopedPaidWeek=null,scopedPaidMonth=null;
+  if(Array.isArray(scopedRoomIds)){
+    if(!scopedRoomIds.length){scopedCounts={customers:0,paid_orders:0,confirmed_bookings:0,open_sessions:s.count||0};scopedPaidWeek=0;scopedPaidMonth=0;}
+    else{
+      const {data:ss,error:ssErr}=await supabase.from('class_sessions').select('id').in('room_id',scopedRoomIds);if(ssErr)throw ssErr;
+      const sids=(ss||[]).map(x=>x.id);
+      if(!sids.length){scopedCounts={customers:0,paid_orders:0,confirmed_bookings:0,open_sessions:s.count||0};scopedPaidWeek=0;scopedPaidMonth=0;}
+      else{
+        const {data:sbs,error:sbErr}=await supabase.from('bookings').select('user_id,order_id,status,orders!inner(total_amount,payment_status,created_at)').in('session_id',sids).neq('status','CANCELLED').eq('orders.payment_status','PAID');if(sbErr)throw sbErr;
+        const users=new Set(),ordersMap=new Map();let confirmed=0;
+        for(const x of (sbs||[])){if(x.user_id)users.add(x.user_id);if(x.order_id&&!ordersMap.has(x.order_id))ordersMap.set(x.order_id,x.orders);if(['CONFIRMED','ATTENDED','NO_SHOW'].includes(String(x.status||'')))confirmed++;}
+        const orderVals=[...ordersMap.values()];
+        scopedPaidWeek=orderVals.filter(x=>String(x.created_at||'')>=`${w.current_from}T00:00:00`&&String(x.created_at||'')<`${weekEndExclusive}T00:00:00`).reduce((n,x)=>n+Number(x.total_amount||0),0);
+        scopedPaidMonth=orderVals.filter(x=>String(x.created_at||'')>=`${month.first}T00:00:00`&&String(x.created_at||'')<`${month.next}T00:00:00`).reduce((n,x)=>n+Number(x.total_amount||0),0);
+        scopedCounts={customers:users.size,paid_orders:ordersMap.size,confirmed_bookings:confirmed,open_sessions:s.count||0};
+      }
+    }
+  }
   const renewal=await getRenewalInsights();
   return Response.json({
-    counts:scopedRoomIds===null?{customers:c.count||0,paid_orders:o.count||0,confirmed_bookings:b.count||0,open_sessions:s.count||0}:{customers:activeStudents,paid_orders:0,confirmed_bookings:Object.values(counts).reduce((n,v)=>n+Number(v||0),0),open_sessions:s.count||0},
+    counts:scopedCounts||{customers:c.count||0,paid_orders:o.count||0,confirmed_bookings:b.count||0,open_sessions:s.count||0},
     analytics:{
       sessions_this_week:(week.data||[]).length,
       topics_this_week:(week.data||[]).filter(x=>String(x.topic_storage_path||'').trim()).length,
       active_students:activeStudents,
       tests_this_week:{placement:pw.count||0,progress:gw.count||0},
       tests_all:{placement:pa.count||0,progress:ga.count||0},
-      paid_amount:{week:sum(mw.data),month:sum(mm.data)},
+      paid_amount:{week:scopedPaidWeek===null?sum(mw.data):scopedPaidWeek,month:scopedPaidMonth===null?sum(mm.data):scopedPaidMonth},
       fill_rate:{previous_week:fill(prev.data),current_week:fill(week.data),next_week:fill(next.data)},
       renewal_rate:{
         rate:renewal.renewal_rate,
@@ -452,6 +500,16 @@ async function handlePublicDateDiscounts(){
 
 async function handleSessions(request){
   if(request.method==='GET'){
+    const url=new URL(request.url), scopeInfo=await resolveAdminScope(url.searchParams.get('scope')||'overall');
+    let roomQ=supabase.from('rooms').select('id,name,location_id').order('name');
+    if(scopeInfo.location_id) roomQ=roomQ.eq('location_id',scopeInfo.location_id);
+    else if(Array.isArray(scopeInfo.room_ids)&&!scopeInfo.room_ids.length) roomQ=roomQ.eq('id','00000000-0000-0000-0000-000000000000');
+    let sessionsQ=supabase.from('class_sessions').select(`
+        id,session_date,session_period,starts_at,ends_at,capacity,status,is_recurring,recurrence_source_id,
+        room_id,location_id,teacher_id,topic_title,topic_storage_path,topic_vocabulary,
+        programs(name),rooms(name),teachers(full_name,country)
+      `).order('session_date',{ascending:false}).limit(200);
+    sessionsQ=scopeQuery(sessionsQ,scopeInfo,'room_id');
     const [
       {data:programs,error:pErr},
       {data:rooms,error:rErr},
@@ -459,13 +517,9 @@ async function handleSessions(request){
       {data:sessions,error:sErr}
     ]=await Promise.all([
       supabase.from('programs').select('id,code,name').order('name'),
-      supabase.from('rooms').select('id,name,location_id').order('name'),
+      roomQ,
       supabase.from('teachers').select('id,full_name,country,is_active').eq('is_active',true).order('full_name'),
-      supabase.from('class_sessions').select(`
-        id,session_date,session_period,starts_at,ends_at,capacity,status,is_recurring,recurrence_source_id,
-        teacher_id,topic_title,topic_storage_path,topic_vocabulary,
-        programs(name),rooms(name),teachers(full_name,country)
-      `).order('session_date',{ascending:false}).limit(200)
+      sessionsQ
     ]);
 
     if(pErr||rErr||tErr||sErr) throw (pErr||rErr||tErr||sErr);
@@ -501,6 +555,7 @@ async function handleSessions(request){
 
   if(request.method==='POST'){
     const b=await request.json();
+    const url=new URL(request.url), scopeInfo=await resolveAdminScope(url.searchParams.get('scope')||'overall');
 
     if(!b.program_id||!b.session_date||!b.starts_at||!b.ends_at){
       return Response.json({error:'MISSING_FIELDS'},{status:400});
@@ -515,12 +570,9 @@ async function handleSessions(request){
     let fallbackLocationId=null;
 
     if(!roomId){
-      const {data:firstRoom,error:roomErr}=await supabase
-        .from('rooms')
-        .select('id,location_id')
-        .order('id')
-        .limit(1)
-        .maybeSingle();
+      let firstRoomQ=supabase.from('rooms').select('id,location_id').order('id').limit(1);
+      if(scopeInfo.location_id) firstRoomQ=firstRoomQ.eq('location_id',scopeInfo.location_id);
+      const {data:firstRoom,error:roomErr}=await firstRoomQ.maybeSingle();
 
       if(roomErr) throw roomErr;
       roomId=firstRoom?.id||null;
@@ -797,13 +849,21 @@ async function handleCustomerSearch(request){
   return Response.json({customers:data||[]});
 }
 
-async function handleCustomers(){
-  const {data,error}=await supabase
-    .from('customers')
-    .select('id,full_name,phone,status,created_at')
-    .order('created_at',{ascending:false})
-    .limit(500);
-
+async function handleCustomers(request){
+  const url=new URL(request.url), scopeInfo=await resolveAdminScope(url.searchParams.get('scope')||'overall');
+  let customerIds=null;
+  if(Array.isArray(scopeInfo.room_ids)){
+    if(!scopeInfo.room_ids.length) customerIds=[];
+    else{
+      const {data:ss,error:sErr}=await supabase.from('class_sessions').select('id').in('room_id',scopeInfo.room_ids);if(sErr)throw sErr;
+      const ids=(ss||[]).map(x=>x.id);
+      if(!ids.length) customerIds=[];
+      else{const {data:bs,error:bErr}=await supabase.from('bookings').select('user_id').in('session_id',ids).neq('status','CANCELLED');if(bErr)throw bErr;customerIds=[...new Set((bs||[]).map(x=>x.user_id).filter(Boolean))];}
+    }
+  }
+  let q=supabase.from('customers').select('id,full_name,phone,status,created_at').order('created_at',{ascending:false}).limit(500);
+  if(Array.isArray(customerIds)) q=customerIds.length?q.in('id',customerIds):q.eq('id','00000000-0000-0000-0000-000000000000');
+  const {data,error}=await q;
   if(error) throw error;
   return Response.json({customers:data||[]});
 }
@@ -816,12 +876,14 @@ function validManualName(name){
   return String(name||'').trim().split(/\s+/).filter(Boolean).length>=2;
 }
 
-async function getManualSessions(){
+async function getManualSessions(request){
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}).format(new Date());
-  const {data:sessions,error}=await supabase
-    .from('class_sessions')
-    .select('id,session_date,starts_at,ends_at,capacity,status,programs(name)')
-    .gte('session_date',today)
+  const url=new URL(request.url), scopeInfo=await resolveAdminScope(url.searchParams.get('scope')||'overall');
+  let sessionQ=supabase.from('class_sessions')
+    .select('id,room_id,session_date,starts_at,ends_at,capacity,status,programs(name)')
+    .gte('session_date',today);
+  sessionQ=scopeQuery(sessionQ,scopeInfo,'room_id');
+  const {data:sessions,error}=await sessionQ
     .neq('status','CANCELLED')
     .order('session_date',{ascending:true})
     .order('starts_at',{ascending:true})
@@ -883,7 +945,8 @@ async function ensureManualCustomer(phone,fullName){
 
 async function handleManualBookings(request){
   if(request.method==='GET'){
-    const sessions=await getManualSessions();
+    const sessions=await getManualSessions(request);
+    const allowedSessionIds=new Set((sessions||[]).map(x=>String(x.id)));
 
     let orders=[];
     try{
@@ -911,6 +974,7 @@ async function handleManualBookings(request){
         source:String(o.order_code||'').startsWith('MANUAL-')?'MANUAL':'ONLINE',
         bookings:(o.bookings||[])
           .filter(b=>['CONFIRMED','ATTENDED','NO_SHOW'].includes(String(b.status||'')))
+          .filter(b=>allowedSessionIds.has(String(b.session_id)))
           .map(b=>({
             booking_id:b.id,
             session_id:b.session_id,
@@ -1065,16 +1129,18 @@ async function handleManualReschedule(request){
   return Response.json({success:true});
 }
 
-async function handleBookings(){
-  const {data,error}=await supabase
-    .from('bookings')
+async function handleBookings(request){
+  const url=new URL(request.url), scopeInfo=await resolveAdminScope(url.searchParams.get('scope')||'overall');
+  let q=supabase.from('bookings')
     .select(`
       id,status,created_at,
       customers:user_id(full_name,phone),
       orders!inner(payment_status,order_status),
-      class_sessions(session_date,starts_at,ends_at,programs(name))
+      class_sessions!inner(room_id,session_date,starts_at,ends_at,programs(name))
     `)
-    .eq('status','CONFIRMED')
+    .eq('status','CONFIRMED');
+  if(Array.isArray(scopeInfo.room_ids)) q=scopeInfo.room_ids.length?q.in('class_sessions.room_id',scopeInfo.room_ids):q.eq('class_sessions.room_id','00000000-0000-0000-0000-000000000000');
+  const {data,error}=await q
     .eq('orders.payment_status','PAID')
     .order('created_at',{ascending:false})
     .limit(500);
@@ -2704,7 +2770,10 @@ async function handleStudentSchedule(request){
   }
   const {data:c,error:cErr}=await supabase.from('customers').select('id,full_name,phone').eq('id',customerId).maybeSingle();if(cErr)throw cErr;if(!c)return Response.json({error:'CUSTOMER_NOT_FOUND'},{status:404});
   const today=vnTodayBounds().day;
-  const {data,error}=await supabase.from('bookings').select(`id,status,session_id,class_sessions(session_date,starts_at,ends_at,programs(name),rooms(name))`).eq('user_id',customerId).in('status',['CONFIRMED','ATTENDED','NO_SHOW']).order('created_at',{ascending:true});if(error)throw error;
+  const scopeInfo=await resolveAdminScope(u.searchParams.get('scope')||'overall');
+  let bq=supabase.from('bookings').select(`id,status,session_id,class_sessions!inner(room_id,session_date,starts_at,ends_at,programs(name),rooms(name))`).eq('user_id',customerId).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
+  if(Array.isArray(scopeInfo.room_ids)) bq=scopeInfo.room_ids.length?bq.in('class_sessions.room_id',scopeInfo.room_ids):bq.eq('class_sessions.room_id','00000000-0000-0000-0000-000000000000');
+  const {data,error}=await bq.order('created_at',{ascending:true});if(error)throw error;
   return Response.json({customer:c,bookings:(data||[]).map(x=>({id:x.id,status:x.status,session_date:x.class_sessions?.session_date||'',starts_at:x.class_sessions?.starts_at||'',ends_at:x.class_sessions?.ends_at||'',program_name:x.class_sessions?.programs?.name||'',room_name:x.class_sessions?.rooms?.name||''})).filter(x=>x.session_date&&x.session_date>=today)});
 }
 
@@ -2837,6 +2906,7 @@ export default {
 
       if(action==='supporter-login') return await handleSupporterLogin(request);
       if(action==='supporter-sessions'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await handleSupporterSessions()}
+      if(action==='supporter-registration-sessions'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await handleSupporterRegistrationSessions()}
       if(action==='supporter-student-schedule'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await handleStudentSchedule(request)}
       if(action==='supporter-chat'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await runAdminActionWithRetry(()=>handleAdminChat(request))}
 

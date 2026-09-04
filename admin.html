@@ -21,6 +21,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .ok{color:#075b43;background:#eef9f4;border:1px solid #b9e1d1;padding:10px 12px;border-radius:10px;margin-top:10px}
 @media(max-width:760px){.grid4,.row,.row2{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.card{overflow:auto}}
 .overview-scope{display:flex;gap:6px;background:#eef5f2;padding:4px;border-radius:12px}.overview-scope button{border:0;background:transparent;padding:8px 12px;border-radius:9px;font-weight:800;color:#65736d;cursor:pointer}.overview-scope button.on{background:#fff;color:var(--gd);box-shadow:0 1px 5px #0001}.lookup-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.lookup-dow{text-align:center;font-size:11px;font-weight:800;color:var(--muted);padding:5px}.lookup-day{min-height:76px;border:1px solid var(--line);border-radius:10px;padding:7px;background:#fff}.lookup-day.has{background:#f0faf6;border-color:#b7dfd2}.lookup-day>span{display:block;margin-top:5px;padding:4px 5px;border-radius:6px;background:#e4f5ef;font-size:10px;font-weight:700}.lookup-day small{display:block;color:var(--muted);margin-top:2px}@media(max-width:650px){.lookup-grid{gap:3px}.lookup-day{min-height:54px;padding:4px;font-size:10px}.lookup-day>span{font-size:0;padding:4px}.lookup-day>span:before{content:'•';font-size:14px}.lookup-day small{display:none}.overview-scope{width:100%}.overview-scope button{flex:1}}
+
+.admin-global-scope{display:flex;gap:6px;background:#eef5f2;padding:4px;border-radius:12px;flex-wrap:wrap}.admin-global-scope button{border:0;background:transparent;padding:9px 13px;border-radius:9px;font-weight:900;color:#65736d;cursor:pointer}.admin-global-scope button.on{background:#fff;color:var(--gd);box-shadow:0 1px 5px #0001}.assist-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.assist-sessions{display:grid;gap:8px;max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:10px}.assist-session{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff}.assist-session input{width:auto;margin-top:3px}.assist-qr{text-align:center}.assist-qr img{width:260px;max-width:90%;border:1px solid var(--line);border-radius:14px;padding:8px;background:#fff}@media(max-width:760px){.assist-grid{grid-template-columns:1fr}.admin-global-scope{width:100%}.top{align-items:flex-start;flex-wrap:wrap}}
 </style>
 <!-- SPEAKHUB ADMIN RECURRING SESSION 2026-08-09 -->
 <!-- SPEAKHUB ADMIN PROGRAM + TEACHER FIX 2026-08-09 -->
@@ -380,7 +382,10 @@ body{background:var(--admin-surface)}
 <div class="wrap">
   <div class="top">
     <div><div class="logo">SpeakHub Admin</div><div class="muted">Manage sessions · bookings · customers · topics</div></div>
-    <div style="display:flex;gap:8px;align-items:center"><button id="adminMenuToggle" class="admin-menu-toggle hidden" onclick="toggleAdminMenu()">☰ Menu</button><button id="logoutBtn" class="btn secondary hidden" onclick="logout()">Log out</button></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+      <div id="adminGlobalScope" class="admin-global-scope hidden"><button class="on" data-scope="overall" onclick="setAdminScope('overall')">Overall</button><button data-scope="go-vap" onclick="setAdminScope('go-vap')">Go Vap</button><button data-scope="district-2" onclick="setAdminScope('district-2')">District 2</button></div>
+      <button id="adminMenuToggle" class="admin-menu-toggle hidden" onclick="toggleAdminMenu()">☰</button><button id="logoutBtn" class="btn secondary hidden" onclick="logout()">Log out</button>
+    </div>
   </div>
 
   <section id="loginBox" class="card">
@@ -400,6 +405,7 @@ body{background:var(--admin-surface)}
       <button class="tab" onclick="showTab('customers',this)">◎ Customers</button>
       <button class="tab" onclick="showTab('bookings',this)">✓ Bookings</button>
       <button class="tab" onclick="showTab('manual',this);setTimeout(loadManual,0)">↔ Booking Manager</button>
+      <button class="tab" onclick="showTab('assist',this);setTimeout(loadAssistRegistration,0)">＋ Hỗ trợ đăng ký</button>
       <button class="tab" onclick="showTab('lookup',this)">▣ Student Schedule</button>
       <button class="tab" onclick="showTab('remind',this);setTimeout(loadReminders,0)">◷ Remind</button>
       <button class="tab" onclick="showTab('discounts',this);setTimeout(loadDiscounts,0)">% Discounts</button>
@@ -500,6 +506,22 @@ body{background:var(--admin-surface)}
     <section id="tab-bookings" class="hidden"><div class="card"><h3>Paid Bookings</h3><input id="bookingsFilter" placeholder="Filter bookings..." oninput="renderBookingsTable()" style="margin:0 0 12px"><div id="bookingsTable"></div></div></section>
 
     
+    <section id="tab-assist" class="hidden">
+      <div class="card">
+        <h3 style="margin-top:0">Hỗ trợ đăng ký</h3><div class="muted" style="margin-bottom:14px">Nhập số điện thoại, chọn buổi và tạo QR PayOS. Khi thanh toán thành công, lịch học được xác nhận tự động.</div>
+        <div class="assist-grid">
+          <div>
+            <label>Số điện thoại</label><input id="assistPhone" inputmode="numeric" maxlength="10" placeholder="0xxxxxxxxx" oninput="assistPhoneChanged()">
+            <label style="margin-top:10px">Họ tên</label><input id="assistName" placeholder="Tên học viên">
+            <label style="margin-top:12px">Chọn buổi</label><div id="assistSessions" class="assist-sessions"></div>
+            <button class="btn primary" style="width:100%;margin-top:12px" onclick="createAssistPayment()">Tạo mã QR thanh toán</button>
+            <div id="assistMsg"></div>
+          </div>
+          <div id="assistPayment" class="card assist-qr" style="margin:0;background:#fbfdfc"><div class="muted">QR thanh toán sẽ hiển thị tại đây.</div></div>
+        </div>
+      </div>
+    </section>
+
     <section id="tab-lookup" class="hidden">
       <div class="card"><h3 style="margin-top:0">Student Schedule Lookup</h3><div class="muted" style="margin-bottom:12px">Search by phone number or student name. Paid/manual confirmed lessons are shown in a monthly calendar.</div>
         <div class="row2"><input id="lookupStudentQ" placeholder="Phone or full name" onkeydown="if(event.key==='Enter')lookupStudentSchedule()"><button class="btn primary" onclick="lookupStudentSchedule()">Search schedule</button></div><div id="lookupStudentResults" style="margin-top:12px"></div>
@@ -750,10 +772,14 @@ function setButtonBusy(btn,busy=true){
 
 let token=localStorage.getItem('speakhub_admin_token')||'';
 let cache={sessions:[],programs:[],rooms:[]};
+window.adminScope=localStorage.getItem('speakhub_admin_scope')||'overall';
 
 async function api(url,opt={}){
   const headers={...(opt.headers||{})};
   if(token) headers.Authorization=`Bearer ${token}`;
+  if(url.startsWith('/api/admin?') && !url.includes('action=login') && !url.includes('action=supporter-login')){
+    const u=new URL(url,location.origin);u.searchParams.set('scope',window.adminScope||'overall');url=u.pathname+u.search;
+  }
   const res=await fetch(url,{...opt,headers,cache:'no-store'});
   const data=await res.json().catch(()=>({}));
   if(res.status===401){logout();throw new Error('UNAUTHORIZED')}
@@ -767,10 +793,10 @@ async function login(){
     token=data.token;localStorage.setItem('speakhub_admin_token',token);boot();
   }catch(e){msg.innerHTML='<div class="error">Incorrect password or admin is not configured.</div>'}
 }
-function logout(){token='';localStorage.removeItem('speakhub_admin_token');document.getElementById('adminApp').classList.add('hidden');document.getElementById('loginBox').classList.remove('hidden');document.getElementById('logoutBtn').classList.add('hidden');document.getElementById('adminMenuToggle')?.classList.add('hidden')}
+function logout(){token='';localStorage.removeItem('speakhub_admin_token');document.getElementById('adminApp').classList.add('hidden');document.getElementById('loginBox').classList.remove('hidden');document.getElementById('logoutBtn').classList.add('hidden');document.getElementById('adminMenuToggle')?.classList.add('hidden');document.getElementById('adminGlobalScope')?.classList.add('hidden')}
 async function boot(){
   if(!token)return;
-  document.getElementById('loginBox').classList.add('hidden');document.getElementById('adminApp').classList.remove('hidden');document.getElementById('logoutBtn').classList.remove('hidden');document.getElementById('adminMenuToggle')?.classList.remove('hidden');
+  document.getElementById('loginBox').classList.add('hidden');document.getElementById('adminApp').classList.remove('hidden');document.getElementById('logoutBtn').classList.remove('hidden');document.getElementById('adminMenuToggle')?.classList.remove('hidden');document.getElementById('adminGlobalScope')?.classList.remove('hidden');syncAdminScopeButtons();
   try{
     await Promise.all([loadOverview(),loadSessions(),loadCustomers(),loadBookings()]);
   }catch(e){
@@ -1185,8 +1211,9 @@ async function deleteDiscount(date,programName){
 }
 
 
-window.overviewScope='overall';
-function setOverviewScope(scope){window.overviewScope=scope;loadOverview()}
+function syncAdminScopeButtons(){document.querySelectorAll('#adminGlobalScope button').forEach(b=>b.classList.toggle('on',b.dataset.scope===(window.adminScope||'overall')))}
+async function setAdminScope(scope){window.adminScope=scope;localStorage.setItem('speakhub_admin_scope',scope);syncAdminScopeButtons();await Promise.allSettled([loadOverview(),loadSessions(),loadCustomers(),loadBookings()]);if(!document.getElementById('tab-manual')?.classList.contains('hidden'))loadManual();if(!document.getElementById('tab-assist')?.classList.contains('hidden'))loadAssistRegistration();}
+function setOverviewScope(scope){return setAdminScope(scope)}
 async function lookupStudentSchedule(){
   const q=(document.getElementById('lookupStudentQ')?.value||'').trim(), out=document.getElementById('lookupStudentResults'), host=document.getElementById('lookupCalendarHost');
   if(!q){out.innerHTML='<div class="error">Enter a phone number or name.</div>';return}
@@ -1209,13 +1236,13 @@ function renderAdminStudentCalendar(d){
 async function loadOverview(){
   const root=document.getElementById('tab-overview');
   if(root)root.innerHTML=`<div class="card"><span class="muted">Loading overview...</span></div>`;
-  const scope=window.overviewScope||'overall';
+  const scope=window.adminScope||'overall';
   const d=await api('/api/admin?action=overview&scope='+encodeURIComponent(scope));
   const a=d.analytics||{};
   const money=n=>new Intl.NumberFormat('vi-VN').format(Number(n||0))+'đ';
   const pct=n=>`${Number(n||0).toFixed(1).replace('.0','')}%`;
   document.getElementById('tab-overview').innerHTML=`
-    <div class="overview-head"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div><h2 style="margin:0">Overview</h2><div class="muted" style="font-size:12px;margin-top:3px">SpeakHub operating metrics</div></div><div class="overview-scope"><button class="${scope==='overall'?'on':''}" onclick="setOverviewScope('overall')">Overall</button><button class="${scope==='district-2'?'on':''}" onclick="setOverviewScope('district-2')">District 2</button></div></div><button class="overview-refresh" onclick="loadOverview()">↻ Refresh</button></div>
+    <div class="overview-head"><div><h2 style="margin:0">Overview</h2><div class="muted" style="font-size:12px;margin-top:3px">SpeakHub operating metrics · ${scope==='overall'?'Overall':scope==='go-vap'?'Go Vap':'District 2'}</div></div><button class="overview-refresh" onclick="loadOverview()">↻ Refresh</button></div>
     <div class="grid4">
       <div class="card stat"><span class="muted">Customers</span><b>${d.counts.customers}</b></div>
       <div class="card stat"><span class="muted">Paid orders</span><b>${d.counts.paid_orders}</b></div>
@@ -1274,6 +1301,15 @@ function drawFill30Chart(rows){
   ctx.font='bold 10px system-ui';ctx.textAlign='center';rows.forEach((r,i)=>{const v=Number(r.rate||0);if(Number(r.capacity||0)>0){const x=p.l+i*step,y=p.t+ih-(Math.max(0,Math.min(100,v))/100)*ih;ctx.fillText(`${v.toFixed(1).replace('.0','')}%`,x,Math.max(7,y-9))}});ctx.textAlign='start';
   ctx.fillStyle='#6b7772';ctx.textAlign='center';rows.forEach((r,i)=>{if(i%5===0||i===rows.length-1){const d=String(r.date||'').split('-');ctx.fillText(`${d[2]}/${d[1]}`,p.l+i*step,H-13)}});ctx.textAlign='start';
 }
+
+
+let assistLookupTimer=null,assistPollTimer=null,assistHeartbeatTimer=null,assistActiveOrder=null;
+function assistUpcomingSessions(){const now=new Date(),today=now.toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}),tm=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now);return (cache.sessions||[]).filter(x=>String(x.status||'').toUpperCase()==='OPEN'&&(String(x.session_date)>today||(String(x.session_date)===today&&String(x.ends_at||'23:59').slice(0,5)>tm))).sort((a,b)=>`${a.session_date} ${a.starts_at}`.localeCompare(`${b.session_date} ${b.starts_at}`))}
+async function loadAssistRegistration(){if(!cache.sessions?.length)await loadSessions();const box=document.getElementById('assistSessions');if(!box)return;const rows=assistUpcomingSessions();box.innerHTML=rows.map(x=>`<label class="assist-session"><input type="checkbox" value="${x.id}"><span><b>${adminEscapeHtml(x.program_name||'Class')}</b><small>${adminEscapeHtml(x.session_date)} · ${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)} · ${Number(x.booked_count||0)}/${Number(x.capacity||0)}${x.room_name?' · '+adminEscapeHtml(x.room_name):''}</small></span></label>`).join('')||'<div class="muted">Không có session sắp tới trong khu vực đang chọn.</div>';}
+function assistPhoneChanged(){const el=document.getElementById('assistPhone');if(!el)return;el.value=el.value.replace(/\D/g,'').slice(0,10);clearTimeout(assistLookupTimer);if(el.value.length<10)return;assistLookupTimer=setTimeout(async()=>{try{const d=await api('/api/admin?action=customer-search&q='+encodeURIComponent(el.value));const exact=(d.customers||[]).find(c=>String(c.phone)===el.value);if(exact)document.getElementById('assistName').value=exact.full_name||'';}catch(_){}},250)}
+function clearAssistTimers(){clearInterval(assistPollTimer);clearInterval(assistHeartbeatTimer);assistPollTimer=assistHeartbeatTimer=null;}
+async function createAssistPayment(){const msg=document.getElementById('assistMsg'),pay=document.getElementById('assistPayment'),phone=(document.getElementById('assistPhone')?.value||'').trim(),name=(document.getElementById('assistName')?.value||'').trim(),session_ids=[...document.querySelectorAll('#assistSessions input:checked')].map(x=>x.value);msg.innerHTML='';clearAssistTimers();if(!/^0\d{9}$/.test(phone)){msg.innerHTML='<div class="error">SĐT phải gồm 10 số và bắt đầu bằng 0.</div>';return}if(name.split(/\s+/).filter(Boolean).length<2){msg.innerHTML='<div class="error">Vui lòng nhập đầy đủ họ tên.</div>';return}if(!session_ids.length){msg.innerHTML='<div class="error">Vui lòng chọn ít nhất 1 buổi.</div>';return}pay.innerHTML='<div class="muted">Đang tạo QR PayOS...</div>';try{const br=await fetch('/api/bookings/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone,full_name:name,session_ids})}),bd=await br.json();if(!br.ok)throw Error(bd.details||bd.error||'BOOKING_FAILED');const order=bd.order;const pr=await fetch('/api/payos/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:order.order_id,checkout_token:order.checkout_token})}),pd=await pr.json();if(!pr.ok)throw Error(pd.details||pd.error||'PAYOS_CREATE_FAILED');assistActiveOrder={...order,payment:pd.payment};pay.innerHTML=`<h3 style="margin-top:0">Quét QR để thanh toán</h3>${pd.payment?.qr_image?`<img src="${pd.payment.qr_image}" alt="QR PayOS">`:''}<div style="font-size:26px;font-weight:900;color:var(--gd);margin-top:8px">${new Intl.NumberFormat('vi-VN').format(Number(pd.payment?.amount||order.total_amount||0))}đ</div><div id="assistPayStatus" class="muted" style="margin-top:8px">Đang chờ thanh toán...</div>`;startAssistPolling();}catch(e){pay.innerHTML='<div class="error">Không tạo được QR.</div>';msg.innerHTML=`<div class="error">${adminEscapeHtml(e.message)}</div>`}}
+function startAssistPolling(){clearAssistTimers();const o=assistActiveOrder;if(!o)return;const check=async()=>{try{const r=await fetch('/api/orders/status?order_id='+encodeURIComponent(o.order_id)+'&token='+encodeURIComponent(o.checkout_token),{cache:'no-store'}),d=await r.json();if(d.order?.payment_status==='PAID'&&d.order?.order_status==='CONFIRMED'){clearAssistTimers();document.getElementById('assistPayment').innerHTML='<div class="ok"><h3>Thanh toán thành công</h3><p>Lịch học đã được thêm tự động cho học viên.</p></div>';await Promise.allSettled([loadSessions(),loadBookings(),loadOverview()]);loadAssistRegistration();return}await fetch('/api/payos/reconcile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:o.order_id,checkout_token:o.checkout_token})}).catch(()=>{});}catch(_){}};assistPollTimer=setInterval(check,5000);assistHeartbeatTimer=setInterval(()=>fetch('/api/payos/reconcile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:o.order_id,checkout_token:o.checkout_token,mode:'heartbeat'})}).catch(()=>{}),20000);check();}
 
 async function loadSessions(){
   const d=await api('/api/admin?action=sessions');

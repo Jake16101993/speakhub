@@ -46,8 +46,8 @@
       "destination": "/admin.html"
     },
     {
-      "source": "/supporter",
-      "destination": "/supporter.html"
+      "source": "/cs",
+      "destination": "/cs.html"
     }
   ]
 }
