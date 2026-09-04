@@ -36,6 +36,10 @@ function requireAdmin(request){
   }
 }
 
+function signSupporterToken(){const secret=process.env.SPEAKHUB_SUPPORTER_SECRET||process.env.SPEAKHUB_ADMIN_SECRET;if(!secret)throw new Error('SUPPORTER_SECRET_MISSING');const payload=Buffer.from(JSON.stringify({role:'supporter',exp:Date.now()+12*60*60*1000})).toString('base64url');const sig=crypto.createHmac('sha256',secret).update(payload).digest('base64url');return `${payload}.${sig}`}
+function requireSupporter(request){const secret=process.env.SPEAKHUB_SUPPORTER_SECRET||process.env.SPEAKHUB_ADMIN_SECRET;if(!secret)return false;const auth=request.headers.get('authorization')||'',token=auth.startsWith('Bearer ')?auth.slice(7):'', [payload,sig]=token.split('.');if(!payload||!sig)return false;const expected=crypto.createHmac('sha256',secret).update(payload).digest('base64url');try{if(sig.length!==expected.length||!crypto.timingSafeEqual(Buffer.from(sig),Buffer.from(expected)))return false;const d=JSON.parse(Buffer.from(payload,'base64url').toString('utf8'));return d.role==='supporter'&&Number(d.exp)>Date.now()}catch{return false}}
+async function handleSupporterLogin(request){if(request.method!=='POST')return Response.json({error:'METHOD_NOT_ALLOWED'},{status:405});const b=await request.json().catch(()=>({})),expected=process.env.SPEAKHUB_SUPPORTER_PASSWORD;if(!expected)return Response.json({error:'SUPPORTER_PASSWORD_MISSING'},{status:500});if(String(b.password||'')!==expected)return Response.json({error:'INVALID_PASSWORD'},{status:401});return Response.json({token:signSupporterToken()})}
+async function handleSupporterSessions(){const today=vnTodayBounds().day;const {data,error}=await supabase.from('class_sessions').select('id,session_date,starts_at,ends_at,topic_title,topic_storage_path,programs(name),rooms(name),teachers(full_name)').gte('session_date',today).neq('status','CANCELLED').order('session_date').order('starts_at');if(error)throw error;const out=[];for(const x of (data||[])){let download_url='';if(x.topic_storage_path){const {data:signed}=await supabase.storage.from('topics').createSignedUrl(x.topic_storage_path,3600);download_url=signed?.signedUrl||''}out.push({id:x.id,session_date:x.session_date,starts_at:x.starts_at,ends_at:x.ends_at,topic_title:x.topic_title||'',program_name:x.programs?.name||'',room_name:x.rooms?.name||'',teacher_name:x.teachers?.full_name||'',download_url})}return Response.json({sessions:out})}
 function slug(s){
   return String(s||'topic')
     .normalize('NFD')
@@ -224,24 +228,32 @@ async function handleReminders(){
   });
 }
 
-async function handleOverview(){
+async function handleOverview(request){
+  const url=new URL(request.url), scope=String(url.searchParams.get('scope')||'overall');
   const w=currentWeekBounds(), month=monthBounds(), weekEndExclusive=addDaysISO(w.current_to,1);
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}).format(new Date());
+  let scopedRoomIds=null;
+  if(scope==='district-2'){
+    const {data:locs,error:lErr}=await supabase.from('locations').select('id,name');if(lErr)throw lErr;
+    const loc=(locs||[]).find(x=>/district\s*2|quận\s*2|thu duc|thủ đức/i.test(String(x.name||'')));
+    if(loc){const {data:rs,error:rErr}=await supabase.from('rooms').select('id').eq('location_id',loc.id);if(rErr)throw rErr;scopedRoomIds=(rs||[]).map(x=>x.id)}else scopedRoomIds=[];
+  }
+  const sessionQ=(q)=>scopedRoomIds===null?q:(scopedRoomIds.length?q.in('room_id',scopedRoomIds):q.eq('id','00000000-0000-0000-0000-000000000000'));
   const results=await Promise.all([
     supabase.from('customers').select('*',{count:'exact',head:true}),
     supabase.from('orders').select('*',{count:'exact',head:true}).eq('payment_status','PAID'),
     supabase.from('bookings').select('*',{count:'exact',head:true}).eq('status','CONFIRMED'),
-    supabase.from('class_sessions').select('*',{count:'exact',head:true}).eq('status','OPEN'),
-    supabase.from('class_sessions').select('id,capacity,topic_storage_path').gte('session_date',w.current_from).lte('session_date',w.current_to).neq('status','CANCELLED'),
-    supabase.from('class_sessions').select('id,capacity').gte('session_date',w.prev_from).lte('session_date',w.prev_to).neq('status','CANCELLED'),
-    supabase.from('class_sessions').select('id,capacity').gte('session_date',w.next_from).lte('session_date',w.next_to).neq('status','CANCELLED'),
+    sessionQ(supabase.from('class_sessions').select('*',{count:'exact',head:true}).eq('status','OPEN')),
+    sessionQ(supabase.from('class_sessions').select('id,capacity,topic_storage_path').gte('session_date',w.current_from).lte('session_date',w.current_to).neq('status','CANCELLED')),
+    sessionQ(supabase.from('class_sessions').select('id,capacity').gte('session_date',w.prev_from).lte('session_date',w.prev_to).neq('status','CANCELLED')),
+    sessionQ(supabase.from('class_sessions').select('id,capacity').gte('session_date',w.next_from).lte('session_date',w.next_to).neq('status','CANCELLED')),
     supabase.from('placement_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
     supabase.from('progress_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
     supabase.from('placement_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED'),
     supabase.from('progress_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED'),
     supabase.from('orders').select('total_amount').eq('payment_status','PAID').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
     supabase.from('orders').select('total_amount').eq('payment_status','PAID').gte('created_at',`${month.first}T00:00:00+07:00`).lt('created_at',`${month.next}T00:00:00+07:00`),
-    supabase.from('class_sessions').select('id').gte('session_date',today).neq('status','CANCELLED')
+    sessionQ(supabase.from('class_sessions').select('id').gte('session_date',today).neq('status','CANCELLED'))
   ]);
   const err=results.find(x=>x.error)?.error;if(err) throw err;
   const [c,o,b,s,week,prev,next,pw,gw,pa,ga,mw,mm,future]=results;
@@ -289,7 +301,7 @@ async function handleOverview(){
   const visits30=Object.entries(dailyMap).map(([date,set])=>({date,visitors:set.size}));
   const renewal=await getRenewalInsights();
   return Response.json({
-    counts:{customers:c.count||0,paid_orders:o.count||0,confirmed_bookings:b.count||0,open_sessions:s.count||0},
+    counts:scopedRoomIds===null?{customers:c.count||0,paid_orders:o.count||0,confirmed_bookings:b.count||0,open_sessions:s.count||0}:{customers:activeStudents,paid_orders:0,confirmed_bookings:Object.values(counts).reduce((n,v)=>n+Number(v||0),0),open_sessions:s.count||0},
     analytics:{
       sessions_this_week:(week.data||[]).length,
       topics_this_week:(week.data||[]).filter(x=>String(x.topic_storage_path||'').trim()).length,
@@ -2601,13 +2613,18 @@ async function handleTeacherUsers(request){
     const {data:teacher,error:tErr}=await supabase.from('teachers').select('id,full_name,is_active').eq('id',teacherId).maybeSingle();
     if(tErr)throw tErr;
     if(!teacher)return Response.json({error:'TEACHER_NOT_FOUND'},{status:404});
+    const displayName=String(b.display_name||'').trim();
+    const oldName=teacher.full_name;
+    const accountName=displayName||oldName;
     const {data,error}=await supabase.rpc('admin_upsert_teacher_account',{
-      p_teacher_name:teacher.full_name,
-      p_username:username,
-      p_password:password,
-      p_is_active:true
+      p_teacher_name:oldName,p_username:username,p_password:password,p_is_active:true
     });
     if(error)throw error;
+    if(displayName && displayName!==oldName){
+      const {error:tUp}=await supabase.from('teachers').update({full_name:displayName}).eq('id',teacherId);if(tUp)throw tUp;
+      const account=Array.isArray(data)?data[0]:data;
+      if(account?.id){const {error:aUp}=await supabase.from('teacher_accounts').update({teacher_name:displayName,updated_at:new Date().toISOString()}).eq('id',account.id);if(aUp)throw aUp;}
+    }
     return Response.json({success:true,account:Array.isArray(data)?data[0]:data});
   }
 
@@ -2631,6 +2648,17 @@ async function handleTeacherUsers(request){
   }
 
   return Response.json({error:'Method not allowed'},{status:405});
+}
+
+async function handleStudentSchedule(request){
+  const u=new URL(request.url), customerId=String(u.searchParams.get('customer_id')||''), q=String(u.searchParams.get('q')||'').trim();
+  if(!customerId){
+    if(!q)return Response.json({customers:[]});const digits=q.replace(/\D/g,'');let b=supabase.from('customers').select('id,full_name,phone,status').limit(12);
+    b=(digits.length>=3)?b.ilike('phone',`%${digits}%`):b.ilike('full_name',`%${q.replace(/[%_]/g,'')}%`);const {data,error}=await b;if(error)throw error;return Response.json({customers:data||[]});
+  }
+  const {data:c,error:cErr}=await supabase.from('customers').select('id,full_name,phone').eq('id',customerId).maybeSingle();if(cErr)throw cErr;if(!c)return Response.json({error:'CUSTOMER_NOT_FOUND'},{status:404});
+  const {data,error}=await supabase.from('bookings').select(`id,status,session_id,class_sessions(session_date,starts_at,ends_at,programs(name),rooms(name))`).eq('user_id',customerId).in('status',['CONFIRMED','ATTENDED','NO_SHOW']).order('created_at',{ascending:true});if(error)throw error;
+  return Response.json({customer:c,bookings:(data||[]).map(x=>({id:x.id,status:x.status,session_date:x.class_sessions?.session_date||'',starts_at:x.class_sessions?.starts_at||'',ends_at:x.class_sessions?.ends_at||'',program_name:x.class_sessions?.programs?.name||'',room_name:x.class_sessions?.rooms?.name||''})).filter(x=>x.session_date)});
 }
 
 async function handleTrackVisit(request){
@@ -2786,6 +2814,10 @@ export default {
         return await handleLogin(request);
       }
 
+      if(action==='supporter-login') return await handleSupporterLogin(request);
+      if(action==='supporter-sessions'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await handleSupporterSessions()}
+      if(action==='supporter-student-schedule'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await handleStudentSchedule(request)}
+
       // Customer-authenticated public AI placement actions.
       // Kept inside existing /api/admin.js so SpeakHub does not add another
       // Vercel Serverless Function on the Hobby plan.
@@ -2821,12 +2853,13 @@ export default {
         return Response.json({error:'UNAUTHORIZED'},{status:401});
       }
 
-      if(action==='overview') return await runAdminActionWithRetry(()=>handleOverview());
+      if(action==='overview') return await runAdminActionWithRetry(()=>handleOverview(request));
       if(action==='reminders') return await runAdminActionWithRetry(()=>handleReminders());
       if(action==='discounts') return await runAdminActionWithRetry(()=>handleDateDiscounts(request));
       if(action==='price') return await runAdminActionWithRetry(()=>handlePrice(request));
       if(action==='sessions') return await runAdminActionWithRetry(()=>handleSessions(request));
       if(action==='customer-search') return await runAdminActionWithRetry(()=>handleCustomerSearch(request));
+      if(action==='student-schedule') return await runAdminActionWithRetry(()=>handleStudentSchedule(request));
       if(action==='customers') return await runAdminActionWithRetry(()=>handleCustomers(request));
       if(action==='bookings') return await runAdminActionWithRetry(()=>handleBookings(request));
       if(action==='teacher-users') return await runAdminActionWithRetry(()=>handleTeacherUsers(request));

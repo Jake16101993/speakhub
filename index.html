@@ -10526,7 +10526,7 @@ function confirmedBookingCard(x,i,showReschedule=true){
     </div>
 
     <div class="lesson-actionline">
-      <span class="room room-clean">${room.name==='Garden'?'🌿':'🚪'} ${room.name||'Đang cập nhật phòng'}</span>
+      <span class="room room-clean">${'🚪'} ${room.name||'Đang cập nhật phòng'}</span>
       ${showReschedule && remaining>0
         ? `<button class="btn secondary small" onclick="openRealReschedule('${x.id}')">Đổi buổi học</button><span class="tiny">Còn ${remaining} lượt đổi</span>`
         : ''}

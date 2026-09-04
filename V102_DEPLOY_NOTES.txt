@@ -1,0 +1,16 @@
+SpeakHub V102
+1) Run 100_teacher_users_and_tracking.sql again in Supabase SQL Editor. It is idempotent and includes the V102 fixes.
+2) Deploy all files to GitHub/Vercel.
+3) Add Vercel Environment Variables:
+   SPEAKHUB_SUPPORTER_PASSWORD = password for supporter portal
+   SPEAKHUB_SUPPORTER_SECRET = long random secret (optional; falls back to SPEAKHUB_ADMIN_SECRET)
+4) Supporter portal: /supporter.html
+
+Important fixes:
+- Visitor history: removes legacy UNIQUE(visitor_id) and uses UNIQUE(visitor_id, visited_on), so repeat visitors can be counted on each new day without destroying history.
+- Teacher account SQL now calls pgcrypto from Supabase's extensions schema; fixes gen_salt(unknown) error.
+- Teacher creation has Display name on website and updates the linked teacher profile.
+- Admin Student Schedule lookup calendar.
+- Garden retired; Gò Vấp rooms are Speaking Room 1/2/3.
+- Admin Overview has Overall / District 2 scope. District 2 is inserted inactive, so it is not exposed as a customer location.
+- Supporter portal: upcoming PDFs, chat, student schedule lookup.
