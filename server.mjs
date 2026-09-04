@@ -62,7 +62,9 @@ const PAGE_REWRITES = new Map([
   ['/', '/index.html'],
   ['/teacher', '/teacher/index.html'],
   ['/teacher/', '/teacher/index.html'],
-  ['/admin', '/admin.html']
+  ['/admin', '/admin.html'],
+  ['/supporter', '/supporter.html'],
+  ['/supporter/', '/supporter.html']
 ]);
 
 const MIME = new Map(Object.entries({

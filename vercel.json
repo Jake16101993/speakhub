@@ -44,6 +44,10 @@
     {
       "source": "/admin",
       "destination": "/admin.html"
+    },
+    {
+      "source": "/supporter",
+      "destination": "/supporter.html"
     }
   ]
 }

@@ -475,14 +475,14 @@ body{background:var(--admin-surface)}
     <section id="tab-teacher-users" class="hidden">
       <div class="teacher-user-grid">
         <div class="card">
-          <h3 style="margin-top:0">Create / Link Teacher Account</h3>
-          <div class="muted" style="font-size:12px;margin-bottom:14px">The account is linked to the selected teacher profile and works immediately in Teacher Portal.</div>
+          <h3 style="margin-top:0">Create New Teacher Account</h3>
+          <div class="muted" style="font-size:12px;margin-bottom:14px">Create a completely new teacher profile and login. Existing teachers are never overwritten.</div>
           <div style="display:grid;gap:10px">
-            <div><label>Teacher</label><select id="teacherUserTeacher"></select></div>
-            <div><label>Username</label><input id="teacherUserUsername" autocomplete="off" placeholder="e.g. fred"></div>
             <div><label>Display name on website</label><input id="teacherUserDisplayName" autocomplete="off" placeholder="e.g. Mr. Fred"></div>
+            <div><label>Country</label><input id="teacherUserCountry" autocomplete="off" placeholder="e.g. USA"></div>
+            <div><label>Username</label><input id="teacherUserUsername" autocomplete="off" placeholder="e.g. fred"></div>
             <div><label>Temporary password</label><input id="teacherUserPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters"></div>
-            <button class="btn primary" onclick="createTeacherUser()">Create / Update account</button>
+            <button class="btn primary" onclick="createTeacherUser()">Create new teacher</button>
             <div id="teacherUserMsg"></div>
           </div>
         </div>
@@ -795,10 +795,6 @@ async function loadTeacherUsers(){
   try{
     const d=await api('/api/admin?action=teacher-users');
     teacherUsersCache=d.teachers||[];
-    const select=document.getElementById('teacherUserTeacher');
-    if(select){
-      select.innerHTML=teacherUsersCache.filter(t=>t.is_active!==false).map(t=>`<option value="${t.id}">${teacherUserEscape(t.full_name)}${t.country?` · ${teacherUserEscape(t.country)}`:''}${t.account?' · account exists':''}</option>`).join('');
-    }
     if(!list)return;
     const accounts=d.accounts||[];
     if(!accounts.length){list.innerHTML='<div class="muted" style="padding:12px">No teacher accounts yet.</div>';return}
@@ -813,13 +809,13 @@ async function createTeacherUser(){
   const msg=document.getElementById('teacherUserMsg'); if(msg)msg.innerHTML='';
   try{
     await api('/api/admin?action=teacher-users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      teacher_id:document.getElementById('teacherUserTeacher')?.value,
       username:document.getElementById('teacherUserUsername')?.value,
       password:document.getElementById('teacherUserPassword')?.value,
-      display_name:document.getElementById('teacherUserDisplayName')?.value
+      display_name:document.getElementById('teacherUserDisplayName')?.value,
+      country:document.getElementById('teacherUserCountry')?.value
     })});
-    if(msg)msg.innerHTML='<div class="ok">Teacher account saved. Teacher Portal can use it immediately.</div>';
-    document.getElementById('teacherUserPassword').value='';
+    if(msg)msg.innerHTML='<div class="ok">New teacher created. Teacher Portal can use the account immediately.</div>';
+    ['teacherUserDisplayName','teacherUserCountry','teacherUserUsername','teacherUserPassword'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
     await loadTeacherUsers();
   }catch(e){if(msg)msg.innerHTML=`<div class="error">${teacherUserEscape(e.message)}</div>`}
 }
