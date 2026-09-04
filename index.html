@@ -5623,6 +5623,12 @@ document.addEventListener('DOMContentLoaded',()=>{
   setupTopicPdfGestures();
 });
 
+const __speakHubVnToday=(()=>{
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'numeric',day:'numeric'}).formatToParts(new Date());
+  const n=t=>Number(parts.find(x=>x.type===t)?.value||0);
+  return {year:n('year'),month:n('month'),day:n('day')};
+})();
+
 const state={
   route:'landing',
   logged:localStorage.getItem('speakhub_login')==='1',
@@ -5634,8 +5640,8 @@ const state={
   communityPostCountToday:0,
   classFilter:'Adult Intermediate',
   location:'Gò Vấp',
-  bookingMonth:8,
-  bookingYear:2026,
+  bookingMonth:__speakHubVnToday.month,
+  bookingYear:__speakHubVnToday.year,
   selected:[],
   tempDate:null,
   sessions:[],
@@ -6687,10 +6693,10 @@ function vietnamGreeting(){
   return 'Good Evening';
 }
 function isPastCalendarDate(year,month,day){
-  const now=new Date();
-  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-  const target=new Date(year,month-1,day);
-  return target<today;
+  const vn=vietnamNowParts();
+  const current=vn.year*10000+vn.month*100+vn.day;
+  const target=Number(year)*10000+Number(month)*100+Number(day);
+  return target<current;
 }
 function monthDateRange(year,month){
   const mm=String(month).padStart(2,'0');
@@ -7057,8 +7063,9 @@ async function renderBooking(rv){
   const totalDays=monthDays(state.bookingYear,state.bookingMonth);
   for(let d=1;d<=totalDays;d++){
     const isPast=isPastCalendarDate(state.bookingYear,state.bookingMonth,d);
+    if(isPast){daysHtml+=`<div class="day mutedday past-empty"></div>`;continue;}
     const isToday=isVietnamToday(state.bookingYear,state.bookingMonth,d);
-    const daySessions=isPast?[]:sessionsForDay(d);
+    const daySessions=sessionsForDay(d);
     const sel=!isPast && state.selected.some(x=>x.day===d && x.month===state.bookingMonth && x.year===state.bookingYear);
 
     const lines=daySessions.map(s=>{
@@ -7107,7 +7114,7 @@ async function renderBooking(rv){
 
     <section class="card calendar-card">
       <div class="calendar-top booking-calendar-top">
-        <button class="filter" onclick="nextBookingMonth(-1)">‹</button>
+        <button class="filter" onclick="nextBookingMonth(-1)" ${state.bookingYear===vietnamNowParts().year&&state.bookingMonth===vietnamNowParts().month?'disabled':''}>‹</button>
         <div class="booking-calendar-heading">
           <h2>Tháng ${state.bookingMonth}/${state.bookingYear}</h2>
           <div class="booking-calendar-legends">
@@ -7173,8 +7180,8 @@ async function nextBookingMonth(delta){
   let m=state.bookingMonth+delta, y=state.bookingYear;
   while(m>12){m-=12;y++}
   while(m<1){m+=12;y--}
-  const now=new Date();
-  const currentY=now.getFullYear(), currentM=now.getMonth()+1;
+  const vn=vietnamNowParts();
+  const currentY=vn.year, currentM=vn.month;
   if(y<currentY || (y===currentY && m<currentM)) return;
   state.bookingMonth=m;
   state.bookingYear=y;
@@ -7989,6 +7996,14 @@ function renderRealPayOS(order){
   persistActiveHold();
   startHoldLifecycle();
   startPaymentPolling(order.order_id,order.checkout_token);
+  // On mobile, bring the newly-rendered QR/payment card into view immediately.
+  if(window.matchMedia('(max-width:760px)').matches){
+    requestAnimationFrame(()=>{
+      const card=rv.querySelector('.checkout .card');
+      if(card) card.scrollIntoView({behavior:'smooth',block:'start'});
+      else window.scrollTo({top:0,behavior:'smooth'});
+    });
+  }
 }
 
 function stopPaymentPolling(){
@@ -11054,13 +11069,19 @@ async function trackWebsiteVisit(){
       visitor=(crypto.randomUUID?.()||`v-${Date.now()}-${Math.random().toString(36).slice(2)}`);
       localStorage.setItem('speakhub_visitor_id',visitor);
     }
-    await fetch(customerApiUrl('track-visit'),{
+    const res=await fetch(customerApiUrl('track-visit'),{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({visitor_id:visitor}),
+      cache:'no-store',
       keepalive:true
     });
-  }catch(e){}
+    if(!res.ok) throw new Error(`visit tracking ${res.status}`);
+    return true;
+  }catch(e){
+    console.warn('visit tracking failed',e);
+    return false;
+  }
 }
 document.addEventListener('DOMContentLoaded',()=>{
   trackWebsiteVisit();
@@ -11072,7 +11093,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   },20000);
 });
 document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='visible')setTimeout(loadServerAccountMeta,150);
+  if(document.visibilityState==='visible'){
+    setTimeout(loadServerAccountMeta,150);
+    setTimeout(trackWebsiteVisit,180);
+  }
 });
 
 let communityCacheLoadedAt=0;

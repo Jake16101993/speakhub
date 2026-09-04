@@ -315,12 +315,62 @@ button.primary.ui-button-busy::after{
 }
 </style>
 
+
+<style>
+/* ===== V100 Admin workspace ===== */
+:root{--admin-nav:#0b3f35;--admin-nav-2:#0f5949;--admin-surface:#f4f7f6}
+body{background:var(--admin-surface)}
+.wrap{width:min(1480px,calc(100% - 28px));padding:18px 0 44px}
+.top{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px 16px;box-shadow:0 8px 30px rgba(23,55,45,.05)}
+.logo{font-size:23px;letter-spacing:-.4px}
+#adminApp{display:grid;grid-template-columns:230px minmax(0,1fr);gap:18px;align-items:start;margin-top:16px}
+#adminApp>.tabs{grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:6px;position:sticky;top:16px;margin:0;padding:13px;background:linear-gradient(180deg,var(--admin-nav),#072f28);border-radius:18px;box-shadow:0 14px 34px rgba(9,54,45,.16);max-height:calc(100vh - 32px);overflow:auto}
+#adminApp>.tabs:before{content:'ADMIN MENU';display:block;color:#9bc8ba;font-size:10px;font-weight:900;letter-spacing:1.4px;padding:4px 9px 8px}
+#adminApp>.tabs .tab{width:100%;border:0;background:transparent;color:#d8ebe5;text-align:left;padding:11px 12px;border-radius:11px;font-weight:750;transition:.15s ease}
+#adminApp>.tabs .tab:hover{background:rgba(255,255,255,.08);color:#fff}
+#adminApp>.tabs .tab.on{background:#fff;color:var(--gd);box-shadow:0 5px 18px rgba(0,0,0,.12)}
+#adminApp>section{grid-column:2;grid-row:1;min-width:0}
+#adminApp .card{box-shadow:0 8px 28px rgba(22,49,41,.045);border-color:#e2e9e6}
+#adminApp h2,#adminApp h3{letter-spacing:-.2px}
+#adminApp table{background:#fff}
+#adminApp th{font-size:11px;text-transform:uppercase;letter-spacing:.35px;color:#718079;background:#f8faf9}
+.admin-menu-toggle{display:none;border:0;background:var(--admin-nav);color:#fff;border-radius:11px;padding:10px 12px;font-weight:850}
+.teacher-user-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:14px}
+.teacher-account-list{display:grid;gap:9px;margin-top:12px}
+.teacher-account-card{border:1px solid var(--line);border-radius:13px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;background:#fff}
+.teacher-account-card b{display:block;color:var(--gd)}
+.teacher-account-card span{display:block;font-size:11px;color:var(--muted);margin-top:3px}
+.source-pill{display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;font-size:9px;font-weight:900;letter-spacing:.3px;margin-left:6px;vertical-align:1px}
+.source-pill.manual{background:#fff4df;color:#9a6100}.source-pill.online{background:#eaf4ff;color:#2b62a3}
+@media(max-width:900px){
+  .wrap{width:min(100% - 18px,1480px);padding-top:9px}
+  .top{position:sticky;top:0;z-index:35;border-radius:14px}
+  .admin-menu-toggle{display:inline-flex;align-items:center;justify-content:center}
+  #adminApp{display:block;margin-top:10px}
+  #adminApp>.tabs{position:fixed;z-index:60;left:0;top:0;bottom:0;width:min(280px,82vw);max-height:none;border-radius:0 18px 18px 0;padding:20px 13px;transform:translateX(-105%);transition:transform .2s ease;box-shadow:16px 0 40px rgba(4,35,29,.25)}
+  #adminApp.menu-open>.tabs{transform:translateX(0)}
+  #adminApp.menu-open:after{content:'';position:fixed;inset:0;background:rgba(4,20,17,.34);z-index:50}
+  #adminApp>.tabs{z-index:61}
+  .teacher-user-grid{grid-template-columns:1fr}
+  .row,.row2{grid-template-columns:1fr!important}
+  .card{padding:14px}
+  .teacher-account-card{grid-template-columns:1fr}
+  table{min-width:680px}
+}
+@media(max-width:560px){
+  .top .muted{display:none}.logo{font-size:19px}
+  #logoutBtn{padding:9px 10px}
+  .top{gap:8px;flex-direction:row;align-items:center}
+  .top>div:first-child{flex:1;min-width:0}
+  #adminApp .grid4{grid-template-columns:1fr 1fr!important}
+}
+</style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
     <div><div class="logo">SpeakHub Admin</div><div class="muted">Manage sessions · bookings · customers · topics</div></div>
-    <button id="logoutBtn" class="btn secondary hidden" onclick="logout()">Log out</button>
+    <div style="display:flex;gap:8px;align-items:center"><button id="adminMenuToggle" class="admin-menu-toggle hidden" onclick="toggleAdminMenu()">☰ Menu</button><button id="logoutBtn" class="btn secondary hidden" onclick="logout()">Log out</button></div>
   </div>
 
   <section id="loginBox" class="card">
@@ -334,16 +384,17 @@ button.primary.ui-button-busy::after{
 
   <main id="adminApp" class="hidden">
     <div class="tabs">
-      <button class="tab on" onclick="showTab('overview',this)">Overview</button>
-      <button class="tab" onclick="showTab('sessions',this)">Sessions</button>
-      <button class="tab" onclick="showTab('customers',this)">Customers</button>
-      <button class="tab" onclick="showTab('bookings',this)">Bookings</button>
-      <button class="tab" onclick="showTab('remind',this);setTimeout(loadReminders,0)">Remind</button>
-      <button class="tab" onclick="showTab('discounts',this);setTimeout(loadDiscounts,0)">Discounts</button>
-      <button class="tab" onclick="showTab('topics',this)">Topics</button>
-      <button class="tab" onclick="showTab('manual',this);setTimeout(loadManual,0)">Manual Add</button>
-      <button class="tab" onclick="showTab('price',this);setTimeout(loadPrice,0)">Price</button>
-      <button class="tab" onclick="showTab('chat',this);setTimeout(loadAdminChatThreads,0)">Chat</button>
+      <button class="tab on" onclick="showTab('overview',this)">▦ Overview</button>
+      <button class="tab" onclick="showTab('sessions',this)">◫ Sessions</button>
+      <button class="tab" onclick="showTab('teacher-users',this);setTimeout(loadTeacherUsers,0)">♙ Teacher Users</button>
+      <button class="tab" onclick="showTab('customers',this)">◎ Customers</button>
+      <button class="tab" onclick="showTab('bookings',this)">✓ Bookings</button>
+      <button class="tab" onclick="showTab('manual',this);setTimeout(loadManual,0)">↔ Booking Manager</button>
+      <button class="tab" onclick="showTab('remind',this);setTimeout(loadReminders,0)">◷ Remind</button>
+      <button class="tab" onclick="showTab('discounts',this);setTimeout(loadDiscounts,0)">% Discounts</button>
+      <button class="tab" onclick="showTab('topics',this)">▤ Topics</button>
+      <button class="tab" onclick="showTab('price',this);setTimeout(loadPrice,0)">₫ Price</button>
+      <button class="tab" onclick="showTab('chat',this);setTimeout(loadAdminChatThreads,0)">◌ Chat</button>
     </div>
 
     <section id="tab-overview"></section>
@@ -410,6 +461,29 @@ button.primary.ui-button-busy::after{
       <div class="card"><h3>Session List</h3><input id="sessionsFilter" placeholder="Filter sessions..." oninput="renderSessionsTable()" style="margin:0 0 12px"><div id="sessionsTable"></div></div>
     </section>
 
+    <section id="tab-teacher-users" class="hidden">
+      <div class="teacher-user-grid">
+        <div class="card">
+          <h3 style="margin-top:0">Create / Link Teacher Account</h3>
+          <div class="muted" style="font-size:12px;margin-bottom:14px">The account is linked to the selected teacher profile and works immediately in Teacher Portal.</div>
+          <div style="display:grid;gap:10px">
+            <div><label>Teacher</label><select id="teacherUserTeacher"></select></div>
+            <div><label>Username</label><input id="teacherUserUsername" autocomplete="off" placeholder="e.g. cyndy"></div>
+            <div><label>Temporary password</label><input id="teacherUserPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters"></div>
+            <button class="btn primary" onclick="createTeacherUser()">Create / Update account</button>
+            <div id="teacherUserMsg"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div><h3 style="margin:0">Teacher Accounts</h3><div class="muted" style="font-size:11px;margin-top:4px">Reset password, change username or enable/disable access.</div></div>
+            <button class="btn secondary" onclick="loadTeacherUsers()">↻</button>
+          </div>
+          <div id="teacherUsersList" class="teacher-account-list"><div class="muted">Loading...</div></div>
+        </div>
+      </div>
+    </section>
+
     <section id="tab-customers" class="hidden"><div class="card"><h3>Customers</h3><input id="customersFilter" placeholder="Filter customers..." oninput="renderCustomersTable()" style="margin:0 0 12px"><div id="customersTable"></div></div></section>
     <section id="tab-bookings" class="hidden"><div class="card"><h3>Paid Bookings</h3><input id="bookingsFilter" placeholder="Filter bookings..." oninput="renderBookingsTable()" style="margin:0 0 12px"><div id="bookingsTable"></div></div></section>
 
@@ -454,21 +528,21 @@ button.primary.ui-button-busy::after{
       </div>
 
       <div class="card" style="margin-top:14px">
-        <label>Filter Manual Bookings</label>
+        <label>Filter All Paid Bookings</label>
         <input id="manualFilter"
-          placeholder="Search by student name, phone, class or booking code..."
+          placeholder="Search manual + online bookings by name, phone, class or booking code..."
           oninput="renderManualOrdersFromCache()"
           style="margin-top:6px">
         <div class="muted" style="font-size:11px;margin-top:6px">
-          Type a student name or phone number to find the manual booking and move their lesson.
+          Shows both Admin manual transfers and bookings paid by students online. You can move any paid lesson.
         </div>
       </div>
 
 <div class="card" style="margin-top:14px">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
           <div>
-            <h3 style="margin:0">Manual Bookings</h3>
-            <div class="muted" style="font-size:12px;margin-top:4px">Admin can move lessons without a reschedule limit.</div>
+            <h3 style="margin:0">Paid Booking Manager</h3>
+            <div class="muted" style="font-size:12px;margin-top:4px">Manual and online paid bookings · Admin can move lessons without consuming the student reschedule limit.</div>
           </div>
           <button class="btn" onclick="loadManual()">↻ Refresh</button>
         </div>
@@ -675,10 +749,10 @@ async function login(){
     token=data.token;localStorage.setItem('speakhub_admin_token',token);boot();
   }catch(e){msg.innerHTML='<div class="error">Incorrect password or admin is not configured.</div>'}
 }
-function logout(){token='';localStorage.removeItem('speakhub_admin_token');document.getElementById('adminApp').classList.add('hidden');document.getElementById('loginBox').classList.remove('hidden');document.getElementById('logoutBtn').classList.add('hidden')}
+function logout(){token='';localStorage.removeItem('speakhub_admin_token');document.getElementById('adminApp').classList.add('hidden');document.getElementById('loginBox').classList.remove('hidden');document.getElementById('logoutBtn').classList.add('hidden');document.getElementById('adminMenuToggle')?.classList.add('hidden')}
 async function boot(){
   if(!token)return;
-  document.getElementById('loginBox').classList.add('hidden');document.getElementById('adminApp').classList.remove('hidden');document.getElementById('logoutBtn').classList.remove('hidden');
+  document.getElementById('loginBox').classList.add('hidden');document.getElementById('adminApp').classList.remove('hidden');document.getElementById('logoutBtn').classList.remove('hidden');document.getElementById('adminMenuToggle')?.classList.remove('hidden');
   try{
     await Promise.all([loadOverview(),loadSessions(),loadCustomers(),loadBookings()]);
   }catch(e){
@@ -687,10 +761,58 @@ async function boot(){
     if(msg) msg.innerHTML=`<div class="error">Could not load Admin data: ${e.message}</div>`;
   }
 }
+function toggleAdminMenu(){document.getElementById('adminApp')?.classList.toggle('menu-open')}
 function showTab(name,btn){
   document.querySelectorAll('[id^="tab-"]').forEach(x=>x.classList.add('hidden'));
   document.getElementById('tab-'+name).classList.remove('hidden');
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));btn.classList.add('on');
+  document.getElementById('adminApp')?.classList.remove('menu-open');
+}
+
+
+let teacherUsersCache=[];
+function teacherUserEscape(v){return adminEscapeHtml(String(v??''))}
+async function loadTeacherUsers(){
+  const list=document.getElementById('teacherUsersList');
+  try{
+    const d=await api('/api/admin?action=teacher-users');
+    teacherUsersCache=d.teachers||[];
+    const select=document.getElementById('teacherUserTeacher');
+    if(select){
+      select.innerHTML=teacherUsersCache.filter(t=>t.is_active!==false).map(t=>`<option value="${t.id}">${teacherUserEscape(t.full_name)}${t.country?` · ${teacherUserEscape(t.country)}`:''}${t.account?' · account exists':''}</option>`).join('');
+    }
+    if(!list)return;
+    const accounts=d.accounts||[];
+    if(!accounts.length){list.innerHTML='<div class="muted" style="padding:12px">No teacher accounts yet.</div>';return}
+    list.innerHTML=accounts.map(a=>`
+      <div class="teacher-account-card">
+        <div><b>${teacherUserEscape(a.teacher_name)}</b><span>@${teacherUserEscape(a.username)} · ${a.is_active?'Active':'Disabled'}</span></div>
+        <button class="btn secondary" onclick='editTeacherUser(${JSON.stringify(a.id)},${JSON.stringify(a.username)},${a.is_active?"true":"false"})'>Manage</button>
+      </div>`).join('');
+  }catch(e){if(list)list.innerHTML=`<div class="error">${teacherUserEscape(e.message)}</div>`}
+}
+async function createTeacherUser(){
+  const msg=document.getElementById('teacherUserMsg'); if(msg)msg.innerHTML='';
+  try{
+    await api('/api/admin?action=teacher-users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      teacher_id:document.getElementById('teacherUserTeacher')?.value,
+      username:document.getElementById('teacherUserUsername')?.value,
+      password:document.getElementById('teacherUserPassword')?.value
+    })});
+    if(msg)msg.innerHTML='<div class="ok">Teacher account saved. Teacher Portal can use it immediately.</div>';
+    document.getElementById('teacherUserPassword').value='';
+    await loadTeacherUsers();
+  }catch(e){if(msg)msg.innerHTML=`<div class="error">${teacherUserEscape(e.message)}</div>`}
+}
+async function editTeacherUser(accountId,currentUsername,isActive){
+  const username=prompt('Username',currentUsername); if(username===null)return;
+  const password=prompt('New password (leave blank to keep current password)',''); if(password===null)return;
+  const enabled=confirm(`Account is currently ${isActive?'ACTIVE':'DISABLED'}.\n\nPress OK to keep/enable ACTIVE. Press Cancel to DISABLE.`);
+  try{
+    await api('/api/admin?action=teacher-users',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:accountId,username,password,is_active:enabled})});
+    await loadTeacherUsers();
+    alert('Teacher account updated.');
+  }catch(e){alert(e.message)}
 }
 
 let priceTiers=[];
@@ -1057,7 +1179,7 @@ async function loadOverview(){
       <div class="card overview-metric"><span>All tests</span><b>${Number(a.tests_all?.placement||0)} / ${Number(a.tests_all?.progress||0)}</b><small>Placement / Progress</small></div>
       <div class="card overview-metric"><span>Paid this week / month</span><b class="money-metric">${money(a.paid_amount?.week)} / ${money(a.paid_amount?.month)}</b><small>PAID</small></div>
       <div class="card overview-metric"><span>Visitors online now</span><b>${Number(a.website_visits?.online||0)}</b><small>Active within the last ~75 seconds</small></div>
-      <div class="card overview-metric"><span>Visitors today / week / month</span><b class="visit-combined">${Number(a.website_visits?.day||0)} / ${Number(a.website_visits?.week||0)} / ${Number(a.website_visits?.month||0)}</b><small>Unique visitor</small></div>
+      <div class="card overview-metric"><span>Visitors today / week / month</span><b class="visit-combined">${Number(a.website_visits?.day||0)} / ${Number(a.website_visits?.week||0)} / ${Number(a.website_visits?.month||0)}</b><small>Unique visitor · last write ${a.website_visits?.latest_seen_at?new Date(a.website_visits.latest_seen_at).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'—'}</small></div>
       <div class="card overview-metric"><span>Renewal rate</span><b>${pct(a.renewal_rate?.rate)}</b><small>${Number(a.renewal_rate?.renewed_customers||0)} renewed / ${Number(a.renewal_rate?.eligible_customers||0)} eligible customers</small></div>
     </div>
     <div class="card overview-fill-card">
@@ -1335,7 +1457,7 @@ function renderManualOrdersFromCache(){
   const orders=filtered.slice(0,q?20:10);
 
   if(!orders.length){
-    box.innerHTML='<div class="muted" style="padding:18px;text-align:center">No matching manual bookings.</div>';
+    box.innerHTML='<div class="muted" style="padding:18px;text-align:center">No matching paid bookings.</div>';
     return;
   }
 
@@ -1344,7 +1466,7 @@ function renderManualOrdersFromCache(){
       <div class="manual-order-head">
         <div class="manual-order-person">
           <b>${adminEscapeHtml(o.full_name||'')}</b>
-          <span>${adminEscapeHtml(o.phone||'')} · ${o.bookings.length} lessons</span>
+          <span>${adminEscapeHtml(o.phone||'')} · ${o.bookings.length} lessons <i class="source-pill ${o.source==='MANUAL'?'manual':'online'}">${o.source==='MANUAL'?'MANUAL':'ONLINE'}</i></span>
         </div>
         <div class="manual-order-payment">
           <b>${new Intl.NumberFormat('vi-VN').format(Number(o.total_amount||0))}đ</b>

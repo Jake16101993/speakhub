@@ -275,12 +275,13 @@ async function handleOverview(){
   }
   const chartFrom=addDaysISO(today,-29);
   const onlineSince=new Date(Date.now()-75*1000).toISOString();
-  const [visDay,visWeek,visMonth,onlineRes,chartRes]=await Promise.all([
+  const [visDay,visWeek,visMonth,onlineRes,chartRes,latestVisitRes]=await Promise.all([
     uniqueVisitors(dayStart,dayEnd),uniqueVisitors(weekStart,weekEnd),uniqueVisitors(monthStart,monthEnd),
     supabase.from('website_visits').select('visitor_id').gte('last_seen_at',onlineSince),
-    supabase.from('website_visits').select('visitor_id,visited_on').gte('visited_on',chartFrom).lte('visited_on',today)
+    supabase.from('website_visits').select('visitor_id,visited_on').gte('visited_on',chartFrom).lte('visited_on',today),
+    supabase.from('website_visits').select('last_seen_at,visited_on').order('last_seen_at',{ascending:false}).limit(1)
   ]);
-  if(onlineRes.error)throw onlineRes.error;if(chartRes.error)throw chartRes.error;
+  if(onlineRes.error)throw onlineRes.error;if(chartRes.error)throw chartRes.error;if(latestVisitRes.error)throw latestVisitRes.error;
   const onlineVisitors=new Set((onlineRes.data||[]).map(x=>x.visitor_id).filter(Boolean)).size;
   const dailyMap={};
   for(let i=0;i<30;i++)dailyMap[addDaysISO(chartFrom,i)]=new Set();
@@ -303,7 +304,7 @@ async function handleOverview(){
         eligible_customers:renewal.eligible_customers
       },
       ranges:w,
-      website_visits:{day:visDay,week:visWeek,month:visMonth,online:onlineVisitors,daily_30:visits30}
+      website_visits:{day:visDay,week:visWeek,month:visMonth,online:onlineVisitors,daily_30:visits30,latest_seen_at:latestVisitRes.data?.[0]?.last_seen_at||null,latest_visited_on:latestVisitRes.data?.[0]?.visited_on||null}
     }
   });
 }
@@ -838,7 +839,7 @@ async function handleManualBookings(request){
           bookings(id,session_id,status,class_sessions(session_date,starts_at,ends_at,programs(name)))
         `)
         .eq('payment_status','PAID')
-        .like('order_code','MANUAL-%')
+        .eq('order_status','CONFIRMED')
         .order('created_at',{ascending:false})
         .limit(300);
 
@@ -851,6 +852,7 @@ async function handleManualBookings(request){
         phone:o.customers?.phone||'',
         total_amount:Number(o.total_amount||0),
         paid_date:o.paid_at?String(o.paid_at).slice(0,10):'',
+        source:String(o.order_code||'').startsWith('MANUAL-')?'MANUAL':'ONLINE',
         bookings:(o.bookings||[])
           .filter(b=>['CONFIRMED','ATTENDED','NO_SHOW'].includes(String(b.status||'')))
           .map(b=>({
@@ -984,7 +986,6 @@ async function handleManualReschedule(request){
     .eq('id',bookingId).maybeSingle();
   if(bErr) throw bErr;
   if(!booking) return Response.json({error:'BOOKING_NOT_FOUND'},{status:404});
-  if(!String(booking.orders?.order_code||'').startsWith('MANUAL-')) return Response.json({error:'NOT_MANUAL_BOOKING'},{status:403});
   if(booking.orders?.payment_status!=='PAID') return Response.json({error:'ORDER_NOT_PAID'},{status:400});
   if(booking.session_id===targetId) return Response.json({success:true,unchanged:true});
 
@@ -2570,13 +2571,109 @@ async function handleAccountBadges(request){
     placement,progress
   });
 }
+
+async function handleTeacherUsers(request){
+  if(request.method==='GET'){
+    const [teachersRes,accountsRes]=await Promise.all([
+      supabase.from('teachers').select('id,full_name,country,is_active').order('full_name',{ascending:true}),
+      supabase.from('teacher_accounts').select('id,teacher_name,username,is_active,created_at,updated_at').order('teacher_name',{ascending:true})
+    ]);
+    if(teachersRes.error)throw teachersRes.error;
+    if(accountsRes.error)throw accountsRes.error;
+    const byName=new Map((accountsRes.data||[]).map(a=>[String(a.teacher_name||'').trim().toLowerCase(),a]));
+    return Response.json({
+      teachers:(teachersRes.data||[]).map(t=>({
+        ...t,
+        account:byName.get(String(t.full_name||'').trim().toLowerCase())||null
+      })),
+      accounts:accountsRes.data||[]
+    });
+  }
+
+  if(request.method==='POST'){
+    const b=await request.json().catch(()=>({}));
+    const teacherId=String(b.teacher_id||'').trim();
+    const username=String(b.username||'').trim().toLowerCase();
+    const password=String(b.password||'');
+    if(!teacherId||!username||password.length<6){
+      return Response.json({error:'Teacher, username and password (min 6 chars) are required.'},{status:400});
+    }
+    const {data:teacher,error:tErr}=await supabase.from('teachers').select('id,full_name,is_active').eq('id',teacherId).maybeSingle();
+    if(tErr)throw tErr;
+    if(!teacher)return Response.json({error:'TEACHER_NOT_FOUND'},{status:404});
+    const {data,error}=await supabase.rpc('admin_upsert_teacher_account',{
+      p_teacher_name:teacher.full_name,
+      p_username:username,
+      p_password:password,
+      p_is_active:true
+    });
+    if(error)throw error;
+    return Response.json({success:true,account:Array.isArray(data)?data[0]:data});
+  }
+
+  if(request.method==='PATCH'){
+    const b=await request.json().catch(()=>({}));
+    const accountId=String(b.account_id||'').trim();
+    const password=String(b.password||'');
+    const username=String(b.username||'').trim().toLowerCase();
+    const hasActive=typeof b.is_active==='boolean';
+    if(!accountId)return Response.json({error:'ACCOUNT_REQUIRED'},{status:400});
+    if(password && password.length<6)return Response.json({error:'Password must be at least 6 characters.'},{status:400});
+
+    const {data,error}=await supabase.rpc('admin_update_teacher_account',{
+      p_account_id:accountId,
+      p_username:username||null,
+      p_password:password||null,
+      p_is_active:hasActive?b.is_active:null
+    });
+    if(error)throw error;
+    return Response.json({success:true,account:Array.isArray(data)?data[0]:data});
+  }
+
+  return Response.json({error:'Method not allowed'},{status:405});
+}
+
 async function handleTrackVisit(request){
   if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
-  const b=await request.json().catch(()=>({}));const visitor=String(b.visitor_id||'').slice(0,120);
+  const b=await request.json().catch(()=>({}));
+  const visitor=String(b.visitor_id||'').trim().slice(0,120);
   if(!visitor)return Response.json({error:'VISITOR_REQUIRED'},{status:400});
   const day=vnTodayBounds().day;
-  const {error}=await supabase.from('website_visits').upsert({visitor_id:visitor,visited_on:day,last_seen_at:new Date().toISOString()},{onConflict:'visitor_id,visited_on'});
-  if(error)throw error;return Response.json({success:true});
+  const lastSeen=new Date().toISOString();
+
+  // Update the current-day row first. This remains reliable even if the
+  // historical table was created without the composite unique constraint
+  // required by PostgREST upsert(onConflict).
+  const {data:existing,error:findErr}=await supabase
+    .from('website_visits')
+    .select('visitor_id')
+    .eq('visitor_id',visitor)
+    .eq('visited_on',day)
+    .limit(1);
+  if(findErr)throw findErr;
+
+  if((existing||[]).length){
+    const {error:updateErr}=await supabase
+      .from('website_visits')
+      .update({last_seen_at:lastSeen})
+      .eq('visitor_id',visitor)
+      .eq('visited_on',day);
+    if(updateErr)throw updateErr;
+  }else{
+    const {error:insertErr}=await supabase
+      .from('website_visits')
+      .insert({visitor_id:visitor,visited_on:day,last_seen_at:lastSeen});
+    // A simultaneous tab can race the first insert. If so, retry as update.
+    if(insertErr){
+      const {error:retryErr}=await supabase
+        .from('website_visits')
+        .update({last_seen_at:lastSeen})
+        .eq('visitor_id',visitor)
+        .eq('visited_on',day);
+      if(retryErr)throw insertErr;
+    }
+  }
+  return Response.json({success:true,visited_on:day,last_seen_at:lastSeen});
 }
 async function handleAdminChat(request){
   if(request.method==='GET'){
@@ -2732,6 +2829,7 @@ export default {
       if(action==='customer-search') return await runAdminActionWithRetry(()=>handleCustomerSearch(request));
       if(action==='customers') return await runAdminActionWithRetry(()=>handleCustomers(request));
       if(action==='bookings') return await runAdminActionWithRetry(()=>handleBookings(request));
+      if(action==='teacher-users') return await runAdminActionWithRetry(()=>handleTeacherUsers(request));
       if(action==='manual-bookings'){
         try{
           return await runAdminActionWithRetry(()=>handleManualBookings(request));

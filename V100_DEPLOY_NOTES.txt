@@ -1,0 +1,31 @@
+SpeakHub V100 — Admin + booking production fixes
+
+CHANGED
+- admin.html
+  - Professional left sidebar Admin layout; mobile off-canvas menu.
+  - Teacher Users tab: create/link teacher account; username/password/status management.
+  - Booking Manager now searches both Admin manual transfers and normal online PAID bookings, and Admin can move either type.
+  - Overview shows the latest visitor DB write timestamp beside visitor metrics.
+- api/admin.js
+  - Visitor tracking no longer depends on PostgREST upsert conflict metadata; safely updates/inserts daily visit rows.
+  - Overview exposes latest visit write time.
+  - Teacher Users Admin API.
+  - Booking Manager returns all confirmed PAID orders, tagged MANUAL/ONLINE.
+  - Admin reschedule endpoint can move any PAID booking (not only MANUAL orders).
+- index.html
+  - Booking calendar starts on the current Vietnam month/year instead of hard-coded August 2026.
+  - Past dates are blanked/disabled; user cannot navigate to past months.
+  - Vietnam timezone is used for past-date logic.
+  - Mobile checkout automatically scrolls to the newly rendered PayOS QR/payment card.
+  - Visitor tracking now logs failures and refreshes on tab visibility.
+- 100_teacher_users_and_tracking.sql
+  - Idempotent teacher-account admin RPCs using pgcrypto.
+  - Non-destructive visitor tracking indexes.
+
+DEPLOY ORDER
+1. Run 100_teacher_users_and_tracking.sql once in Supabase SQL Editor.
+2. Deploy the full ZIP to Vercel / replace the current project source.
+3. Open Admin > Overview and verify "last write" updates after opening speakhub.vn in another tab/device.
+4. Open Admin > Teacher Users and create/reset one test teacher login, then test /teacher/.
+
+NO OTHER PIPELINES / PAYMENT PRICING / TOPIC / COMMUNITY LOGIC WAS INTENTIONALLY CHANGED.
