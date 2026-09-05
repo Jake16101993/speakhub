@@ -1318,6 +1318,100 @@ async function removeTopicGeneratedImages(pdfPath){
   const path=String(pdfPath||'').trim();if(!path)return;const folder=topicImageFolder(path);
   try{const {data:files,error}=await supabase.storage.from('topics').list(folder,{limit:100});if(error)return;const paths=(files||[]).map(x=>`${folder}/${x.name}`).filter(Boolean);if(paths.length)await supabase.storage.from('topics').remove(paths)}catch(err){console.error('topic generated image cleanup warning',err)}
 }
+async function topicUploadSession(sessionId){
+  const {data:session,error:sErr}=await supabase
+    .from('class_sessions')
+    .select(`
+      id,program_id,teacher_id,session_date,starts_at,ends_at,
+      programs(name)
+    `)
+    .eq('id',sessionId)
+    .maybeSingle();
+  if(sErr) throw sErr;
+  return session||null;
+}
+
+function topicDirectPath(session,topicTitle){
+  // A unique path avoids stale CDN/object-cache behavior when a topic is replaced.
+  return `${session.id}/${Date.now()}-${slug(session.programs?.name)}-${slug(topicTitle)}.pdf`;
+}
+
+async function handleTopicUploadInit(request){
+  if(request.method!=='POST') return Response.json({error:'METHOD_NOT_ALLOWED'},{status:405});
+  const body=await request.json().catch(()=>({}));
+  const sessionId=String(body.session_id||'').trim();
+  const title=String(body.title||'').trim();
+  const fileType=String(body.file_type||'application/pdf').toLowerCase();
+  const fileSize=Number(body.file_size||0);
+  if(!sessionId||!title) return Response.json({error:'MISSING_FIELDS'},{status:400});
+  if(fileType && fileType!=='application/pdf') return Response.json({error:'PDF_ONLY'},{status:400});
+  if(fileSize<=0) return Response.json({error:'EMPTY_PDF'},{status:400});
+  // Keep a generous application-level guard. The upload itself bypasses the Vercel body limit.
+  if(fileSize>50*1024*1024) return Response.json({error:'PDF_TOO_LARGE_MAX_50MB'},{status:413});
+
+  const session=await topicUploadSession(sessionId);
+  if(!session) return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
+  const path=topicDirectPath(session,title);
+  const {data:signed,error:signErr}=await supabase.storage.from('topics').createSignedUploadUrl(path,{upsert:false});
+  if(signErr) throw signErr;
+  if(!signed?.signedUrl) return Response.json({error:'SIGNED_UPLOAD_URL_FAILED'},{status:500});
+  return Response.json({success:true,path,signed_url:signed.signedUrl,expires_in_seconds:7200});
+}
+
+async function handleTopicUploadFinalize(request){
+  if(request.method!=='POST') return Response.json({error:'METHOD_NOT_ALLOWED'},{status:405});
+  const body=await request.json().catch(()=>({}));
+  const sessionId=String(body.session_id||'').trim();
+  const title=String(body.title||'').trim();
+  const path=String(body.path||'').trim();
+  if(!sessionId||!title||!path) return Response.json({error:'MISSING_FIELDS'},{status:400});
+
+  const session=await topicUploadSession(sessionId);
+  if(!session) return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
+  // Finalization may only attach a PDF from the selected session's dedicated folder.
+  if(!path.startsWith(`${session.id}/`)||!path.toLowerCase().endsWith('.pdf')){
+    return Response.json({error:'INVALID_TOPIC_STORAGE_PATH'},{status:400});
+  }
+
+  // Confirm the browser actually completed the direct upload before changing the session row.
+  const folder=`${session.id}`;
+  const fileName=path.slice(folder.length+1);
+  const {data:objects,error:listErr}=await supabase.storage.from('topics').list(folder,{search:fileName,limit:10});
+  if(listErr) throw listErr;
+  if(!(objects||[]).some(x=>x.name===fileName)){
+    return Response.json({error:'TOPIC_PDF_NOT_FOUND_AFTER_UPLOAD',details:'PDF upload did not complete. Please try again.'},{status:409});
+  }
+
+  let topicVocabulary;
+  try{
+    topicVocabulary=await generateTopicVocabulary(title,session.programs?.name||'SpeakHub');
+  }catch(vErr){
+    console.error('topic vocabulary pre-generation failed',vErr);
+    // Do not attach a half-ready topic. The uploaded object can safely remain orphaned and be overwritten by a later unique upload.
+    return Response.json({error:'TOPIC_VOCABULARY_GENERATION_FAILED',details:String(vErr?.message||vErr)},{status:502});
+  }
+
+  let q=supabase
+    .from('class_sessions')
+    .update({topic_title:title,topic_storage_path:path,topic_vocabulary:topicVocabulary})
+    .eq('program_id',session.program_id)
+    .eq('session_date',session.session_date)
+    .eq('starts_at',session.starts_at)
+    .eq('ends_at',session.ends_at);
+  if(session.teacher_id) q=q.eq('teacher_id',session.teacher_id); else q=q.is('teacher_id',null);
+  const {data:updated,error:updateErr}=await q.select('id');
+  if(updateErr) throw updateErr;
+
+  return Response.json({
+    success:true,
+    path,
+    topic_title:title,
+    vocabulary_generated:true,
+    vocabulary_count:topicVocabulary.length,
+    updated_session_count:(updated||[]).length||1
+  });
+}
+
 async function handleTopicUpload(request){
   if(request.method!=='POST'){
     return Response.json({error:'Method not allowed'},{status:405});
@@ -2967,6 +3061,8 @@ export default {
         }
       }
       if(action==='manual-reschedule') return await runAdminActionWithRetry(()=>handleManualReschedule(request));
+      if(action==='topic-upload-init') return await runAdminActionWithRetry(()=>handleTopicUploadInit(request));
+      if(action==='topic-upload-finalize') return await runAdminActionWithRetry(()=>handleTopicUploadFinalize(request));
       if(action==='topic-upload') return await runAdminActionWithRetry(()=>handleTopicUpload(request));
       if(action==='topic-page-upload') return await runAdminActionWithRetry(()=>handleTopicPageUpload(request));
       if(action==='topic-delete') return await runAdminActionWithRetry(()=>handleTopicDelete(request));

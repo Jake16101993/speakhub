@@ -781,9 +781,14 @@ async function api(url,opt={}){
     const u=new URL(url,location.origin);u.searchParams.set('scope',window.adminScope||'overall');url=u.pathname+u.search;
   }
   const res=await fetch(url,{...opt,headers,cache:'no-store'});
-  const data=await res.json().catch(()=>({}));
+  const raw=await res.text();
+  let data={};
+  try{data=raw?JSON.parse(raw):{}}catch(_){data={}}
   if(res.status===401){logout();throw new Error('UNAUTHORIZED')}
-  if(!res.ok) throw new Error(data?.details||data?.error||'REQUEST_FAILED');
+  if(!res.ok){
+    const serverMessage=data?.details||data?.error||raw?.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,180)||'REQUEST_FAILED';
+    throw new Error(`HTTP ${res.status} · ${serverMessage}`);
+  }
   return data;
 }
 async function login(){
@@ -1890,15 +1895,34 @@ async function uploadTopicImagePages(file,sessionId,msg){
   try{pdf.cleanup?.();pdf.destroy?.()}catch(_){ }
   return pageCount;
 }
+async function uploadTopicPdfDirect(file,signedUrl){
+  const body=new FormData();
+  body.append('cacheControl','3600');
+  body.append('',file,file.name||'topic.pdf');
+  const res=await fetch(signedUrl,{method:'PUT',headers:{'x-upsert':'false'},body});
+  const raw=await res.text();
+  if(!res.ok){
+    let detail=raw;try{const j=JSON.parse(raw);detail=j?.message||j?.error||raw}catch(_){}
+    throw new Error(`PDF_UPLOAD_FAILED · HTTP ${res.status}${detail?` · ${String(detail).slice(0,220)}`:''}`);
+  }
+}
 async function uploadTopic(){
   const msg=document.getElementById('topicMsg');msg.innerHTML='';
   const file=document.getElementById('topicFile').files[0];
   if(!file){msg.innerHTML='<div class="error">Choose a PDF first.</div>';return}
+  if(file.type&&file.type!=='application/pdf'){msg.innerHTML='<div class="error">PDF only.</div>';return}
   const selectedSessionId=document.getElementById('topicSession').value;
-  const fd=new FormData();fd.append('session_id',selectedSessionId);fd.append('title',topicTitle.value.trim());fd.append('file',file);
+  const title=topicTitle.value.trim();
+  if(!selectedSessionId){msg.innerHTML='<div class="error">Choose a session first.</div>';return}
+  if(!title){msg.innerHTML='<div class="error">Please enter the topic title.</div>';return}
   try{
-    msg.innerHTML='<div class="muted">Uploading Topic PDF and preparing vocabulary...</div>';
-    const result=await api('/api/admin?action=topic-upload',{method:'POST',body:fd});
+    const mb=(file.size/1024/1024).toFixed(1);
+    msg.innerHTML=`<div class="muted">Preparing secure upload · ${mb} MB...</div>`;
+    const ticket=await api('/api/admin?action=topic-upload-init',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:selectedSessionId,title,file_name:file.name,file_type:file.type||'application/pdf',file_size:file.size})});
+    msg.innerHTML=`<div class="muted">Uploading Topic PDF directly to storage · ${mb} MB...</div>`;
+    await uploadTopicPdfDirect(file,ticket.signed_url);
+    msg.innerHTML='<div class="muted">PDF uploaded · preparing vocabulary and attaching to session...</div>';
+    const result=await api('/api/admin?action=topic-upload-finalize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:selectedSessionId,title,path:ticket.path})});
     const count=Number(result.updated_session_count||1);window.lastUploadedTopicSessionId=selectedSessionId;
     let imageCount=0,imageWarning='';
     try{imageCount=await uploadTopicImagePages(file,selectedSessionId,msg)}catch(imageErr){

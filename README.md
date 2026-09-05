@@ -1,3 +1,12 @@
+# SpeakHub V107
+
+## Changes
+- Topic PDF upload now uses a signed Supabase Storage upload URL so large PDFs do not pass through the Vercel API body.
+- Topic upload is now 3-step: request signed upload -> browser uploads PDF directly to Storage -> Admin API finalizes vocabulary and session attachment.
+- Added clearer HTTP/status error messages instead of generic REQUEST_FAILED.
+- Existing topic image-page generation and teacher/session synchronization are preserved.
+- No SQL migration is required for V107.
+
 # SpeakHub
 
 Booking, payment and assessment platform for an offline English speaking club in Ho Chi Minh
