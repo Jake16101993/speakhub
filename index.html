@@ -7845,8 +7845,9 @@ function bookingErrorMessage(code){
 
 
 function publisherVisitorId(){let id=localStorage.getItem('speakhub_pub_visitor_id');if(!id){id=(crypto?.randomUUID?.()||('pv-'+Date.now()+'-'+Math.random().toString(36).slice(2)));localStorage.setItem('speakhub_pub_visitor_id',id)}return id}
-async function trackPublisherStep(eventType,extra={}){try{await fetch('/api/admin?action=publisher-track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitor_id:publisherVisitorId(),event_type:eventType,...extra})})}catch(e){console.warn('publisher tracking',e)}}
-(function initPublisherAttribution(){try{const q=new URLSearchParams(location.search),slug=(q.get('pub')||'').trim().toLowerCase();if(slug){localStorage.setItem('speakhub_last_pub_slug',slug);trackPublisherStep('LANDING',{slug,landing_path:location.pathname})}}catch(e){console.warn(e)}})();
+function currentPublisherSlug(){try{const q=new URLSearchParams(location.search),fromQuery=(q.get('pub')||'').trim().toLowerCase();if(/^[a-z0-9]{6,16}$/.test(fromQuery))return fromQuery;const seg=location.pathname.replace(/^\/+|\/+$/g,'').toLowerCase();const reserved=new Set(['admin','publisher','teacher','cs','assets','api']);if(/^[a-z0-9]{6,16}$/.test(seg)&&!reserved.has(seg))return seg;return (localStorage.getItem('speakhub_last_pub_slug')||'').trim().toLowerCase()}catch{return ''}}
+async function trackPublisherStep(eventType,extra={}){try{const slug=extra.slug||currentPublisherSlug();await fetch('/api/admin?action=publisher-track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitor_id:publisherVisitorId(),event_type:eventType,...extra,...(slug?{slug}: {})})})}catch(e){console.warn('publisher tracking',e)}}
+(function initPublisherAttribution(){try{const q=new URLSearchParams(location.search),querySlug=(q.get('pub')||'').trim().toLowerCase(),pathSlug=location.pathname.replace(/^\/+|\/+$/g,'').toLowerCase(),reserved=new Set(['admin','publisher','teacher','cs','assets','api']),slug=/^[a-z0-9]{6,16}$/.test(querySlug)?querySlug:((/^[a-z0-9]{6,16}$/.test(pathSlug)&&!reserved.has(pathSlug))?pathSlug:'');if(slug){localStorage.setItem('speakhub_last_pub_slug',slug);trackPublisherStep('LANDING',{slug,landing_path:location.pathname})}}catch(e){console.warn(e)}})();
 
 async function createBookingHold(options={}){
   const rv=document.getElementById('routeView');
@@ -7879,7 +7880,8 @@ async function createBookingHold(options={}){
         full_name:name,
         phone,
         session_ids:sessionIds,
-        publisher_visitor_id:publisherVisitorId()
+        publisher_visitor_id:publisherVisitorId(),
+        publisher_slug:currentPublisherSlug()
       })
     });
     const bookingData=await bookingRes.json();

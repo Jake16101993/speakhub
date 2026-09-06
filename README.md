@@ -106,3 +106,12 @@ advisories**, never as public issues.
 - Hỗ trợ đăng ký now hides sessions that are already full.
 - Added class filter to Hỗ trợ đăng ký in both Admin and CS.
 - Removed the `ADMIN MENU` label from the Admin left sidebar.
+
+
+## V110 - Publisher attribution + commission scheme
+- Fixed direct affiliate URLs (`speakhub.vn/<slug>`) so the slug is read from the pathname; this fixes fresh/incognito traffic not being recorded.
+- Added checkout fallback attribution using the browser's latest publisher slug while preserving last-click behavior.
+- Admin publisher summary is total-only. One month filter controls both the total report and publisher detail cards; includes `Toàn bộ`.
+- Publisher portal month filter also includes `Toàn bộ`.
+- Added per-publisher fixed-VND commission ranges by number of sessions, with `+ Add range`, plus editing for existing publishers.
+- Run `110_publisher_commission_scheme.sql` once before deploy.
