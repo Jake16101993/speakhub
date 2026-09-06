@@ -58,19 +58,47 @@ function publisherFromRequest(request){
   const [payload,sig]=parts,expected=crypto.createHmac('sha256',secret).update(payload).digest('base64url');
   try{if(sig.length!==expected.length||!crypto.timingSafeEqual(Buffer.from(sig),Buffer.from(expected)))return null;const d=JSON.parse(Buffer.from(payload,'base64url').toString('utf8'));return d.role==='publisher'&&Number(d.exp)>Date.now()?d:null}catch{return null}
 }
+function publisherMonthBounds(month){
+  const m=String(month||'').trim();
+  if(!/^\d{4}-\d{2}$/.test(m)) return null;
+  const [y,mo]=m.split('-').map(Number);
+  if(mo<1||mo>12) return null;
+  // Month boundaries in Vietnam time (UTC+7).
+  const start=new Date(Date.UTC(y,mo-1,1)-7*60*60*1000).toISOString();
+  const end=new Date(Date.UTC(y,mo,1)-7*60*60*1000).toISOString();
+  return {start,end,month:m};
+}
+function applyPublisherMonth(query,column,bounds){
+  return bounds?query.gte(column,bounds.start).lt(column,bounds.end):query;
+}
+async function findPublisherForLogin(login){
+  const value=String(login||'').trim();
+  if(!value)return null;
+  const slug=value.toLowerCase();
+  let q=await supabase.from('publishers').select('id,name,phone,slug,login_code,password_hash,status,commission_rate').eq('slug',slug).maybeSingle();
+  if(q.error)throw q.error;if(q.data)return q.data;
+  const phone=value.replace(/[\s.-]/g,'');
+  q=await supabase.from('publishers').select('id,name,phone,slug,login_code,password_hash,status,commission_rate').eq('phone',phone).maybeSingle();
+  if(q.error)throw q.error;if(q.data)return q.data;
+  // Backward compatibility with V108 login codes; new accounts use slug as code.
+  q=await supabase.from('publishers').select('id,name,phone,slug,login_code,password_hash,status,commission_rate').eq('login_code',value).maybeSingle();
+  if(q.error)throw q.error;return q.data||null;
+}
 async function handlePublisherLogin(request){
   if(request.method!=='POST')return Response.json({error:'METHOD_NOT_ALLOWED'},{status:405});
   const b=await request.json().catch(()=>({})),login=String(b.login||'').trim(),password=String(b.password||'');
-  const {data,error}=await supabase.from('publishers').select('id,name,slug,login_code,password_hash,status,commission_rate').or(`login_code.eq.${login},slug.eq.${login}`).maybeSingle();
-  if(error)throw error;if(!data||data.status!=='ACTIVE'||data.password_hash!==publisherPasswordHash(password))return Response.json({error:'INVALID_LOGIN'},{status:401});
-  return Response.json({token:signPublisherToken(data.id),publisher:{id:data.id,name:data.name,slug:data.slug,commission_rate:Number(data.commission_rate||0)}});
+  const data=await findPublisherForLogin(login);
+  if(!data||data.status!=='ACTIVE'||data.password_hash!==publisherPasswordHash(password))return Response.json({error:'INVALID_LOGIN'},{status:401});
+  return Response.json({token:signPublisherToken(data.id),publisher:{id:data.id,name:data.name,slug:data.slug,phone:data.phone||'',commission_rate:Number(data.commission_rate||0)}});
 }
-async function publisherReportRows(publisherId){
+async function publisherReportRows(publisherId,month=''){
+  const bounds=publisherMonthBounds(month);
+  let clicksQ=supabase.from('publisher_clicks').select('id,visitor_id,clicked_at').eq('publisher_id',publisherId).order('clicked_at',{ascending:false}).limit(10000);
+  let eventsQ=supabase.from('publisher_events').select('visitor_id,customer_id,event_type,event_at').eq('publisher_id',publisherId).order('event_at',{ascending:false}).limit(20000);
+  let attrsQ=supabase.from('publisher_order_attributions').select('order_id,customer_id,attributed_at').eq('publisher_id',publisherId).order('attributed_at',{ascending:false}).limit(10000);
+  clicksQ=applyPublisherMonth(clicksQ,'clicked_at',bounds);eventsQ=applyPublisherMonth(eventsQ,'event_at',bounds);attrsQ=applyPublisherMonth(attrsQ,'attributed_at',bounds);
   const [{data:pub,error:pErr},{data:clicks,error:cErr},{data:events,error:eErr},{data:attrs,error:aErr}]=await Promise.all([
-    supabase.from('publishers').select('id,name,phone,slug,login_code,status,commission_rate,created_at').eq('id',publisherId).maybeSingle(),
-    supabase.from('publisher_clicks').select('id,visitor_id,clicked_at').eq('publisher_id',publisherId).order('clicked_at',{ascending:false}).limit(5000),
-    supabase.from('publisher_events').select('visitor_id,customer_id,event_type,event_at').eq('publisher_id',publisherId).order('event_at',{ascending:false}).limit(10000),
-    supabase.from('publisher_order_attributions').select('order_id,customer_id,attributed_at').eq('publisher_id',publisherId).order('attributed_at',{ascending:false}).limit(5000)
+    supabase.from('publishers').select('id,name,phone,slug,login_code,status,commission_rate,created_at').eq('id',publisherId).maybeSingle(),clicksQ,eventsQ,attrsQ
   ]);if(pErr)throw pErr;if(cErr)throw cErr;if(eErr)throw eErr;if(aErr)throw aErr;if(!pub)return null;
   const attrRows=attrs||[],orderIds=attrRows.map(x=>x.order_id).filter(Boolean),custIds=[...new Set(attrRows.map(x=>x.customer_id).filter(Boolean))];
   const [{data:orders,error:oErr},{data:customers,error:uErr}]=await Promise.all([
@@ -80,17 +108,17 @@ async function publisherReportRows(publisherId){
   const om=new Map((orders||[]).map(x=>[String(x.id),x])),cm=new Map((customers||[]).map(x=>[String(x.id),x]));
   const latestEvent=new Map();for(const e of (events||[])){const k=String(e.customer_id||e.visitor_id||'');if(k&&!latestEvent.has(k))latestEvent.set(k,e)}
   const stageRank={LANDING:1,BOOKING_OPEN:2,CUSTOMER_INFO:3,ORDER_CREATED:4,PAYMENT_QR:5,PAID:6};
-  const visitorStage=new Map();for(const e of (events||[])){const k=String(e.visitor_id||'');if(!k)continue;const prev=visitorStage.get(k);if(!prev||stageRank[e.event_type]>stageRank[prev.event_type])visitorStage.set(k,e)}
-  const customersRows=attrRows.map(a=>{const o=om.get(String(a.order_id))||{},c=cm.get(String(a.customer_id))||{};let stage=o.payment_status==='PAID'?'PAID':'ORDER_CREATED';const ev=latestEvent.get(String(a.customer_id));if(ev&&stageRank[ev.event_type]>stageRank[stage])stage=ev.event_type;return {customer_id:a.customer_id,full_name:c.full_name||'',phone:c.phone||'',order_id:a.order_id,stage,payment_status:o.payment_status||'',order_status:o.order_status||'',amount:Number(o.total_amount||0),attributed_at:a.attributed_at}});
+  const customersRows=attrRows.map(a=>{const o=om.get(String(a.order_id))||{},c=cm.get(String(a.customer_id))||{};let stage=o.payment_status==='PAID'?'PAID':'ORDER_CREATED';const ev=latestEvent.get(String(a.customer_id));if(ev&&stageRank[ev.event_type]>stageRank[stage])stage=ev.event_type;return {customer_id:a.customer_id,full_name:c.full_name||'',phone:c.phone||'',order_id:a.order_id,stage,payment_status:o.payment_status||'',order_status:o.order_status||'',amount:Number(o.total_amount||0),attributed_at:a.attributed_at}}).sort((a,b)=>new Date(b.attributed_at)-new Date(a.attributed_at));
   const paid=customersRows.filter(x=>x.payment_status==='PAID'),revenue=paid.reduce((s,x)=>s+x.amount,0),uniqueVisitors=new Set((clicks||[]).map(x=>x.visitor_id)).size;
   const funnel={landing:0,booking_open:0,customer_info:0,order_created:0,payment_qr:0,paid:0};
   const sets={LANDING:new Set(),BOOKING_OPEN:new Set(),CUSTOMER_INFO:new Set(),ORDER_CREATED:new Set(),PAYMENT_QR:new Set(),PAID:new Set()};
   for(const e of (events||[])){const k=String(e.customer_id||e.visitor_id||'');if(k&&sets[e.event_type])sets[e.event_type].add(k)}
   funnel.landing=sets.LANDING.size;funnel.booking_open=sets.BOOKING_OPEN.size;funnel.customer_info=sets.CUSTOMER_INFO.size;funnel.order_created=sets.ORDER_CREATED.size;funnel.payment_qr=sets.PAYMENT_QR.size;funnel.paid=Math.max(sets.PAID.size,paid.length);
-  return {publisher:pub,summary:{clicks:(clicks||[]).length,unique_visitors:uniqueVisitors,orders:customersRows.length,paid_orders:paid.length,revenue,commission:Math.round(revenue*Number(pub.commission_rate||0)/100),conversion_rate:uniqueVisitors?paid.length*100/uniqueVisitors:0,funnel},customers:customersRows.slice(0,500),recent_events:(events||[]).slice(0,200)};
+  return {publisher:{...pub,login_code:pub.slug},month:bounds?.month||'',summary:{clicks:(clicks||[]).length,unique_visitors:uniqueVisitors,orders:customersRows.length,paid_orders:paid.length,revenue,commission:Math.round(revenue*Number(pub.commission_rate||0)/100),conversion_rate:uniqueVisitors?paid.length*100/uniqueVisitors:0,funnel},customers:customersRows.slice(0,1000)};
 }
 async function handlePublisherPortal(request){
-  const auth=publisherFromRequest(request);if(!auth)return Response.json({error:'UNAUTHORIZED'},{status:401});const report=await publisherReportRows(auth.publisher_id);if(!report)return Response.json({error:'PUBLISHER_NOT_FOUND'},{status:404});return Response.json(report);
+  const auth=publisherFromRequest(request);if(!auth)return Response.json({error:'UNAUTHORIZED'},{status:401});
+  const url=new URL(request.url),month=url.searchParams.get('month')||'';const report=await publisherReportRows(auth.publisher_id,month);if(!report)return Response.json({error:'PUBLISHER_NOT_FOUND'},{status:404});return Response.json(report);
 }
 async function handlePublisherTrack(request){
   if(request.method!=='POST')return Response.json({error:'METHOD_NOT_ALLOWED'},{status:405});const b=await request.json().catch(()=>({}));
@@ -105,12 +133,15 @@ async function handlePublisherTrack(request){
 }
 async function handlePublisherAdmin(request){
   if(request.method==='POST'){
-    const b=await request.json().catch(()=>({})),name=String(b.name||'').trim(),phone=String(b.phone||'').trim(),password=String(b.password||''),rate=Math.max(0,Math.min(100,Number(b.commission_rate||0)));if(!name||password.length<6)return Response.json({error:'NAME_AND_PASSWORD_REQUIRED'},{status:400});
+    const b=await request.json().catch(()=>({})),name=String(b.name||'').trim(),phone=String(b.phone||'').replace(/[\s.-]/g,''),password=String(b.password||''),rate=Math.max(0,Math.min(100,Number(b.commission_rate||0)));if(!name||password.length<6)return Response.json({error:'NAME_AND_PASSWORD_REQUIRED'},{status:400});
+    if(phone){const {data:existing,error:pe}=await supabase.from('publishers').select('id').eq('phone',phone).maybeSingle();if(pe)throw pe;if(existing)return Response.json({error:'PHONE_ALREADY_REGISTERED'},{status:409})}
     let slug=randomPublisherSlug();for(let i=0;i<5;i++){const {data}=await supabase.from('publishers').select('id').eq('slug',slug).maybeSingle();if(!data)break;slug=randomPublisherSlug()}
-    const loginCode=`PUB-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;const {data,error}=await supabase.from('publishers').insert({name,phone:phone||null,slug,login_code:loginCode,password_hash:publisherPasswordHash(password),commission_rate:rate,status:'ACTIVE'}).select('id,name,phone,slug,login_code,status,commission_rate,created_at').single();if(error)throw error;return Response.json({publisher:data,link:`https://speakhub.vn/${slug}`},{status:201});
+    const loginCode=slug;const {data,error}=await supabase.from('publishers').insert({name,phone:phone||null,slug,login_code:loginCode,password_hash:publisherPasswordHash(password),commission_rate:rate,status:'ACTIVE'}).select('id,name,phone,slug,login_code,status,commission_rate,created_at').single();if(error)throw error;return Response.json({publisher:data,link:`https://speakhub.vn/${slug}`},{status:201});
   }
+  const url=new URL(request.url),month=url.searchParams.get('month')||'';
   const {data,error}=await supabase.from('publishers').select('id,name,phone,slug,login_code,status,commission_rate,created_at').order('created_at',{ascending:false});if(error)throw error;
-  const reports=[];for(const pub of (data||[])){const r=await publisherReportRows(pub.id);if(r)reports.push(r)}return Response.json({publishers:reports});
+  const reports=(await Promise.all((data||[]).map(pub=>publisherReportRows(pub.id,month)))).filter(Boolean);
+  return Response.json({month,publishers:reports});
 }
 async function handleSupporterSessions(){
   const today=vnTodayBounds().day;

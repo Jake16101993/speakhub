@@ -1,3 +1,13 @@
+# SpeakHub V109
+
+Publisher reporting UX update. No new SQL migration is required if V108 publisher schema is already installed.
+
+- Publisher portal refresh spinner, month filter, customer pagination.
+- Publisher login by phone or slug.
+- Admin Registration support rename and wider sidebar.
+- Admin publisher monthly summary table + publisher pagination.
+- New publisher code equals slug; V108 legacy login codes remain accepted for compatibility.
+
 # SpeakHub V108 — Publisher Affiliate
 
 Run `108_publishers_affiliate.sql` once in Supabase SQL Editor before deploying. Publisher short links use strict last-click attribution at order creation. Publisher portal: `/publisher`.
