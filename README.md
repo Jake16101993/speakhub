@@ -1,3 +1,16 @@
+# SpeakHub V111
+
+Publisher management UX update. No new SQL migration is required if V110 is already deployed.
+
+- Admin tab renamed to Publisher Management; Booking Manager renamed to Booking Management.
+- Publisher reporting supports All / Month / custom date range filters.
+- The same report period applies to admin totals and each publisher detail card.
+- Publisher portal uses the same All / Month / custom date range filter design.
+- Added publisher search by name, phone, or slug.
+- Removed admin customer/funnel detail and funnel text.
+- Admin can edit publisher name, phone, and password, while keeping the affiliate slug unchanged.
+- Existing commission scheme editing remains available.
+
 # SpeakHub V109
 
 Publisher reporting UX update. No new SQL migration is required if V108 publisher schema is already installed.

@@ -58,19 +58,21 @@ function publisherFromRequest(request){
   const [payload,sig]=parts,expected=crypto.createHmac('sha256',secret).update(payload).digest('base64url');
   try{if(sig.length!==expected.length||!crypto.timingSafeEqual(Buffer.from(sig),Buffer.from(expected)))return null;const d=JSON.parse(Buffer.from(payload,'base64url').toString('utf8'));return d.role==='publisher'&&Number(d.exp)>Date.now()?d:null}catch{return null}
 }
-function publisherMonthBounds(month){
+function publisherPeriodBounds(month='',from='',to=''){
+  const f=String(from||'').trim(),t=String(to||'').trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(f)&&/^\d{4}-\d{2}-\d{2}$/.test(t)){
+    const start=new Date(f+'T00:00:00+07:00').toISOString();
+    const endDate=new Date(t+'T00:00:00+07:00');endDate.setDate(endDate.getDate()+1);
+    return {start,end:endDate.toISOString(),from:f,to:t,mode:'range'};
+  }
   const m=String(month||'').trim();
   if(!/^\d{4}-\d{2}$/.test(m)) return null;
-  const [y,mo]=m.split('-').map(Number);
-  if(mo<1||mo>12) return null;
-  // Month boundaries in Vietnam time (UTC+7).
+  const [y,mo]=m.split('-').map(Number);if(mo<1||mo>12)return null;
   const start=new Date(Date.UTC(y,mo-1,1)-7*60*60*1000).toISOString();
   const end=new Date(Date.UTC(y,mo,1)-7*60*60*1000).toISOString();
-  return {start,end,month:m};
+  return {start,end,month:m,mode:'month'};
 }
-function applyPublisherMonth(query,column,bounds){
-  return bounds?query.gte(column,bounds.start).lt(column,bounds.end):query;
-}
+function applyPublisherPeriod(query,column,bounds){return bounds?query.gte(column,bounds.start).lt(column,bounds.end):query;}
 function normalizeCommissionScheme(input){
   if(!Array.isArray(input))return [];
   const rows=input.map(r=>({min_sessions:Math.max(1,Math.floor(Number(r?.min_sessions||0))),max_sessions:r?.max_sessions==null||r?.max_sessions===''?null:Math.floor(Number(r.max_sessions)),amount:Math.max(0,Math.round(Number(r?.amount||0)))})).filter(r=>r.min_sessions>0&&Number.isFinite(r.amount));
@@ -105,12 +107,12 @@ async function handlePublisherLogin(request){
   if(!data||data.status!=='ACTIVE'||data.password_hash!==publisherPasswordHash(password))return Response.json({error:'INVALID_LOGIN'},{status:401});
   return Response.json({token:signPublisherToken(data.id),publisher:{id:data.id,name:data.name,slug:data.slug,phone:data.phone||'',commission_rate:Number(data.commission_rate||0)}});
 }
-async function publisherReportRows(publisherId,month=''){
-  const bounds=publisherMonthBounds(month);
+async function publisherReportRows(publisherId,month='',from='',to=''){
+  const bounds=publisherPeriodBounds(month,from,to);
   let clicksQ=supabase.from('publisher_clicks').select('id,visitor_id,clicked_at').eq('publisher_id',publisherId).order('clicked_at',{ascending:false}).limit(10000);
   let eventsQ=supabase.from('publisher_events').select('visitor_id,customer_id,event_type,event_at').eq('publisher_id',publisherId).order('event_at',{ascending:false}).limit(20000);
   let attrsQ=supabase.from('publisher_order_attributions').select('order_id,customer_id,attributed_at').eq('publisher_id',publisherId).order('attributed_at',{ascending:false}).limit(10000);
-  clicksQ=applyPublisherMonth(clicksQ,'clicked_at',bounds);eventsQ=applyPublisherMonth(eventsQ,'event_at',bounds);attrsQ=applyPublisherMonth(attrsQ,'attributed_at',bounds);
+  clicksQ=applyPublisherPeriod(clicksQ,'clicked_at',bounds);eventsQ=applyPublisherPeriod(eventsQ,'event_at',bounds);attrsQ=applyPublisherPeriod(attrsQ,'attributed_at',bounds);
   const [{data:pub,error:pErr},{data:clicks,error:cErr},{data:events,error:eErr},{data:attrs,error:aErr}]=await Promise.all([
     supabase.from('publishers').select('id,name,phone,slug,login_code,status,commission_rate,commission_scheme,created_at').eq('id',publisherId).maybeSingle(),clicksQ,eventsQ,attrsQ
   ]);if(pErr)throw pErr;if(cErr)throw cErr;if(eErr)throw eErr;if(aErr)throw aErr;if(!pub)return null;
@@ -129,11 +131,11 @@ async function publisherReportRows(publisherId,month=''){
   const sets={LANDING:new Set(),BOOKING_OPEN:new Set(),CUSTOMER_INFO:new Set(),ORDER_CREATED:new Set(),PAYMENT_QR:new Set(),PAID:new Set()};
   for(const e of (events||[])){const k=String(e.customer_id||e.visitor_id||'');if(k&&sets[e.event_type])sets[e.event_type].add(k)}
   funnel.landing=sets.LANDING.size;funnel.booking_open=sets.BOOKING_OPEN.size;funnel.customer_info=sets.CUSTOMER_INFO.size;funnel.order_created=sets.ORDER_CREATED.size;funnel.payment_qr=sets.PAYMENT_QR.size;funnel.paid=Math.max(sets.PAID.size,paid.length);
-  return {publisher:{...pub,login_code:pub.slug},month:bounds?.month||'',summary:{clicks:(clicks||[]).length,unique_visitors:uniqueVisitors,orders:customersRows.length,paid_orders:paid.length,revenue,commission,conversion_rate:uniqueVisitors?paid.length*100/uniqueVisitors:0,funnel},customers:customersRows.slice(0,1000)};
+  return {publisher:{...pub,login_code:pub.slug},period:bounds||null,summary:{clicks:(clicks||[]).length,unique_visitors:uniqueVisitors,orders:customersRows.length,paid_orders:paid.length,revenue,commission,conversion_rate:uniqueVisitors?paid.length*100/uniqueVisitors:0,funnel},customers:customersRows.slice(0,1000)};
 }
 async function handlePublisherPortal(request){
   const auth=publisherFromRequest(request);if(!auth)return Response.json({error:'UNAUTHORIZED'},{status:401});
-  const url=new URL(request.url),month=url.searchParams.get('month')||'';const report=await publisherReportRows(auth.publisher_id,month);if(!report)return Response.json({error:'PUBLISHER_NOT_FOUND'},{status:404});return Response.json(report);
+  const url=new URL(request.url),month=url.searchParams.get('month')||'',from=url.searchParams.get('from')||'',to=url.searchParams.get('to')||'';const report=await publisherReportRows(auth.publisher_id,month,from,to);if(!report)return Response.json({error:'PUBLISHER_NOT_FOUND'},{status:404});return Response.json(report);
 }
 async function handlePublisherTrack(request){
   if(request.method!=='POST')return Response.json({error:'METHOD_NOT_ALLOWED'},{status:405});const b=await request.json().catch(()=>({}));
@@ -155,12 +157,17 @@ async function handlePublisherAdmin(request){
   }
   if(request.method==='PUT'){
     const b=await request.json().catch(()=>({})),publisherId=String(b.publisher_id||'').trim();if(!publisherId)return Response.json({error:'PUBLISHER_ID_REQUIRED'},{status:400});
-    const scheme=normalizeCommissionScheme(b.commission_scheme||[]);const {data,error}=await supabase.from('publishers').update({commission_scheme:scheme,updated_at:new Date().toISOString()}).eq('id',publisherId).select('id,commission_scheme').single();if(error)throw error;return Response.json({ok:true,publisher:data});
+    const updates={updated_at:new Date().toISOString()};
+    if(Object.prototype.hasOwnProperty.call(b,'commission_scheme'))updates.commission_scheme=normalizeCommissionScheme(b.commission_scheme||[]);
+    if(Object.prototype.hasOwnProperty.call(b,'name')){const name=String(b.name||'').trim();if(!name)return Response.json({error:'NAME_REQUIRED'},{status:400});updates.name=name}
+    if(Object.prototype.hasOwnProperty.call(b,'phone')){const phone=String(b.phone||'').replace(/[\s.-]/g,'');if(phone){const {data:dupe,error:de}=await supabase.from('publishers').select('id').eq('phone',phone).neq('id',publisherId).maybeSingle();if(de)throw de;if(dupe)return Response.json({error:'PHONE_ALREADY_REGISTERED'},{status:409})}updates.phone=phone||null}
+    if(String(b.password||'')){const pw=String(b.password);if(pw.length<6)return Response.json({error:'PASSWORD_MIN_6'},{status:400});updates.password_hash=publisherPasswordHash(pw)}
+    const {data,error}=await supabase.from('publishers').update(updates).eq('id',publisherId).select('id,name,phone,slug,status,commission_rate,commission_scheme,created_at').single();if(error)throw error;return Response.json({ok:true,publisher:data});
   }
-  const url=new URL(request.url),month=url.searchParams.get('month')||'';
+  const url=new URL(request.url),month=url.searchParams.get('month')||'',from=url.searchParams.get('from')||'',to=url.searchParams.get('to')||'';
   const {data,error}=await supabase.from('publishers').select('id,name,phone,slug,login_code,status,commission_rate,commission_scheme,created_at').order('created_at',{ascending:false});if(error)throw error;
-  const reports=(await Promise.all((data||[]).map(pub=>publisherReportRows(pub.id,month)))).filter(Boolean);
-  return Response.json({month,publishers:reports});
+  const reports=(await Promise.all((data||[]).map(pub=>publisherReportRows(pub.id,month,from,to)))).filter(Boolean);
+  return Response.json({month,from,to,publishers:reports});
 }
 async function resolveAdminScope(scope='overall'){
   scope=String(scope||'overall').toLowerCase();
