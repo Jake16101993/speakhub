@@ -23,6 +23,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .overview-scope{display:flex;gap:6px;background:#eef5f2;padding:4px;border-radius:12px}.overview-scope button{border:0;background:transparent;padding:8px 12px;border-radius:9px;font-weight:800;color:#65736d;cursor:pointer}.overview-scope button.on{background:#fff;color:var(--gd);box-shadow:0 1px 5px #0001}.lookup-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}.lookup-dow{text-align:center;font-size:11px;font-weight:800;color:var(--muted);padding:5px}.lookup-day{min-height:76px;border:1px solid var(--line);border-radius:10px;padding:7px;background:#fff}.lookup-day.has{background:#f0faf6;border-color:#b7dfd2}.lookup-day>span{display:block;margin-top:5px;padding:4px 5px;border-radius:6px;background:#e4f5ef;font-size:10px;font-weight:700}.lookup-day small{display:block;color:var(--muted);margin-top:2px}@media(max-width:650px){.lookup-grid{gap:3px}.lookup-day{min-height:54px;padding:4px;font-size:10px}.lookup-day>span{font-size:0;padding:4px}.lookup-day>span:before{content:'•';font-size:14px}.lookup-day small{display:none}.overview-scope{width:100%}.overview-scope button{flex:1}}
 
 .admin-global-scope{display:flex;gap:6px;background:#eef5f2;padding:4px;border-radius:12px;flex-wrap:wrap}.admin-global-scope button{border:0;background:transparent;padding:9px 13px;border-radius:9px;font-weight:900;color:#65736d;cursor:pointer}.admin-global-scope button.on{background:#fff;color:var(--gd);box-shadow:0 1px 5px #0001}.assist-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.assist-sessions{display:grid;gap:8px;max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:10px}.assist-session{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff}.assist-session input{width:auto;margin-top:3px}.assist-qr{text-align:center}.assist-qr img{width:260px;max-width:90%;border:1px solid var(--line);border-radius:14px;padding:8px;background:#fff}@media(max-width:760px){.assist-grid{grid-template-columns:1fr}.admin-global-scope{width:100%}.top{align-items:flex-start;flex-wrap:wrap}}
+
+.publisher-card{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;background:#fff}.publisher-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:10px 0}.publisher-kpi{background:#f3f8f6;border-radius:10px;padding:10px}.publisher-kpi b{display:block;font-size:18px;color:var(--gd)}.pub-link{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#eef8f4;padding:6px 8px;border-radius:8px;word-break:break-all}@media(max-width:900px){.publisher-kpis{grid-template-columns:repeat(2,1fr)}}
 </style>
 <!-- SPEAKHUB ADMIN RECURRING SESSION 2026-08-09 -->
 <!-- SPEAKHUB ADMIN PROGRAM + TEACHER FIX 2026-08-09 -->
@@ -410,7 +412,7 @@ body{background:var(--admin-surface)}
       <button class="tab" onclick="showTab('discounts',this);setTimeout(loadDiscounts,0)">% Discounts</button>
       <button class="tab" onclick="showTab('topics',this)">▤ Topics</button>
       <button class="tab" onclick="showTab('price',this);setTimeout(loadPrice,0)">₫ Price</button>
-      <button class="tab" onclick="showTab('chat',this);setTimeout(loadAdminChatThreads,0)">◌ Chat</button>
+      <button class="tab" onclick="showTab('publishers',this);setTimeout(loadPublishers,0)">↗ Publisher Registration</button>
     </div>
 
     <section id="tab-overview"></section>
@@ -435,18 +437,22 @@ body{background:var(--admin-surface)}
       </div>
     </section>
 
-    <section id="tab-chat" class="hidden">
+    <section id="tab-publishers" class="hidden">
       <div class="card">
-        <h3 style="margin-top:0">Chat SpeakHub</h3>
-        <p class="muted">Messages sent by users from Chat SpeakHub.</p>
-        <div class="admin-chat-grid">
-          <div id="adminChatThreads" class="admin-chat-threads">Loading...</div>
-          <div class="admin-chat-panel">
-            <div id="adminChatTitle" style="font-weight:900;margin-bottom:10px">Select a student</div>
-            <div id="adminChatMessages" class="admin-chat-messages"></div>
-            <div class="admin-chat-input"><input id="adminChatText" placeholder="Type a reply..." onkeydown="if(event.key==='Enter')sendAdminChat()"><button class="btn primary" onclick="sendAdminChat()">Send</button></div>
-          </div>
+        <h3 style="margin-top:0">Publisher Registration</h3>
+        <p class="muted">Create affiliate publisher accounts. Attribution uses last-click: the most recent publisher link before order creation receives the conversion.</p>
+        <div class="row" style="grid-template-columns:1.2fr 1fr 1fr .7fr">
+          <input id="pubName" placeholder="Publisher name">
+          <input id="pubPhone" placeholder="Phone (optional)">
+          <input id="pubPassword" type="password" placeholder="Login password (min 6 chars)">
+          <input id="pubRate" type="number" min="0" max="100" step="0.1" value="0" placeholder="Commission %">
         </div>
+        <button class="btn primary" style="margin-top:10px" onclick="createPublisher()">Create publisher</button>
+        <div id="pubCreateMsg"></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h3 style="margin:0">Publisher performance</h3><div class="muted">Clicks · unique visitors · orders · paid conversions · revenue · commission · customer funnel</div></div><button class="btn secondary" onclick="loadPublishers()">Refresh</button></div>
+        <div id="publisherReport" style="margin-top:14px">Loading...</div>
       </div>
     </section>
 
@@ -903,6 +909,17 @@ async function savePrice(){
   finally{btn.disabled=false;btn.textContent='Save pricing'}
 }
 
+
+
+function pubMoney(n){return new Intl.NumberFormat('vi-VN').format(Number(n||0))+'đ'}
+async function createPublisher(){
+  const msg=document.getElementById('pubCreateMsg');msg.innerHTML='';
+  try{const d=await api('/api/admin?action=publishers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:pubName.value.trim(),phone:pubPhone.value.trim(),password:pubPassword.value,commission_rate:Number(pubRate.value||0)})});msg.innerHTML=`<div class="success">Created <b>${d.publisher.name}</b><br>Affiliate link: <span class="pub-link">${d.link}</span><br>Login code: <b>${d.publisher.login_code}</b></div>`;pubName.value='';pubPhone.value='';pubPassword.value='';loadPublishers()}catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
+}
+async function loadPublishers(){
+  const host=document.getElementById('publisherReport');if(!host)return;host.innerHTML='Loading...';
+  try{const d=await api('/api/admin?action=publishers');const rows=d.publishers||[];host.innerHTML=rows.length?rows.map((r,i)=>{const p=r.publisher,s=r.summary,c=r.customers||[];return `<div class="publisher-card"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><b style="font-size:18px">${p.name}</b> <span class="badge">${p.status}</span><div class="muted">${p.phone||''} · Login: ${p.login_code} · Commission ${Number(p.commission_rate||0)}%</div></div><div class="pub-link">speakhub.vn/${p.slug}</div></div><div class="publisher-kpis"><div class="publisher-kpi"><small>Clicks</small><b>${s.clicks}</b></div><div class="publisher-kpi"><small>Unique visitors</small><b>${s.unique_visitors}</b></div><div class="publisher-kpi"><small>Paid</small><b>${s.paid_orders}</b></div><div class="publisher-kpi"><small>Conversion</small><b>${Number(s.conversion_rate||0).toFixed(1)}%</b></div><div class="publisher-kpi"><small>Revenue</small><b>${pubMoney(s.revenue)}</b></div><div class="publisher-kpi"><small>Commission</small><b>${pubMoney(s.commission)}</b></div><div class="muted" style="margin:4px 0 12px"><b>Funnel:</b> Landing ${s.funnel?.landing||0} → Customer info ${s.funnel?.customer_info||0} → Order ${s.funnel?.order_created||0} → QR ${s.funnel?.payment_qr||0} → Paid ${s.funnel?.paid||0}</div></div><details><summary style="cursor:pointer;font-weight:800">Customer / funnel detail (${c.length})</summary><div style="overflow:auto;margin-top:8px"><table><thead><tr><th>Name</th><th>Phone</th><th>Last step</th><th>Payment</th><th>Amount</th><th>Attributed</th></tr></thead><tbody>${c.map(x=>`<tr><td>${x.full_name||'-'}</td><td>${x.phone||'-'}</td><td><b>${x.stage}</b></td><td>${x.payment_status||'-'}</td><td>${pubMoney(x.amount)}</td><td>${new Date(x.attributed_at).toLocaleString('vi-VN')}</td></tr>`).join('')||'<tr><td colspan="6">No attributed customers yet.</td></tr>'}</tbody></table></div></details></div>`}).join(''):'<div class="muted">No publishers yet.</div>'}catch(e){host.innerHTML=`<div class="error">${e.message}</div>`}
+}
 
 let adminChatCurrentThread=null;
 

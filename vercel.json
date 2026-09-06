@@ -48,6 +48,14 @@
     {
       "source": "/cs",
       "destination": "/cs.html"
+    },
+    {
+      "source": "/publisher",
+      "destination": "/publisher.html"
+    },
+    {
+      "source": "/:pub([a-zA-Z0-9]{6,16})",
+      "destination": "/index.html?pub=:pub"
     }
   ]
 }

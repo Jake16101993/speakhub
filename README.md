@@ -1,3 +1,7 @@
+# SpeakHub V108 — Publisher Affiliate
+
+Run `108_publishers_affiliate.sql` once in Supabase SQL Editor before deploying. Publisher short links use strict last-click attribution at order creation. Publisher portal: `/publisher`.
+
 # SpeakHub V107
 
 ## Changes
