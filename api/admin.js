@@ -409,12 +409,16 @@ async function handleOverview(request){
     supabase.from('progress_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
     supabase.from('placement_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED'),
     supabase.from('progress_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED'),
+    supabase.from('pronunciation_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
+    supabase.from('pronunciation_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED'),
+    supabase.from('comprehension_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
+    supabase.from('comprehension_tests').select('*',{count:'exact',head:true}).eq('status','COMPLETED'),
     supabase.from('orders').select('total_amount').eq('payment_status','PAID').gte('created_at',`${w.current_from}T00:00:00+07:00`).lt('created_at',`${weekEndExclusive}T00:00:00+07:00`),
     supabase.from('orders').select('total_amount').eq('payment_status','PAID').gte('created_at',`${month.first}T00:00:00+07:00`).lt('created_at',`${month.next}T00:00:00+07:00`),
     sessionQ(supabase.from('class_sessions').select('id').gte('session_date',today).neq('status','CANCELLED'))
   ]);
   const err=results.find(x=>x.error)?.error;if(err) throw err;
-  const [c,o,b,s,week,prev,next,pw,gw,pa,ga,mw,mm,future]=results;
+  const [c,o,b,s,week,prev,next,pw,gw,pa,ga,prw,pra,cow,coa,mw,mm,future]=results;
   const all=[...(prev.data||[]),...(week.data||[]),...(next.data||[])], counts={}, ids=all.map(x=>x.id);
   if(ids.length){
     const {data:bs,error}=await supabase.from('bookings').select('session_id').in('session_id',ids).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);
@@ -503,6 +507,8 @@ async function handleOverview(request){
       active_students:activeStudents,
       tests_this_week:{placement:pw.count||0,progress:gw.count||0},
       tests_all:{placement:pa.count||0,progress:ga.count||0},
+      pronunciation_tests:{week:prw.count||0,all:pra.count||0},
+      comprehension_tests:{week:cow.count||0,all:coa.count||0},
       paid_amount:{week:scopedPaidWeek===null?sum(mw.data):scopedPaidWeek,month:scopedPaidMonth===null?sum(mm.data):scopedPaidMonth},
       fill_rate:{previous_week:fill(prev.data),current_week:fill(week.data),next_week:fill(next.data)},
       renewal_rate:{
