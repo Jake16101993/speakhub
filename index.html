@@ -4840,6 +4840,23 @@ button.primary.ui-button-busy::after{
   line-height:13px;
   z-index:2;
 }
+
+
+/* ===== V113 unified Progress Test hub ===== */
+.progress-suite{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.progress-suite-card{min-width:0;border:1px solid #f3c27c;border-radius:14px;background:#ffe1b5;padding:15px 16px;display:flex;gap:11px;align-items:center;text-align:left;box-shadow:0 5px 14px rgba(219,119,18,.10)}
+.progress-suite-action{font:inherit;cursor:pointer;position:relative;transition:.18s ease;color:#17201d}
+.progress-suite-action:hover{transform:translateY(-1px);background:#ffd59a;border-color:#eeb367;box-shadow:0 8px 20px rgba(219,119,18,.16)}
+.progress-suite-icon{width:42px;height:42px;flex:0 0 42px;border-radius:11px;background:rgba(255,255,255,.52);display:grid;place-items:center;font-size:21px}
+.progress-suite-copy{display:grid;gap:4px;min-width:0;padding-right:6px}
+.progress-suite-copy b{font-size:16px;color:#17201d}
+.progress-suite-copy span{font-size:14px;line-height:1.45;color:#4d514f}
+.progress-suite-arrow{margin-left:auto;align-self:center;font-size:26px;color:#4a4033;line-height:1}
+@media(max-width:700px){.progress-suite{grid-template-columns:1fr}.progress-suite-card{padding:12px}}
+/* ===== V112 AI Test Center ===== */
+.test-center-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.test-stat{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fbfdfc}.test-stat b{display:block;font-size:18px;color:var(--gd)}.test-stat span{font-size:11px;color:var(--muted)}
+.ai-test-overlay{position:fixed;inset:0;background:rgba(10,25,19,.55);z-index:99999;display:grid;place-items:center;padding:16px}.ai-test-sheet{width:min(760px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:22px;padding:22px;box-shadow:0 25px 80px rgba(0,0,0,.22)}.ai-test-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.ai-test-head h2{margin:3px 0}.ai-test-close{border:0;background:#f0f4f2;width:36px;height:36px;border-radius:50%;font-size:20px;cursor:pointer}.test-reading{background:#f6faf8;border:1px solid #dce9e3;border-radius:16px;padding:17px;line-height:1.75;font-size:17px}.word-chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.word-chip{padding:8px 12px;border-radius:999px;background:#eef8f3;border:1px solid #cfe7db;font-weight:800}.rec-orb{width:82px;height:82px;border-radius:50%;display:grid;place-items:center;margin:16px auto;background:#eaf7f0;font-size:30px;border:2px solid #b9dfcd}.rec-orb.recording{animation:pulseRec 1s infinite;background:#fff0f0;border-color:#efaaaa}@keyframes pulseRec{50%{transform:scale(1.07)}}.session-test-card{border:1px solid var(--line);border-radius:15px;padding:14px;margin-top:10px;display:flex;justify-content:space-between;gap:12px;align-items:center}.session-test-card.done{opacity:.55}.qa-block{padding:14px 0;border-bottom:1px solid var(--line)}.qa-block textarea{width:100%;min-height:80px;border:1px solid var(--line);border-radius:12px;padding:11px;font:inherit}.kid-visual{font-size:40px;letter-spacing:10px;background:#f6fbf8;border-radius:14px;padding:12px;text-align:center;margin:8px 0}.score-ring{width:110px;height:110px;border-radius:50%;display:grid;place-items:center;margin:10px auto;background:#edf8f2;border:8px solid #bfe5d1;font-size:28px;font-weight:900;color:var(--gd)}
+@media(max-width:600px){.test-center-stats{grid-template-columns:1fr 1fr}.ai-test-sheet{padding:17px;border-radius:18px}.test-reading{font-size:15px}}
 </style>
 
 <!-- Meta Pixel Code -->
@@ -6383,6 +6400,8 @@ function renderDashboard(rv){
           <div class="quick" onclick="go('publicSchedule')"><b>📋 Lịch học tổng thể</b><p class="tiny">Xem tổng quan toàn bộ lớp</p></div>
           <div class="quick" onclick="go('placement')"><b>📝 Kiểm tra xếp lớp</b><p class="tiny">Tối đa 3 lần / ngày</p></div>
           <div class="quick" onclick="go('weekly')"><b>📈 Kiểm tra tiến độ</b><p class="tiny">Đo lường tiến bộ của bạn</p></div>
+          <div class="quick" onclick="openPronunciationTest()"><b>🎙️ Pronunciation Test</b><p class="tiny">Paragraph + random words · ~2 phút</p></div>
+          <div class="quick" onclick="openComprehensionTest()"><b>🧠 Session Comprehension</b><p class="tiny">Kiểm tra hiểu bài sau session</p></div>
           <div class="quick" onclick="go('chat')"><b>💬 Chat SpeakHub</b><p class="tiny">Hỗ trợ trực tiếp</p></div>
         </div>
       </section>
@@ -6396,13 +6415,14 @@ function renderDashboard(rv){
         <h3>Tiến bộ của bạn</h3>
         <div class="tiny">Đang tải dữ liệu Progress Test thực tế...</div>
       </section>
-      <section class="card dash-card" style="margin-top:18px"><h3>Test tiến độ</h3><p class="muted">1 phút Reading + 2 phút Speaking với AI.</p><button class="btn primary" style="width:100%" onclick="go('weekly')">Bắt đầu test 3 phút</button></section>
+      <section class="card dash-card" style="margin-top:18px"><h3>Progress Tests</h3><div id="testCenterStats" class="test-center-stats"><div class="tiny">Đang tải thống kê test...</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px"><button class="btn secondary" onclick="openPronunciationTest()">Pronunciation</button><button class="btn secondary" onclick="openComprehensionTest()">Comprehension</button></div></section>
       <section class="card dash-card" style="margin-top:18px"><h3>Cần hỗ trợ?</h3><p class="muted">Nhân viên SpeakHub đang online.</p><button class="btn secondary" style="width:100%" onclick="go('chat')">💬 Chat SpeakHub</button></section>
     </div>
   </div>${supportFooterHTML()}`;
 
   // Never show demo progress. Hydrate only from real Progress Test history.
   hydrateDashboardProgress();
+  hydrateTestCenterStats();
 }
 
 
@@ -8399,7 +8419,7 @@ async function renderPlacement(rv){
     const birthBtn=document.getElementById('placementBirthContinue');
     const birthInput=document.getElementById('birthYear');
 
-    const goReadingFromBirth=()=>{
+    const goReadingFromBirth=async()=>{
       try{
         const y=parseInt((birthInput?.value||'').trim(),10);
         const currentYear=new Date().getFullYear();
@@ -8412,6 +8432,8 @@ async function renderPlacement(rv){
         }
 
         state.placementBirthYear=y;
+        try{localStorage.setItem('speakhub_test_birth_year',String(y))}catch{}
+        await loadPlacementHistory(false);
         placementReadingAnswers=[];
         placementReadingCorrect=[];
         placementTranscript1='';
@@ -8509,15 +8531,8 @@ function shufflePlacementOptions(options){
 
 function choosePlacementReadingSet(pool,key){
   if(placementReadingCurrentSet) return placementReadingCurrentSet;
-
-  let recent=[];
-  try{recent=JSON.parse(localStorage.getItem(key)||'[]')}catch{}
-  const candidates=pool.filter(x=>!recent.includes(x.id));
-  const source=candidates.length?candidates:pool;
-  placementReadingCurrentSet=source[Math.floor(Math.random()*source.length)];
-
-  const next=[placementReadingCurrentSet.id,...recent.filter(x=>x!==placementReadingCurrentSet.id)].slice(0,6);
-  try{localStorage.setItem(key,JSON.stringify(next))}catch{}
+  const completed=Array.isArray(placementHistoryCache)?placementHistoryCache.length:0;
+  placementReadingCurrentSet=pool[completed%pool.length];
   return placementReadingCurrentSet;
 }
 
@@ -8664,20 +8679,17 @@ PLACEMENT_SPEAKING_BANK.adult.push(
   'What is one English-speaking situation you want to feel more confident in?'
 );
 
+function placementSequencePick(bank,key){
+  const completed=Array.isArray(placementHistoryCache)?placementHistoryCache.length:0;
+  let offset=0;for(const ch of String(key||''))offset=(offset+ch.charCodeAt(0))%Math.max(1,bank.length);
+  return bank[(completed+offset)%bank.length]||bank[0]||'';
+}
+
 function pickPlacementSpeakingQuestion(){
   const age=getPlacementAge();
-  const bank=age<10
-    ? PLACEMENT_SPEAKING_BANK.youngKid
-    : age<15
-      ? PLACEMENT_SPEAKING_BANK.teenKid
-      : PLACEMENT_SPEAKING_BANK.adult;
-  let recent=[];
-  try{recent=JSON.parse(localStorage.getItem('speakhub_recent_speaking_questions')||'[]')}catch{}
-  const candidates=bank.filter(q=>!recent.includes(q));
-  const q=(candidates.length?candidates:bank)[Math.floor(Math.random()*(candidates.length?candidates:bank).length)];
-  const next=[q,...recent.filter(x=>x!==q)].slice(0,20);
-  try{localStorage.setItem('speakhub_recent_speaking_questions',JSON.stringify(next))}catch{}
-  return q;
+  const tier=age<10?'youngKid':age<16?'teenKid':'adult';
+  const bank=PLACEMENT_SPEAKING_BANK[tier];
+  return placementSequencePick(bank,`speakhub_placement_speaking_cycle_${tier}`);
 }
 
 function placementReadingSet(){
@@ -8721,6 +8733,15 @@ function placementReadingSet(){
       ]
     }
   ];
+
+  youngKidPool.push(
+    {id:'young_kid_fruit',text:`Ava has an apple and a banana in her lunch box. She eats the apple first and saves the banana for later.`,qs:[['What fruit does Ava eat first?',['An apple','A banana','An orange'],'An apple'],['Where is the fruit?',['In her lunch box','Under the bed','At the park'],'In her lunch box'],['What does she save for later?',['The banana','The apple','The water'],'The banana']]},
+    {id:'young_kid_rain',text:`It is raining today. Max wears a yellow raincoat and takes a blue umbrella. He walks to school with his dad.`,qs:[['What is the weather like?',['Rainy','Sunny','Snowy'],'Rainy'],['What color is Max’s raincoat?',['Yellow','Blue','Green'],'Yellow'],['Who walks with Max?',['His dad','His teacher','His dog'],'His dad']]},
+    {id:'young_kid_birthday',text:`Ella is eight today. Her family gives her a small cake with eight candles. She makes a wish before she blows them out.`,qs:[['How old is Ella?',['Eight','Six','Ten'],'Eight'],['What is on the cake?',['Eight candles','Eight apples','One book'],'Eight candles'],['What does Ella do before blowing them out?',['Makes a wish','Goes to sleep','Opens the door'],'Makes a wish']]},
+    {id:'young_kid_bus',text:`Noah takes bus number five to school. He sits next to his friend Kim. They talk quietly until they arrive.`,qs:[['What bus does Noah take?',['Number five','Number nine','Number two'],'Number five'],['Who sits next to Noah?',['Kim','His mom','His teacher'],'Kim'],['What do they do on the bus?',['Talk quietly','Run around','Eat dinner'],'Talk quietly']]},
+    {id:'young_kid_farm',text:`Zoe visits a farm. She sees two cows, three ducks, and one brown horse. She likes the horse best.`,qs:[['How many cows does Zoe see?',['Two','Three','One'],'Two'],['What color is the horse?',['Brown','White','Black'],'Brown'],['Which animal does Zoe like best?',['The horse','The ducks','The cows'],'The horse']]},
+    {id:'young_kid_library',text:`Jack chooses a picture book at the library. The book is about space and stars. He reads it with his older brother.`,qs:[['Where does Jack choose a book?',['At the library','At the beach','At a shop'],'At the library'],['What is the book about?',['Space and stars','Food','Cars'],'Space and stars'],['Who reads with Jack?',['His older brother','His teacher','His friend'],'His older brother']]}
+  );
 
   const kidPool=[
     {
@@ -8835,6 +8856,15 @@ function placementReadingSet(){
         ['What happened in the next match?',['They won','They lost again','It was cancelled'],'They won']
       ]
     }
+  );
+
+  kidPool.push(
+    {id:'kid_robot_club',text:`Mason joined the school robotics club because he enjoys building things. His team is designing a small robot that can carry books across the classroom. Their first design was too heavy, so they changed the frame and tried again.`,qs:[['Why did Mason join the club?',['He enjoys building things','He dislikes technology','His teacher forced him'],'He enjoys building things'],['What should the robot carry?',['Books','Food','People'],'Books'],['Why did the team change the frame?',['The first design was too heavy','The robot was too fast','They lost the books'],'The first design was too heavy']]},
+    {id:'kid_class_trip',text:`Sophia’s class visited a history museum on Friday. She expected it to be boring, but a guide showed them old tools and let the students try writing with a feather pen. Sophia later said it was the best part of the trip.`,qs:[['Where did the class go?',['A history museum','A zoo','A cinema'],'A history museum'],['What did students try?',['Writing with a feather pen','Cooking','Painting a wall'],'Writing with a feather pen'],['How did Sophia’s opinion change?',['She enjoyed the visit','She became more bored','She left early'],'She enjoyed the visit']]},
+    {id:'kid_recycling',text:`Ryan noticed that his family used many plastic bottles every week. He suggested using reusable bottles instead. After one month, the recycling bag was much smaller, and everyone agreed to continue the new habit.`,qs:[['What problem did Ryan notice?',['Too many plastic bottles','No water at home','Too much homework'],'Too many plastic bottles'],['What did he suggest?',['Reusable bottles','Buying more plastic','Throwing bottles outside'],'Reusable bottles'],['What happened after one month?',['The recycling bag was smaller','They stopped drinking water','They bought more bottles'],'The recycling bag was smaller']]},
+    {id:'kid_team_project',text:`For a class project, Hana wanted to make the poster by herself because she had many ideas. Her group asked her to divide the work instead. When everyone contributed, they finished earlier and the poster had more creative details.`,qs:[['What did Hana first want to do?',['Make the poster by herself','Cancel the project','Ask the teacher to do it'],'Make the poster by herself'],['What did the group ask her to do?',['Divide the work','Go home','Use fewer ideas'],'Divide the work'],['What was the result?',['They finished earlier with more ideas','They missed the deadline','The poster was empty'],'They finished earlier with more ideas']]},
+    {id:'kid_language_exchange',text:`Ethan started chatting online with a student in Australia to practise English. At first he wrote very short messages. After several weeks, he began asking longer questions and felt less nervous about making mistakes.`,qs:[['Why did Ethan chat with the student?',['To practise English','To sell something','To play football'],'To practise English'],['How were his messages at first?',['Very short','Very long','Only pictures'],'Very short'],['What changed after several weeks?',['He asked longer questions and felt less nervous','He stopped writing','He forgot English'],'He asked longer questions and felt less nervous']]},
+    {id:'kid_school_rule',text:`The student council discussed a new rule about phones during lunch. Some students wanted to use phones freely, while others preferred a phone-free lunch so people would talk more. They decided to test the phone-free idea for one week.`,qs:[['What rule did students discuss?',['Phone use during lunch','School uniforms','Homework'],'Phone use during lunch'],['Why did some prefer no phones?',['So people would talk more','Because phones were too expensive','Because lunch was cancelled'],'So people would talk more'],['What did they decide?',['Test the idea for one week','Ban phones forever','Ignore the issue'],'Test the idea for one week']]}
   );
 
   const adultPool=[
@@ -8988,6 +9018,15 @@ function placementReadingSet(){
     }
   );
 
+  adultPool.push(
+    {id:'adult_remote_feedback',text:`A manager noticed that remote meetings were becoming longer and less focused. Instead of adding more meetings, she asked everyone to send a short written update before the call. The team then used meeting time only for decisions and difficult questions.`,qs:[['What problem did the manager notice?',['Meetings were long and unfocused','The team never met','Nobody could write'],'Meetings were long and unfocused'],['What did she ask people to do first?',['Send a written update','Cancel all work','Call customers'],'Send a written update'],['How was meeting time then used?',['For decisions and difficult questions','For reading every update aloud','For social media'],'For decisions and difficult questions']]},
+    {id:'adult_course_choice',text:`Minh wanted to improve his English quickly, so he compared several courses. One offered many grammar lessons, while another focused on conversation practice and feedback. Because his main goal was speaking at work, he chose the second course even though it was slightly more expensive.`,qs:[['What was Minh’s main goal?',['Speaking at work','Passing a math exam','Learning to code'],'Speaking at work'],['What did the second course focus on?',['Conversation and feedback','Only grammar','Writing reports'],'Conversation and feedback'],['Why did he choose it?',['It matched his goal better','It was the cheapest','It had no classes'],'It matched his goal better']]},
+    {id:'adult_small_business',text:`A small café had many customers on weekends but very few on weekday afternoons. The owner tested a quiet-work package with coffee, Wi-Fi, and discounted refills. After three weeks, weekday sales improved enough for the owner to keep the offer.`,qs:[['When was the café quiet?',['Weekday afternoons','Weekend mornings','Every evening'],'Weekday afternoons'],['What did the owner test?',['A quiet-work package','A new parking lot','Free dinner'],'A quiet-work package'],['What happened after three weeks?',['Weekday sales improved','Weekend customers disappeared','The café closed'],'Weekday sales improved']]},
+    {id:'adult_ai_decision',text:`A company began using an AI tool to summarise customer messages. Employees saved time, but they discovered that some summaries missed important details. The team decided that AI could prepare a first draft, while a person would still check any message involving complaints or payments.`,qs:[['What benefit did AI provide?',['It saved time','It answered every complaint perfectly','It removed all employees'],'It saved time'],['What problem appeared?',['Some summaries missed details','The tool was too slow to open','Customers stopped writing'],'Some summaries missed details'],['What solution did the team choose?',['Human review for sensitive messages','Stop checking everything','Use AI without limits'],'Human review for sensitive messages']]},
+    {id:'adult_negotiation',text:`During a salary discussion, Lan first planned to ask only for a higher number. Before the meeting, she listed the extra responsibilities she had taken on and collected examples of strong results. The conversation became more productive because she could explain the value behind her request.`,qs:[['What did Lan originally plan to ask for?',['A higher salary','Less vacation','A new office only'],'A higher salary'],['What did she prepare?',['Responsibilities and results','A resignation letter','A customer survey'],'Responsibilities and results'],['Why was the discussion more productive?',['She explained the value behind her request','She spoke much faster','She avoided all questions'],'She explained the value behind her request']]},
+    {id:'adult_city_transport',text:`A city introduced a new bus lane to reduce travel time. Some shop owners worried that fewer parking spaces would hurt business. Six months later, bus journeys were faster, but the city still needed to adjust loading areas so deliveries could happen more easily.`,qs:[['Why was the bus lane introduced?',['To reduce travel time','To increase parking','To close shops'],'To reduce travel time'],['What worried shop owners?',['Fewer parking spaces','Cheaper bus tickets','More customers'],'Fewer parking spaces'],['What still needed improvement?',['Loading areas for deliveries','Bus speed','The number of roads'],'Loading areas for deliveries']]}
+  );
+
   const raw=age<10
     ? choosePlacementReadingSet(youngKidPool,'speakhub_recent_young_kid_reading')
     : age<15
@@ -9110,7 +9149,7 @@ function placementReading(){
       <div class="placement-progress"><span class="on"></span><span class="on"></span><span></span><span></span></div>
     </section>
     <section class="card" style="padding:20px;margin-top:14px">
-      <div class="reading">${set.text}</div>
+      ${getPlacementAge()<16?`<div class="kid-visual" style="margin-bottom:12px">${getPlacementAge()<10?'🐱 🍎 🚌 🌈 ⭐':'📚 🧠 🌍 🎯 💬'}</div>`:''}<div class="reading">${set.text}</div>
       ${set.qs.map((q,qi)=>`<div class="placement-question">
         <b>${qi+1}. ${q[0]}</b>
         ${q[1].map(opt=>`<label class="placement-option"><input type="radio" name="pr${qi}" value="${escapeHtml(opt)}"><span>${escapeHtml(opt)}</span></label>`).join('')}
@@ -9256,20 +9295,53 @@ async function uploadPlacementRecording(questionNo){
 function adaptivePlacementQuestion(firstTranscript){
   const words=String(firstTranscript||'').trim().split(/\s+/).filter(Boolean).length;
   const age=getPlacementAge();
-  if(age<10){
-    return words>=18
-      ? 'Tell me about your favorite place at school. What do you do there?'
-      : 'Tell me about your favorite food or animal.';
-  }
-  if(age<15){
-    return words>=28
-      ? 'If you could change one thing at school, what would you change and why?'
-      : 'Tell me about your favorite subject or activity. What makes it fun for you?';
-  }
-  return words>=38
-    ? 'Do you think social media helps people communicate better or makes communication worse? Explain your opinion with an example.'
-    : 'Tell me about a skill you would like to improve this year. Why is it important to you?';
+  const youngEasy=[
+    'Tell me about your favorite food or animal.',
+    'What do you like to do after school?',
+    'Tell me about one person in your family.',
+    'What is your favorite toy, game, or cartoon?',
+    'Describe your classroom or bedroom.'
+  ];
+  const youngStrong=[
+    'Tell me about your favorite place at school. What do you do there?',
+    'Describe a fun day you remember. What happened?',
+    'If you could have any pet, what would you choose and why?',
+    'What makes a good friend? Give one example.',
+    'Tell me about something new you learned recently.'
+  ];
+  const teenEasy=[
+    'Tell me about your favorite subject or activity. What makes it fun for you?',
+    'Describe a weekend you enjoyed.',
+    'What is one skill you want to improve this year?',
+    'Tell me about a friend you enjoy spending time with.',
+    'What do you usually do when school feels difficult?'
+  ];
+  const teenStrong=[
+    'If you could change one thing at school, what would you change and why?',
+    'Do phones help students learn, or distract them? Explain your opinion.',
+    'What makes someone a good teammate? Give an example.',
+    'Should students have less homework? Why or why not?',
+    'What is one problem young people should learn to solve better?'
+  ];
+  const adultBeginner=[
+    'Tell me about a skill you would like to improve this year. Why is it important to you?',
+    'Describe your normal weekday and one thing you would like to change.',
+    'Tell me about a recent problem and how you solved it.',
+    'What do you usually do to relax after a busy day?',
+    'Describe a place you enjoy visiting and explain why.'
+  ];
+  const adultIntermediate=[
+    'Do you think social media helps people communicate better or makes communication worse? Explain your opinion with an example.',
+    'Should companies allow employees to work remotely most of the week? Explain the trade-offs.',
+    'Do people learn more from success or failure? Support your view with an example.',
+    'What is one major challenge young people face today, and what could improve it?',
+    'Is it better to specialise deeply in one skill or develop many different skills? Why?'
+  ];
+  if(age<10) return placementSequencePick(words>=18?youngStrong:youngEasy,`speakhub_placement_q2_${words>=18?'youngStrong':'youngEasy'}`);
+  if(age<16) return placementSequencePick(words>=28?teenStrong:teenEasy,`speakhub_placement_q2_${words>=28?'teenStrong':'teenEasy'}`);
+  return placementSequencePick(words>=38?adultIntermediate:adultBeginner,`speakhub_placement_q2_${words>=38?'adultIntermediate':'adultBeginner'}`);
 }
+
 function showPlacementTranscript(questionNo,transcript){
   document.getElementById('routeView').innerHTML=`<div class="placement-shell">
     <section class="card" style="padding:22px">
@@ -9449,7 +9521,22 @@ var PROGRESS_GENERAL_SPEAKING=[
   'Do you learn better alone or with other people? Explain.',
   'What is one technology you use often, and how does it help you?',
   'What advice would you give someone who wants to speak English more confidently?'
-];
+,
+  'Describe a small success you had recently and how it made you feel.',
+  'Tell me about a routine that helps you stay organised.',
+  'What is one thing you would like to learn outside school or work?',
+  'Describe a time you helped someone solve a problem.',
+  'What makes you feel comfortable when speaking with a new person?',
+  'Tell me about a useful piece of advice you received.',
+  'What is one change you made that improved your day?',
+  'Describe an activity that helps you concentrate.',
+  'What is one thing you wish people communicated more clearly about?',
+  'Tell me about a time you had to choose between two options.',
+  'What makes a good learning environment for you?',
+  'Describe something you used to find difficult but now find easier.',
+  'What is one habit that wastes time, and how could someone reduce it?',
+  'Tell me about a conversation that changed your opinion.',
+  'What is one goal you can realistically achieve in the next month?'];
 
 var PROGRESS_STANDARD_BANK={
   beginner:[
@@ -9507,51 +9594,71 @@ function progressCycleStorageKey(bucket){
 
 function progressCyclePick(bank,count,bucket,getId=(x)=>typeof x==='string'?x:(x.q||JSON.stringify(x))){
   const clean=(bank||[]).filter(Boolean);
-  if(!clean.length || count<=0) return [];
-
-  const storageKey=progressCycleStorageKey(bucket);
-  let used=[];
-  try{
-    const parsed=JSON.parse(localStorage.getItem(storageKey)||'[]');
-    if(Array.isArray(parsed)) used=parsed;
-  }catch{}
-
-  const chosen=[];
-  const chosenIds=new Set();
-
-  while(chosen.length<count && chosen.length<clean.length){
-    let available=clean.filter(item=>{
-      const id=getId(item);
-      return !used.includes(id) && !chosenIds.has(id);
-    });
-
-    // The user has finished this bank. Start a new cycle only after every
-    // question from the previous cycle has been consumed.
-    if(!available.length){
-      used=[];
-      available=clean.filter(item=>!chosenIds.has(getId(item)));
-      if(!available.length) break;
-    }
-
-    const item=available[Math.floor(Math.random()*available.length)];
-    const id=getId(item);
-    chosen.push(item);
-    chosenIds.add(id);
-    used.push(id);
+  if(!clean.length||count<=0)return [];
+  if(Number.isFinite(Number(window.__progressSequenceIndex))){
+    const testIndex=Math.max(0,Number(window.__progressSequenceIndex)||0);
+    const start=(testIndex*count)%clean.length;
+    const out=[];
+    for(let i=0;i<count&&i<clean.length;i++)out.push(clean[(start+i)%clean.length]);
+    return out;
   }
-
-  try{
-    localStorage.setItem(storageKey,JSON.stringify(used.slice(-Math.max(clean.length,50))));
-  }catch{}
-
-  return chosen;
+  // Fallback for old/offline flows: preserve a per-user full-cycle list.
+  const storageKey=progressCycleStorageKey(bucket);let used=[];
+  try{const parsed=JSON.parse(localStorage.getItem(storageKey)||'[]');if(Array.isArray(parsed))used=parsed}catch{}
+  const out=[];
+  while(out.length<count&&out.length<clean.length){let item=clean.find(x=>!used.includes(getId(x))&&!out.some(y=>getId(y)===getId(x)));if(!item){used=[];item=clean.find(x=>!out.some(y=>getId(y)===getId(x)))}if(!item)break;out.push(item);used.push(getId(item));}
+  try{localStorage.setItem(storageKey,JSON.stringify(used))}catch{}
+  return out;
 }
 
-function progressLevelKey(program){
-  return String(program||'').toLowerCase().includes('intermediate')?'intermediate':'beginner';
+function progressLevelKey(program){return progressAdaptiveTier(program)}
+
+function currentTestAge(){
+  const y=Number(state.placementBirthYear||localStorage.getItem('speakhub_test_birth_year')||0);
+  return y?new Date().getFullYear()-y:null;
+}
+function progressAdaptiveTier(program){
+  const p=String(program||'').toLowerCase(),age=currentTestAge();
+  if(p.includes('kid')) return age!==null&&age<10?'youngKid':'teenKid';
+  if(p.includes('intermediate')) return 'intermediate';
+  return 'beginner';
 }
 
 function sampleProgressQuiz(program){
+  const youngKidBank=[
+    {q:'Choose the correct sentence.',o:['I like apples.','I likes apples.','I am like apples.'],a:0,skill:'Grammar'},
+    {q:'Which word is an animal?',o:['Tiger','Table','Blue'],a:0,skill:'Vocabulary'},
+    {q:'Choose the best reply: “How are you?”',o:['I’m good, thank you.','Seven o’clock.','A banana.'],a:0,skill:'Comprehension'},
+    {q:'Choose the correct word: “She ___ happy.”',o:['is','are','am'],a:0,skill:'Grammar'},
+    {q:'Which word means the opposite of “big”?',o:['Small','Fast','Happy'],a:0,skill:'Vocabulary'},
+    {q:'Choose the natural question.',o:['What is your name?','What your name is?','Name what you?'],a:0,skill:'Grammar'},
+    {q:'If someone says “Thank you,” what can you say?',o:['You’re welcome.','Good night yesterday.','I am ten.'],a:0,skill:'Comprehension'},
+    {q:'Choose the correct sentence.',o:['He can swim.','He can swims.','He can to swim.'],a:0,skill:'Grammar'},
+    {q:'Which word is a color?',o:['Purple','School','Run'],a:0,skill:'Vocabulary'},
+    {q:'Choose the best answer: “What do you like to play?”',o:['I like to play football.','At five o’clock.','Because blue.'],a:0,skill:'Fluency'},
+    {q:'Choose the correct plural.',o:['Two books','Two book','Two bookes'],a:0,skill:'Grammar'},
+    {q:'Which word means “very happy”?',o:['Excited','Hungry','Quiet'],a:0,skill:'Vocabulary'},
+    {q:'Choose the correct sentence.',o:['We go to school every day.','We goes to school every day.','We going school every day.'],a:0,skill:'Grammar'},
+    {q:'What does “I don’t know” mean?',o:['The person does not have the answer.','The person is saying yes.','The person is hungry.'],a:0,skill:'Comprehension'},
+    {q:'Choose the best reply: “Do you have a pet?”',o:['Yes, I have a dog.','At home yesterday.','Red and blue.'],a:0,skill:'Fluency'}
+  ];
+  const teenKidBank=[
+    {q:'Choose the correct sentence.',o:['I usually do my homework after dinner.','I usually does my homework after dinner.','I do usually my homework after dinner.'],a:0,skill:'Grammar'},
+    {q:'Which word is closest to “difficult”?',o:['Hard','Quiet','Cheap'],a:0,skill:'Vocabulary'},
+    {q:'Choose the best reply: “Why do you like science?”',o:['Because I enjoy experiments.','At eight o’clock.','Two books.'],a:0,skill:'Fluency'},
+    {q:'Choose the correct past tense.',o:['We watched a movie yesterday.','We watch a movie yesterday.','We watching yesterday.'],a:0,skill:'Grammar'},
+    {q:'What does “I changed my mind” mean?',o:['I made a different decision.','I forgot my name.','I went to sleep.'],a:0,skill:'Comprehension'},
+    {q:'Which phrase introduces a reason?',o:['Because...','For example...','Finally...'],a:0,skill:'Vocabulary'},
+    {q:'Choose the correct sentence.',o:['If it rains, we will stay inside.','If it rain, we stays inside.','If rain, we staying.'],a:0,skill:'Grammar'},
+    {q:'Which word means “to work together”?',o:['Cooperate','Disappear','Borrow'],a:0,skill:'Vocabulary'},
+    {q:'Which answer gives more detail?',o:['I prefer studying with friends because we can help each other.','Friends.','Yes.'],a:0,skill:'Fluency'},
+    {q:'Choose the natural question.',o:['What would you change about your school?','What you would change your school?','What change you school?'],a:0,skill:'Grammar'},
+    {q:'What does “That’s a good point” mean?',o:['The speaker thinks the idea is useful.','The speaker wants to leave.','The speaker did not hear anything.'],a:0,skill:'Comprehension'},
+    {q:'Which word is closest to “confident”?',o:['Sure of yourself','Very tired','Very angry'],a:0,skill:'Vocabulary'},
+    {q:'Choose the correct sentence.',o:['I have lived here for three years.','I live here since three years.','I am lived here for three years.'],a:0,skill:'Grammar'},
+    {q:'Which phrase politely disagrees?',o:['I understand, but I see it differently.','You are wrong.','No idea.'],a:0,skill:'Fluency'},
+    {q:'What does “It depends” mean?',o:['The answer can change with the situation.','The answer is always yes.','There is no question.'],a:0,skill:'Comprehension'}
+  ];
   const beginnerBank=[
     {q:'Choose the most natural sentence.',o:['I agree with you.','I am agree with you.','I agreeing with you.'],a:0,skill:'Grammar'},
     {q:'Choose the correct past tense.',o:['Yesterday I go to work.','Yesterday I went to work.','Yesterday I gone to work.'],a:1,skill:'Grammar'},
@@ -9674,11 +9781,32 @@ function sampleProgressQuiz(program){
   );
 
   // Snapshot the standardized pool BEFORE adding the dedicated grammar section.
+  const standardizedYoungKidBank=[...youngKidBank];
+  const standardizedTeenKidBank=[...teenKidBank];
   const standardizedBeginnerBank=[...beginnerBank];
   const standardizedIntermediateBank=[...intermediateBank];
 
-  // Extra grammar bank: increases variety and makes Grammar a clear part
-  // of every Progress Check. Each item includes a short Vietnamese explanation.
+  // Extra grammar bank: increases variety and keeps the test age/level appropriate.
+  const extraYoungKidGrammar=[
+    {q:'Choose the correct sentence.',o:['She is my friend.','She are my friend.','She am my friend.'],a:0,skill:'Grammar',explain:'“She” đi với “is”.'},
+    {q:'Choose the correct form.',o:['I have two brothers.','I has two brothers.','I having two brothers.'],a:0,skill:'Grammar',explain:'“I” đi với “have”.'},
+    {q:'Choose the correct sentence.',o:['They are playing.','They is playing.','They playing are.'],a:0,skill:'Grammar',explain:'“They” dùng “are + V-ing”.'},
+    {q:'Choose the correct question.',o:['Do you like cats?','Does you like cats?','You do like cats?'],a:0,skill:'Grammar',explain:'Với “you”, câu hỏi hiện tại đơn dùng “Do you...?”.'},
+    {q:'Choose the correct sentence.',o:['He goes to school.','He go to school.','He going to school every day.'],a:0,skill:'Grammar',explain:'“He” ở hiện tại đơn dùng động từ thêm -s.'},
+    {q:'Choose the correct form.',o:['There are three books.','There is three books.','There three books are.'],a:0,skill:'Grammar',explain:'Danh từ số nhiều dùng “There are”.'},
+    {q:'Choose the correct sentence.',o:['My mom can cook.','My mom can cooks.','My mom can to cook.'],a:0,skill:'Grammar',explain:'Sau “can” dùng động từ nguyên mẫu.'},
+    {q:'Choose the correct past sentence.',o:['I played yesterday.','I play yesterday.','I playing yesterday.'],a:0,skill:'Grammar',explain:'Hành động hôm qua dùng quá khứ đơn.'}
+  ];
+  const extraTeenKidGrammar=[
+    {q:'Choose the correct sentence.',o:['She has already finished her homework.','She already finish her homework.','She has already finish her homework.'],a:0,skill:'Grammar',explain:'Present perfect dùng “has + V3”.'},
+    {q:'Choose the correct form.',o:['If I have time, I will help you.','If I will have time, I help you.','If I had time tomorrow, I will helped you.'],a:0,skill:'Grammar',explain:'First conditional: If + hiện tại đơn, will + V.'},
+    {q:'Choose the correct sentence.',o:['This book is more interesting than that one.','This book is interestinger than that one.','This book more interesting that one.'],a:0,skill:'Grammar',explain:'Tính từ dài dùng “more ... than”.'},
+    {q:'Choose the correct question.',o:['How long have you studied English?','How long do you studied English?','How long have you study English?'],a:0,skill:'Grammar',explain:'Present perfect: have + V3.'},
+    {q:'Choose the correct sentence.',o:['I was studying when you called.','I studied when you were call.','I was study when you called.'],a:0,skill:'Grammar',explain:'Hành động đang diễn ra bị xen vào: was/were + V-ing.'},
+    {q:'Choose the correct form.',o:['You should talk to your teacher.','You should to talk to your teacher.','You should talking to your teacher.'],a:0,skill:'Grammar',explain:'Sau “should” dùng động từ nguyên mẫu.'},
+    {q:'Choose the correct sentence.',o:['The game was easier than I expected.','The game was more easy than I expected.','The game easier that I expect.'],a:0,skill:'Grammar',explain:'So sánh hơn của “easy” là “easier”.'},
+    {q:'Choose the correct form.',o:['I enjoy learning with friends.','I enjoy to learn with friends.','I enjoy learn with friends.'],a:0,skill:'Grammar',explain:'Sau “enjoy” dùng V-ing.'}
+  ];
   const extraBeginnerGrammar=[
     {q:'Choose the correct sentence.',o:['There is a book on the table.','There are a book on the table.','There have a book on the table.'],a:0,skill:'Grammar',explain:'“A book” là danh từ số ít nên dùng “There is”.'},
     {q:'Choose the correct form.',o:['My brother works on Saturdays.','My brother work on Saturdays.','My brother working on Saturdays.'],a:0,skill:'Grammar',explain:'Chủ ngữ ngôi thứ ba số ít “my brother” dùng động từ thêm -s ở hiện tại đơn.'},
@@ -9751,14 +9879,20 @@ function sampleProgressQuiz(program){
     {q:'Choose the correct form.',o:['Notwithstanding the delay, the project was completed successfully.','Notwithstanding of the delay, project completed successful.','Notwithstanding delayed, the project was complete successfully.'],a:0,skill:'Grammar',explain:'“Notwithstanding” đi trực tiếp với danh từ/cụm danh từ, không cần “of”.'}
   );
 
+  youngKidBank.push(...extraYoungKidGrammar);
+  teenKidBank.push(...extraTeenKidGrammar);
   beginnerBank.push(...extraBeginnerGrammar);
   intermediateBank.push(...extraIntermediateGrammar);
 
   // Expose dedicated Grammar pool for the extra 2 Grammar questions.
   const level=progressLevelKey(program);
-  window.progressDedicatedGrammarBank=(level==='intermediate'
-    ? extraIntermediateGrammar
-    : extraBeginnerGrammar
+  window.progressDedicatedGrammarBank=(level==='youngKid'
+    ? extraYoungKidGrammar
+    : level==='teenKid'
+      ? extraTeenKidGrammar
+      : level==='intermediate'
+        ? extraIntermediateGrammar
+        : extraBeginnerGrammar
   ).map(x=>({...x}));
 
   const enrich=(x)=>({...x,explain:x.explain||(
@@ -9768,9 +9902,13 @@ function sampleProgressQuiz(program){
   )});
 
   // This function is now the STANDARDIZED 5-question sampler only.
-  const standardizedSource=level==='intermediate'
-    ? standardizedIntermediateBank
-    : standardizedBeginnerBank;
+  const standardizedSource=level==='youngKid'
+    ? standardizedYoungKidBank
+    : level==='teenKid'
+      ? standardizedTeenKidBank
+      : level==='intermediate'
+        ? standardizedIntermediateBank
+        : standardizedBeginnerBank;
 
   return progressCyclePick(
     standardizedSource,
@@ -9780,95 +9918,49 @@ function sampleProgressQuiz(program){
   ).map((x,i)=>({...enrich(x),id:i}));
 }
 
-function pickProgressGeneralQuestion(){
-  const bank=[
-    'Tell me about a habit you would like to improve. Why is it important to you?',
-    'Describe a recent problem you solved. What did you do?',
-    'Tell me about something you learned recently and why it was useful.',
-    'Do you prefer planning things carefully or being spontaneous? Why?',
-    'Describe a place where you feel comfortable and explain why.',
-    'Tell me about a goal you are working toward.',
-    'What makes a conversation interesting for you?',
-    'Describe a decision you made recently.',
-    'What is one thing you would like to become better at this year?',
-    'Tell me about a person you enjoy talking with. What makes conversations with them good?',
-    'What is one change that would improve your daily routine?',
-    'Describe an experience that taught you something important.',
-    'Do you learn better alone or with other people? Explain.',
-    'What is one technology you use often, and how does it help you?',
-    'What advice would you give someone who wants to speak English more confidently?',
-    'What is one thing you have become better at recently?',
-    'Tell me about a situation where you had to explain something clearly.',
-    'What makes a good daily routine?',
-    'Describe a time you had to adapt to a change.',
-    'What is one thing you would like to simplify in your life?',
-    'Tell me about an experience that required patience.',
-    'What makes you feel productive?',
-    'Describe a time you worked with someone very different from you.',
-    'What is one thing that helps you remember new information?',
-    'Do you prefer making plans early or deciding at the last minute? Why?',
-    'Tell me about something you changed your mind about.',
-    'What is one way you manage stress?',
-    'Describe a situation where asking a question helped you.',
-    'What makes you feel comfortable speaking with new people?',
-    'Tell me about a time you had to prioritize several tasks.',
-    'What is one activity you would recommend to a friend?',
-    'Describe something you do differently now compared with a year ago.',
-    'What is one problem technology helps you solve?',
-    'What makes learning enjoyable for you?',
-    'Tell me about a time you gave or received useful feedback.'
-  ];
-
-
-  bank.push(
-    'Tell me about a small change that made your day easier.',
-    'Describe a time you had to learn something quickly.',
-    'What is one habit that helps you stay organized?',
-    'Tell me about a conversation that changed your opinion.',
-    'Describe a situation where you needed to stay calm.',
-    'What is one skill everyone should learn? Why?',
-    'Tell me about a time you helped someone solve a problem.',
-    'Describe a place you would like to visit again.',
-    'What is one thing you do to save time during the week?',
-    'Tell me about a choice that was difficult but useful.',
-    'What makes a team work well together?',
-    'Describe a time when you had to ask for help.',
-    'What is one thing you wish people communicated more clearly about?',
-    'Tell me about a recent moment that made you proud.',
-    'Describe an activity that helps you relax after a busy day.',
-    'What is one thing you would improve about your neighborhood?',
-    'Tell me about a time you had to change your plan unexpectedly.',
-    'What makes someone a good listener?',
-    'Describe something you used to find difficult but now find easier.',
-    'What is one useful piece of advice you received recently?',
-    'Tell me about a time you had to make a quick decision.',
-    'What is one thing that motivates you when you feel tired?',
-    'Describe a situation where preparation helped you succeed.',
-    'What makes a workplace or classroom comfortable for you?',
-    'Tell me about something you would like to teach another person.',
-    'What is one everyday problem you think could be solved better?',
-    'Describe a time you misunderstood someone and how you fixed it.',
-    'What makes a good first impression?',
-    'Tell me about a time you tried something outside your comfort zone.',
-    'What is one thing you do differently when you are under pressure?',
-    'Describe a useful app or tool and how you use it.',
-    'What is one change you have noticed in yourself recently?',
-    'Tell me about a time someone gave you helpful advice.',
-    'What makes you trust someone in a conversation?',
-    'Describe a situation where you had to be patient.',
-    'What is one thing you would like to spend less time doing?',
-    'Tell me about a time you had to persuade someone.',
-    'What makes a goal realistic?',
-    'Describe a time when practice helped you improve.',
-    'What is one topic you can talk about for a long time? Why?'
-  );
-
-  return progressCyclePick(
-    bank,
-    1,
-    'speaking-general',
-    q=>q
-  )[0] || bank[0];
+function pickProgressGeneralQuestion(program){
+  const tier=progressAdaptiveTier(program);
+  const banks={
+    youngKid:[
+      'Tell me about your favorite game. Why do you like it?',
+      'What do you like to do after school?',
+      'Tell me about your favorite food.',
+      'Describe your best friend or someone in your family.',
+      'What is your favorite animal? Tell me three things about it.',
+      'Tell me about a fun day at school.',
+      'What do you like doing on the weekend?',
+      'Describe your bedroom or classroom.',
+      'What is something you are good at?',
+      'Tell me about a place you like to visit.'
+    ],
+    teenKid:[
+      'Tell me about a school subject you enjoy and explain why.',
+      'Describe a problem you solved at school or at home.',
+      'What is one skill you want to improve this year?',
+      'Do you prefer studying alone or with friends? Why?',
+      'Tell me about a time you tried something new.',
+      'What makes a good friend or teammate?',
+      'Describe a school rule you would change and explain why.',
+      'What is one thing that helps you learn better?',
+      'Tell me about a goal you have for this school year.',
+      'Do phones help students learn or distract them? Explain.'
+    ],
+    beginner:PROGRESS_GENERAL_SPEAKING,
+    intermediate:[
+      ...PROGRESS_GENERAL_SPEAKING,
+      'Describe a difficult decision you made and the factors you considered.',
+      'What is one social change that could improve daily life in your city?',
+      'Tell me about a situation where you had to persuade someone.',
+      'What makes a team effective when people disagree?',
+      'Do you think technology is improving communication? Explain both sides.',
+      'What is one career skill that will become more important in the next five years?',
+      'Describe a time you had to change your strategy because the first approach failed.',
+      'What is one trade-off people often ignore when making decisions?',
+      'How can someone disagree strongly while still sounding respectful?',
+      'What makes an argument convincing rather than simply confident?'
+    ]
+  };
+  return progressCyclePick(banks[tier]||banks.beginner,1,`speaking-general-${tier}`,q=>q)[0];
 }
 
 function progressTopicQuestion(topic){
@@ -9996,7 +10088,7 @@ async function showProgressTestHistory(){
 }
 
 async function renderWeekly(rv){
-  setTitle('Kiểm tra tiến độ','7 câu trắc nghiệm + 2 Speaking');
+  setTitle('Kiểm tra tiến độ','Progress Test · Pronunciation · Session Comprehension');
 
   if(!state.logged){
     rv.innerHTML=`<div class="testbox"><section class="card success">
@@ -10038,7 +10130,7 @@ async function renderWeekly(rv){
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
           <div>
             <h2 style="margin:0">Kiểm tra tiến độ</h2>
-            <p class="muted" style="margin:5px 0 0">7 câu trắc nghiệm (5 câu chuẩn hóa + 2 Grammar) + 2 Speaking</p>
+            <p class="muted" style="margin:5px 0 0;font-size:14px">Theo dõi tiến bộ qua 3 bài test: Progress · Pronunciation · Session Comprehension</p>
           </div>
           <div style="display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end">
             <span class="badge ${pending.length?'orange':'green'}">${pending.length} bài đang chờ</span>
@@ -10050,11 +10142,26 @@ async function renderWeekly(rv){
             <b>${pending[0]==='TEST_MODE_PROGRESS'?'Test mode đang bật':'Có session đã học cần Progress Test'}</b>
             <div class="tiny" style="margin-top:4px">Điểm được chấm theo cùng benchmark để so sánh qua thời gian.</div>
           </div>
-          <div style="display:grid;gap:8px;margin-top:12px">
-            <button type="button" id="progressStartBtn" class="btn primary" style="width:100%;${Number(progressUsage.remaining||0)<=0?'opacity:.45;cursor:not-allowed':''}" ${Number(progressUsage.remaining||0)<=0?'disabled':''}>${Number(progressUsage.remaining||0)>0?`Thực hiện Progress Test · còn ${Number(progressUsage.remaining||0)}/3 lượt hôm nay`:'Đã dùng hết 3 lượt hôm nay'}</button>
-            <button type="button" class="btn secondary" style="width:100%;font-size:12px;padding:10px 14px" onclick="showProgressTestHistory()">Xem lại lịch sử bài test</button>
+          <div style="display:grid;gap:10px;margin-top:12px">
+            <button type="button" id="progressStartBtn" class="btn primary" style="width:100%;font-size:15px;padding:13px 16px;${Number(progressUsage.remaining||0)<=0?'opacity:.45;cursor:not-allowed':''}" ${Number(progressUsage.remaining||0)<=0?'disabled':''}>📈 ${Number(progressUsage.remaining||0)>0?`Thực hiện Progress Test · còn ${Number(progressUsage.remaining||0)}/3 lượt hôm nay`:'Đã dùng hết 3 lượt hôm nay'}</button>
+            <div class="progress-suite">
+              <button type="button" class="progress-suite-card progress-suite-action" onclick="openPronunciationTest()">
+                <div class="progress-suite-icon">🎙️</div>
+                <div class="progress-suite-copy"><b>Pronunciation Test</b><span>~2 phút · paragraph + random words · tối đa 3/3 lượt mỗi ngày.</span></div>
+                <span class="progress-suite-arrow">›</span>
+              </button>
+              <button type="button" class="progress-suite-card progress-suite-action" onclick="openComprehensionTest()">
+                <div class="progress-suite-icon">🧠</div>
+                <div class="progress-suite-copy"><b>Session Comprehension</b><span>Mỗi session chỉ test 1 lần · câu hỏi theo đúng level.</span></div>
+                <span class="progress-suite-arrow">›</span>
+              </button>
+            </div>
           </div>
-        `:`<div class="reschedule-box" style="margin-top:14px"><b>✓ Đã hoàn thành tất cả Progress Test hiện có.</b></div>`}
+        `:`<div class="reschedule-box" style="margin-top:14px"><b>✓ Đã hoàn thành tất cả Progress Test hiện có.</b></div>
+          <div class="progress-suite">
+            <button type="button" class="progress-suite-card progress-suite-action" onclick="openPronunciationTest()"><div class="progress-suite-icon">🎙️</div><div class="progress-suite-copy"><b>Pronunciation Test</b><span>~2 phút · paragraph + random words · tối đa 3/3 lượt mỗi ngày.</span></div><span class="progress-suite-arrow">›</span></button>
+            <button type="button" class="progress-suite-card progress-suite-action" onclick="openComprehensionTest()"><div class="progress-suite-icon">🧠</div><div class="progress-suite-copy"><b>Session Comprehension</b><span>Mỗi session chỉ test 1 lần · câu hỏi theo level.</span></div><span class="progress-suite-arrow">›</span></button>
+          </div>`}
       </section>
 
       <section class="card dash-card" style="margin-top:18px" id="realProgressChart">
@@ -10068,11 +10175,21 @@ async function renderWeekly(rv){
       </section>
 
       <section class="card dash-card" style="margin-top:18px">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+          <h3 style="margin:0">Tổng quan các bài test</h3>
+          <span class="tiny">Week / All tests</span>
+        </div>
+        <div id="testCenterStats" class="test-center-stats" style="margin-top:12px"><div class="tiny">Đang tải thống kê test...</div></div>
+      </section>
+
+      <section class="card dash-card" style="margin-top:18px">
         <h3 style="margin-top:0">Cách đo tiến bộ</h3>
         <div class="tiny" style="display:grid;gap:9px;line-height:1.5">
           <div>📝 <b>5 câu standardized:</b> Grammar · Vocabulary · Comprehension theo level.</div>
           <div>🎙️ <b>Speaking 1:</b> general English để so sánh Fluency ổn định qua từng session.</div>
           <div>💬 <b>Speaking 2:</b> liên quan nhẹ topic vừa học, nhưng AI chỉ chấm English chứ không chấm kiến thức topic.</div>
+          <div>🎙️ <b>Pronunciation:</b> paragraph + random words để đo Accuracy · Clarity · Stress & Rhythm · Fluency.</div>
+          <div>🧠 <b>Session Comprehension:</b> kiểm tra hiểu topic và khả năng giải thích vocabulary bằng English theo đúng level.</div>
         </div>
       </section>
     </div>
@@ -10097,6 +10214,7 @@ async function renderWeekly(rv){
 
   const hist=await loadProgressHistory(false);
   renderProgressHistoryDashboard(hist);
+  hydrateTestCenterStats();
 }
 
 function renderProgressHistoryDashboard(hist){
@@ -10145,8 +10263,10 @@ function renderProgressHistoryDashboard(hist){
     </div>`;
 }
 
-function weeklyRun(sessionId){
+async function weeklyRun(sessionId){
   state.currentProgressSession=sessionId;
+  const sequenceHistory=await loadProgressHistory(false).catch(()=>[]);
+  window.__progressSequenceIndex=Array.isArray(sequenceHistory)?sequenceHistory.length:0;
 
   const info=progressSessionInfo(sessionId)||{};
   const topic=info.topic||'General English';
@@ -10183,7 +10303,7 @@ function weeklyRun(sessionId){
   window.progressQuizItems=progressQuizItems=combined.map((x,i)=>({...x,id:i}));
 
   window.progressSpeakingQuestions=progressSpeakingQuestions=[
-    pickProgressGeneralQuestion(),
+    pickProgressGeneralQuestion(program),
     progressTopicQuestion(topic)
   ];
 
@@ -11785,6 +11905,41 @@ async function handlePayOSReturn(){
     showLanding();
   }
 })();
+
+
+/* ===== V112 Pronunciation + Session Comprehension ===== */
+let aiTestRecorder=null,aiTestChunks=[],aiTestSeconds=0,aiTestTimer=null;
+function aiTestModal(html){let el=document.getElementById('aiTestOverlay');if(!el){el=document.createElement('div');el.id='aiTestOverlay';el.className='ai-test-overlay';document.body.appendChild(el)}el.innerHTML=`<div class="ai-test-sheet">${html}</div>`;el.onclick=e=>{if(e.target===el)closeAiTest()}}
+function closeAiTest(){try{if(aiTestRecorder&&aiTestRecorder.state==='recording')aiTestRecorder.stop()}catch{} clearInterval(aiTestTimer);document.getElementById('aiTestOverlay')?.remove()}
+async function openPronunciationTest(){
+  const {customerId,token}=currentCustomerCredentials();
+  if(!customerId||!token){alert('Vui lòng đăng nhập để làm Pronunciation Test.');return}
+  aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">AI Pronunciation Test · ~2 phút</span><h2>Đang chuẩn bị bài mới...</h2><p class="muted">SpeakHub đang chọn paragraph và vocabulary chưa dùng trước đó.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div>`);
+  try{
+    const r=await fetch(`/api/admin?action=pronunciation-prompt&customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}`,{cache:'no-store'});
+    const d=await r.json();
+    if(!r.ok){
+      if(d.error==='PRONUNCIATION_DAILY_LIMIT'){
+        aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">Pronunciation 3/3</span><h2>Hôm nay bạn đã dùng đủ 3 lượt</h2><p class="muted">Ngày mai hệ thống sẽ mở lại 3 lượt với nội dung mới.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><button class="btn secondary" style="width:100%" onclick="closeAiTest()">Đóng</button>`);return;
+      }
+      throw new Error(d.details||d.error||'Không tải được bài Pronunciation.');
+    }
+    window.__pronWords=d.words||[];window.__pronParagraph=d.paragraph||'';window.__pronReference=d.reference_text||'';window.__pronTier=d.tier||'';
+    aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">AI Pronunciation Test · ${escapeHtml(d.tier||'adaptive')} · còn ${Number(d.usage?.remaining||0)}/3 lượt hôm nay</span><h2>Read clearly & naturally</h2><p class="muted">Đọc paragraph trước, sau đó đọc từng từ. Mỗi lượt dùng nội dung khác để tránh học thuộc bài.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><h3>1. Short paragraph</h3><div class="test-reading">${escapeHtml(d.paragraph||'')}</div><h3>2. Random words</h3><div class="word-chips">${(d.words||[]).map(x=>`<span class="word-chip">${escapeHtml(x)}</span>`).join('')}</div><div id="pronOrb" class="rec-orb">🎙️</div><div id="pronTimer" style="text-align:center;font-weight:900">00:00</div><button id="pronRecBtn" class="btn primary" style="width:100%;margin-top:12px" onclick="startPronRecording()">Bắt đầu ghi âm</button><div class="tiny" style="text-align:center;margin-top:8px">Tối đa 3 lượt/ngày · nội dung được xoay tự động và tránh lặp lại.</div>`);
+  }catch(e){
+    aiTestModal(`<div class="ai-test-head"><h2>Chưa mở được bài test</h2><button class="ai-test-close" onclick="closeAiTest()">×</button></div><p class="muted">${escapeHtml(String(e.message||e))}</p><button class="btn secondary" style="width:100%" onclick="closeAiTest()">Đóng</button>`)
+  }
+}
+async function startPronRecording(){try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});aiTestChunks=[];aiTestSeconds=0;aiTestRecorder=new MediaRecorder(stream);aiTestRecorder.ondataavailable=e=>{if(e.data.size)aiTestChunks.push(e.data)};aiTestRecorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());submitPronRecording()};aiTestRecorder.start();document.getElementById('pronOrb')?.classList.add('recording');const b=document.getElementById('pronRecBtn');b.textContent='Dừng & chấm bằng AI';b.onclick=stopPronRecording;aiTestTimer=setInterval(()=>{aiTestSeconds++;const m=String(Math.floor(aiTestSeconds/60)).padStart(2,'0'),sec=String(aiTestSeconds%60).padStart(2,'0');const t=document.getElementById('pronTimer');if(t)t.textContent=`${m}:${sec}`;if(aiTestSeconds>=120)stopPronRecording()},1000)}catch(e){alert('Không mở được microphone. Hãy cho phép trình duyệt sử dụng microphone.')}}
+function stopPronRecording(){clearInterval(aiTestTimer);if(aiTestRecorder?.state==='recording')aiTestRecorder.stop();const b=document.getElementById('pronRecBtn');if(b){b.disabled=true;b.textContent='AI đang phân tích...'}}
+async function submitPronRecording(){try{const blob=new Blob(aiTestChunks,{type:aiTestChunks[0]?.type||'audio/webm'});const {customerId,token}=currentCustomerCredentials();if(!customerId||!token)throw new Error('Vui lòng đăng nhập/đặt chỗ trước để lưu kết quả test.');const fd=new FormData();fd.append('customer_id',customerId);fd.append('token',token);fd.append('audio',blob,'pronunciation.webm');fd.append('reference_text',window.__pronReference||('PARAGRAPH:\n'+(window.__pronParagraph||'')+'\nWORDS: '+(window.__pronWords||[]).join(', ')));const r=await fetch('/api/admin?action=pronunciation-score',{method:'POST',body:fd});const d=await r.json();if(!r.ok)throw new Error(d.details||d.error);renderPronResult(d)}catch(e){aiTestModal(`<div class="ai-test-head"><h2>Chưa chấm được bài test</h2><button class="ai-test-close" onclick="closeAiTest()">×</button></div><p class="muted">${escapeHtml(String(e.message||e))}</p><button class="btn primary" onclick="openPronunciationTest()">Thử lại</button>`)}}
+function renderPronResult(d){aiTestModal(`<div class="ai-test-head"><div><span class="badge green">Pronunciation Result</span><h2>Kết quả phát âm</h2></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><div class="score-ring">${Number(d.overall_score||0)}</div><div class="test-center-stats"><div class="test-stat"><b>${d.accuracy_score||0}</b><span>Accuracy</span></div><div class="test-stat"><b>${d.clarity_score||0}</b><span>Clarity</span></div><div class="test-stat"><b>${d.stress_score||0}</b><span>Stress & rhythm</span></div><div class="test-stat"><b>${d.fluency_score||0}</b><span>Fluency</span></div></div><h3>AI feedback</h3><p>${escapeHtml(d.summary_vi||'')}</p>${(d.improvements_vi||[]).map(x=>`<div class="reschedule-box" style="margin-top:8px">${escapeHtml(x)}</div>`).join('')}<button class="btn primary" style="width:100%;margin-top:15px" onclick="closeAiTest();if(state.route==='weekly')go('weekly');else hydrateTestCenterStats()">Hoàn tất</button>`) }
+async function openComprehensionTest(){const {customerId,token}=currentCustomerCredentials();if(!customerId||!token){alert('Vui lòng đăng nhập để làm Session Comprehension Test.');return}aiTestModal(`<div class="ai-test-head"><h2>Session Comprehension</h2><button class="ai-test-close" onclick="closeAiTest()">×</button></div><p class="muted">Đang tìm 3 session gần nhất...</p>`);try{const r=await fetch(`/api/admin?action=comprehension-status&customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}`,{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error(d.details||d.error);renderComprehensionSessions(d.sessions||[])}catch(e){renderComprehensionSessions([{id:'DEMO_SUCCESS',topic_title:'Why Do Some People Become Successful Faster Than Others?',program_name:'Adult Intermediate',session_date:'Demo',done:false,demo:true}])}}
+function renderComprehensionSessions(items){aiTestModal(`<div class="ai-test-head"><div><span class="badge green">After-session AI check</span><h2>Session Comprehension</h2><p class="muted">Chỉ hiển thị tối đa 3 session gần nhất. Mỗi session chỉ được làm 1 lần; bài đã hoàn thành sẽ khóa lại.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div>${items.length?items.map(x=>`<div class="session-test-card ${x.done?'done':''}"><div><b>${escapeHtml(x.topic_title||'English Session')}</b><div class="tiny">${escapeHtml(x.program_name||'SpeakHub')} · ${escapeHtml(String(x.session_date||''))}${x.demo?' · Demo':''}</div></div><button class="btn ${x.done?'ghost':'primary'} small" ${x.done?'disabled':''} onclick="loadComprehensionQuiz('${x.id}',${x.demo?'true':'false'})">${x.done?'✓ Đã test':'Bắt đầu'}</button></div>`).join(''):'<div class="reschedule-box"><b>Chưa có session đã kết thúc.</b></div>'}<div style="margin-top:14px"><button class="btn secondary" onclick="loadComprehensionQuiz('DEMO_SUCCESS',true)">Xem demo · Why Do Some People Become Successful Faster Than Others?</button></div>`) }
+async function loadComprehensionQuiz(sessionId,demo=false){const {customerId,token}=currentCustomerCredentials();aiTestModal(`<div class="ai-test-head"><h2>Đang tạo câu hỏi...</h2><button class="ai-test-close" onclick="closeAiTest()">×</button></div><p class="muted">AI đang điều chỉnh độ khó theo level của session.</p>`);try{const r=await fetch('/api/admin?action=comprehension-quiz',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer_id:customerId,token,session_id:sessionId,demo})});const d=await r.json();if(!r.ok)throw new Error(d.details||d.error);window.__compQuiz=d;renderComprehensionQuiz(d)}catch(e){alert(String(e.message||e));openComprehensionTest()}}
+function renderComprehensionQuiz(d){const kid=String(d.level||'').toLowerCase().includes('kid');aiTestModal(`<div class="ai-test-head"><div><span class="badge green">${escapeHtml(d.level||'SpeakHub')}</span><h2>${escapeHtml(d.topic_title)}</h2><p class="muted">Trả lời bằng English. Với vocabulary, hãy giải thích nghĩa bằng English thay vì dịch sang tiếng Việt.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div>${kid?'<div class="kid-visual">🌟 🏃‍♀️ 🏆 💡</div>':''}<form id="compForm">${(d.questions||[]).map((q,i)=>`<div class="qa-block">${q.visual?`<div style="font-size:32px;margin-bottom:7px">${escapeHtml(q.visual)}</div>`:''}<b>${i+1}. ${escapeHtml(q.prompt)}</b>${q.word?`<div class="word-chips"><span class="word-chip">${escapeHtml(q.word)}</span></div>`:''}<textarea name="a${i}" placeholder="Answer in English..."></textarea></div>`).join('')}<button type="button" class="btn primary" style="width:100%;margin-top:15px" onclick="submitComprehension()">Gửi AI phân tích</button></form>`) }
+async function submitComprehension(){const d=window.__compQuiz,form=document.getElementById('compForm');const answers=(d.questions||[]).map((q,i)=>({prompt:q.prompt,word:q.word||null,answer:form[`a${i}`]?.value||''}));const btn=form.querySelector('button');btn.disabled=true;btn.textContent='AI đang phân tích...';try{const {customerId,token}=currentCustomerCredentials();const r=await fetch('/api/admin?action=comprehension-score',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer_id:customerId,token,session_id:d.session_id,demo:d.demo,topic_title:d.topic_title,level:d.level,questions:d.questions,answers})});const out=await r.json();if(!r.ok)throw new Error(out.details||out.error);aiTestModal(`<div class="ai-test-head"><div><span class="badge green">Comprehension Result</span><h2>${escapeHtml(d.topic_title)}</h2></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><div class="score-ring">${out.overall_score||0}</div><div class="test-center-stats"><div class="test-stat"><b>${out.topic_understanding_score||0}</b><span>Topic understanding</span></div><div class="test-stat"><b>${out.vocabulary_score||0}</b><span>Vocabulary</span></div></div><h3>AI analysis</h3><p>${escapeHtml(out.summary_vi||'')}</p>${(out.feedback_vi||[]).map(x=>`<div class="reschedule-box" style="margin-top:8px">${escapeHtml(x)}</div>`).join('')}<button class="btn primary" style="width:100%;margin-top:14px" onclick="closeAiTest();if(state.route==='weekly')go('weekly');else hydrateTestCenterStats()">Hoàn tất</button>`) }catch(e){btn.disabled=false;btn.textContent='Gửi AI phân tích';alert(String(e.message||e))}}
+async function hydrateTestCenterStats(){const host=document.getElementById('testCenterStats');if(!host)return;const {customerId,token}=currentCustomerCredentials();if(!customerId||!token){host.innerHTML='<div class="tiny">Đăng nhập để xem thống kê test.</div>';return}try{const r=await fetch(`/api/admin?action=test-dashboard&customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}`,{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error();host.innerHTML=[['Placement',d.placement],['Progress',d.progress],['Pronunciation',d.pronunciation],['Comprehension',d.comprehension]].map(([n,v])=>`<div class="test-stat"><b>${v?.week||0} <small style="font-size:10px;font-weight:600">week</small> / ${v?.all||0}</b><span>${n} · week / all tests</span></div>`).join('')}catch{host.innerHTML='<div class="tiny">Chưa tải được thống kê test.</div>'}}
 </script>
 
 <div class="speakhub-branch-address">

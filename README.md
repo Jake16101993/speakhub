@@ -1,3 +1,22 @@
+# SpeakHub V117
+
+Adaptive, non-repeating test banks for Placement, Progress, Pronunciation, and Session Comprehension. Young Kid (<10), Teen Kid (10-15), Beginner, and Intermediate receive different difficulty. Content is consumed sequentially and cycles only after the relevant bank is exhausted. No new SQL beyond V112 AI Test Center schema.
+
+# SpeakHub V116 — Pronunciation limits + non-repeat content
+
+- Pronunciation buttons use a lighter orange background with black text for better contrast.
+- Pronunciation Test is limited server-side to 3 completed attempts per learner per Vietnam calendar day.
+- Pronunciation content is selected server-side from 576 paragraph combinations plus a 467-word pronunciation bank; completed references are checked to avoid repeating prior full tests.
+- Session Comprehension is strictly one completed test per learner per real session. Both quiz creation and scoring reject a second attempt; the database unique key remains the final guard.
+- Same-day comprehension sessions are only eligible after the session end time.
+- No new SQL migration is required beyond the existing 112_ai_test_center.sql.
+
+# SpeakHub V112 — AI Test Center
+
+New: ~2-minute Pronunciation Test (paragraph + random words), post-session Comprehension Test with level-aware AI questions, demo topic “Why Do Some People Become Successful Faster Than Others?”, and Dashboard week/all counts for Placement / Progress / Pronunciation / Comprehension.
+
+Before deploy: run `112_ai_test_center.sql` once in Supabase SQL Editor.
+
 # SpeakHub V111
 
 Publisher management UX update. No new SQL migration is required if V110 is already deployed.

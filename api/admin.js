@@ -3092,6 +3092,307 @@ async function runAdminActionWithRetry(fn){
 }
 
 
+
+// ===== V117 adaptive test profiles =====
+async function customerAdaptiveTier(customerId,programName=''){
+  const p=String(programName||'').toLowerCase();
+  let latest=null;
+  if(customerId){
+    const {data,error}=await supabase.from('placement_tests').select('age_at_test,recommended_program_name,created_at').eq('customer_id',customerId).eq('status','COMPLETED').order('created_at',{ascending:false}).limit(1).maybeSingle();
+    if(!error)latest=data||null;
+  }
+  const age=Number(latest?.age_at_test||0)||null;
+  const levelText=(p||String(latest?.recommended_program_name||'').toLowerCase());
+  if(levelText.includes('kid')) return age!==null&&age<10?'youngKid':'teenKid';
+  if(age!==null&&age<10)return 'youngKid';
+  if(age!==null&&age<16)return 'teenKid';
+  if(levelText.includes('intermediate'))return 'intermediate';
+  return 'beginner';
+}
+function adaptiveDifficultyLabel(tier){
+  return tier==='youngKid'?'very easy English for a child under 10; concrete ideas, very short sentences, friendly and visual/emoji-friendly':tier==='teenKid'?'easy-to-moderate English for ages 10-15; clear school/life topics, simple reasons and examples':tier==='intermediate'?'intermediate B1-B2 English; richer vocabulary, reasoning, examples and nuance':'beginner A1-A2/B1 English; practical everyday language and clear short explanations';
+}
+
+// ===== V112 AI Test Center: Pronunciation + Session Comprehension =====
+function v112Text(data){return extractResponseText(data)}
+async function v112AI(prompt,schema,name){
+  const resp=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({model:process.env.OPENAI_PLACEMENT_MODEL||'gpt-5-mini',input:[{role:'system',content:[{type:'input_text',text:prompt}]}],text:{format:{type:'json_schema',name,schema,strict:true}}})});
+  const d=await resp.json().catch(()=>({}));if(!resp.ok)throw new Error(d?.error?.message||'OPENAI_TEST_FAILED');return JSON.parse(v112Text(d));
+}
+
+const V117_PRON_BANKS={
+  youngKid:{
+    paragraphs:[
+      'I have a little dog. He likes to run in the park and play with a red ball.',
+      'My school is near my house. I walk there with my sister every morning.',
+      'On Sunday, we make pancakes. I help mix the eggs, milk, and flour.',
+      'The sun is bright today. We take our bikes outside and ride around the park.',
+      'My favorite animal is a dolphin. It can swim fast and jump out of the water.',
+      'I keep my books on a small desk. My blue pencil case is next to the lamp.',
+      'After school, I eat a snack and play a game with my brother.',
+      'There are three birds in the tree. One is yellow and two are brown.',
+      'I like rainy days because I can wear my boots and use my umbrella.',
+      'Our teacher reads a funny story. Everyone listens and laughs together.',
+      'My birthday is in October. We have a cake, candles, and a small family party.',
+      'At the zoo, I see a tall giraffe, a sleepy lion, and two playful monkeys.',
+      'I wash my hands before lunch and put my plate on the table.',
+      'My friend and I build a tower with blocks. We try again when it falls down.',
+      'We plant a small flower in the garden and give it water every day.',
+      'I can sing one English song. I practise it slowly and then sing it faster.',
+      'The bus comes at seven. I sit by the window and look at the streets.',
+      'My grandma makes warm soup. I help carry the bowls to the table.',
+      'I draw a green tree, a yellow sun, and a small house with a red door.',
+      'Before bed, I brush my teeth and choose one short book to read.'
+    ],
+    words:'apple animal balloon banana basket beautiful birthday brother chicken classroom cloudy cookie dinner doctor family favorite flower friend funny garden giraffe happy homework jacket kitchen little monkey morning mother orange pencil picture playground purple rabbit rainy school sister sleepy smile soccer spoon student sunny teacher tiger tomorrow umbrella window yellow'.split(/\s+/)
+  },
+  teenKid:{
+    paragraphs:[
+      'Learning a new skill takes time. Short practice every day can be more useful than one very long lesson each week.',
+      'Our class worked on a science project together. We shared ideas, tested different designs, and fixed the parts that did not work.',
+      'A good friend listens carefully and speaks honestly. Small problems are easier to solve when both people stay calm.',
+      'Phones can help students find information quickly, but they can also make it harder to focus during homework.',
+      'Last weekend, my family visited a new place in the city. We took photos, tried local food, and learned something about its history.',
+      'When I feel nervous before speaking English, I prepare my first sentence and take one slow breath before I begin.',
+      'Team sports teach more than physical skills. Players also learn to communicate, support each other, and handle mistakes.',
+      'A useful school project should solve a real problem. Even a simple idea can become interesting when students test and improve it.',
+      'Reading stories in English helps me notice new words in context. I remember them better when I use them in my own sentences.',
+      'Good study habits are easier to keep when goals are clear. Finishing one small task can make the next task feel less difficult.',
+      'People sometimes disagree because they understand a situation differently. Asking a question can be better than making a quick judgment.',
+      'Trying something new can feel uncomfortable at first. Confidence often grows after we practise, make mistakes, and try again.',
+      'A strong presentation has a clear beginning, useful examples, and a short ending that reminds the audience of the main idea.',
+      'Social media can be fun and useful, but people should check information before sharing it with others.',
+      'If students want to improve English, they need chances to speak. Real conversations help turn passive knowledge into active skill.',
+      'A difficult subject becomes easier when students break it into smaller parts and ask for help when they need it.',
+      'Volunteering can help young people understand their community. It also gives them a chance to meet people with different experiences.',
+      'Saving money for a goal requires patience. Small choices each week can become a meaningful amount over several months.',
+      'A healthy routine includes enough sleep, regular movement, and time away from screens before bed.',
+      'When a plan fails, the best next step is to understand why. A small change in strategy may produce a much better result.'
+    ],
+    words:'achievement adventure advice attention awkward balance behaviour challenge choice comfortable community compare confident consequence creative curious decision describe develop different direction discussion education effective environment example familiar flexible focus future habit improve independent information journey language leadership meaningful motivate natural opportunity ordinary organise particular patience performance practical prefer prepare priority probably progress question realistic recognise recommend relationship reliable remember responsibility result rhythm schedule serious situation skill social specific strategy strength successful support technology thought through together useful usually variety vocabulary volunteer weather world'.split(/\s+/)
+  },
+  beginner:{
+    paragraphs:[
+      'Speaking English regularly can build confidence. A short conversation every day gives learners a chance to use familiar words in real situations.',
+      'A clear daily routine makes work easier to manage. People can choose a few important tasks and finish them before moving to smaller jobs.',
+      'Travelling to a new place can be exciting. Asking simple questions and listening carefully often helps visitors solve practical problems.',
+      'Good communication starts with listening. When people understand the main idea first, they can answer more clearly and avoid confusion.',
+      'Learning from mistakes is part of improvement. The important thing is to notice the problem, correct it, and practise the better version again.',
+      'A job interview becomes easier with preparation. Candidates should explain their experience with short examples and answer the question directly.',
+      'Healthy habits do not need to be complicated. Regular sleep, simple exercise, and balanced meals can support energy throughout the day.',
+      'Saving money becomes easier when people track small expenses. A simple plan can help them decide what is necessary and what can wait.',
+      'Technology is useful when it saves time or makes information easier to find. People still need to check important details before making decisions.',
+      'A good meeting should have a clear purpose. Everyone needs to know the main question and what action should happen next.',
+      'Friendships stay strong when people communicate honestly. It is often better to explain a problem calmly than to avoid the conversation.',
+      'Studying English through topics can make practice more interesting. Learners can connect new vocabulary with ideas they already understand.',
+      'Confidence in speaking grows slowly. People usually feel more comfortable after they have repeated useful phrases in several real conversations.',
+      'A useful presentation is easy to follow. The speaker introduces the idea, gives one or two examples, and finishes with a clear message.',
+      'People often manage time better when they reduce distractions. Turning off unnecessary notifications can make focused work much easier.',
+      'Customer service requires patience and clear language. Asking the right question can help identify the real problem before offering a solution.',
+      'Remote work can save travel time, but workers need clear routines and regular communication with their team.',
+      'A practical goal should be specific enough to measure. Small weekly progress is easier to notice when the target is clear.',
+      'When people learn new vocabulary, they remember it better by using the words in sentences instead of only reading a list.',
+      'A difficult conversation can improve when both people slow down, listen carefully, and explain what they need without blaming each other.',
+      'Exercise can improve energy and mood. A simple walk or short workout is often easier to maintain than an extreme plan.',
+      'Good teamwork depends on clear roles and respectful communication. People work faster when they know what they are responsible for.',
+      'Public transport can make cities more convenient. Reliable buses and trains help people travel without depending on private vehicles.',
+      'A strong habit starts with a small action that is easy to repeat. Consistency matters more than trying to change everything at once.',
+      'When learning feels difficult, changing the method may help. A different example or shorter practice session can make the idea clearer.'
+    ],
+    words:'accurate adapt advice affordable agreement answer apartment audience available balance business calendar career careful challenge choice comfortable compare confident convenient cooperate customer decision describe detail develop different direction discuss education effective efficient encourage energy environment example experience familiar flexible focus friendly future goal grammar habit healthy help improve information interview language learn manage meaningful method natural necessary notice opportunity organise patience practical prefer prepare problem productive progress pronunciation question realistic recommend relationship remember result schedule simple situation skill speaking strategy successful support useful usually value variety vocabulary weather workplace'.split(/\s+/)
+  }
+};
+
+const V116_PRON_PARAGRAPHS=[
+  "Every small habit shapes the way we learn. When people practise with patience, they notice mistakes earlier, speak more clearly, and build confidence step by step.",
+  "A useful conversation is not only about choosing the right words. Good speakers listen carefully, respond naturally, and give the other person enough time to share an idea.",
+  "Learning a language becomes easier when it is part of daily life. Reading signs, describing simple routines, and asking short questions can turn ordinary moments into useful practice.",
+  "People often improve faster when they focus on one clear goal. A specific target makes practice easier to measure and helps learners stay motivated when progress feels slow.",
+  "Technology can save time, but it can also create distractions. The best tools support our decisions without replacing the attention and effort needed to learn something well.",
+  "Travel teaches people to adapt quickly. New places, unfamiliar food, and different customs encourage us to observe carefully and communicate even when we do not know every word.",
+  "A strong team depends on trust and communication. Members need to explain ideas clearly, ask for help when necessary, and respect different opinions before making a decision.",
+  "Confidence usually grows after action, not before it. When learners speak despite small mistakes, they collect real experience and become less afraid of difficult conversations.",
+  "Healthy routines are easier to maintain when they are realistic. Sleeping well, moving regularly, and planning meals can support both physical energy and concentration during the day.",
+  "Successful people do not always work longer hours. Many of them choose priorities carefully, protect their attention, and spend more time on tasks that create meaningful results.",
+  "Cities change when more people work, study, and travel in different ways. Public transport, green spaces, and flexible services can make daily life more convenient for everyone.",
+  "A good presentation guides the listener from one idea to the next. Clear structure, short examples, and a calm speaking pace often matter more than using complicated vocabulary.",
+  "Making a difficult decision requires both information and judgment. People compare options, think about possible consequences, and decide which risk they are willing to accept.",
+  "Friendships can become stronger through honest communication. Small misunderstandings are easier to solve when people explain how they feel instead of making quick assumptions.",
+  "Workplaces are changing as artificial intelligence becomes more common. Employees may need to learn new skills, check information carefully, and use technology as a practical assistant.",
+  "Saving money is easier when people understand where their income goes. Simple planning can reveal unnecessary spending and make larger goals feel more achievable over time.",
+  "Curiosity helps people learn beyond the classroom. Asking why something happens, comparing different explanations, and searching for evidence can lead to deeper understanding.",
+  "A job interview is a conversation with a purpose. Strong candidates answer directly, support their claims with examples, and show how their experience connects to the role.",
+  "Social media can connect people quickly, but short messages sometimes create confusion. Reading carefully and checking context can prevent unnecessary arguments or false conclusions.",
+  "Children learn many skills through play. Games can encourage creativity, cooperation, problem solving, and the confidence to try again after something does not work.",
+  "A memorable story usually contains a clear change. The listener understands what happened, why it mattered, and how the character felt before and after the main event.",
+  "Negotiation works best when both sides understand each other's priorities. Asking useful questions can reveal solutions that are better than simply arguing about one number.",
+  "Good leaders do not need to have every answer. They create direction, listen to useful feedback, and help other people take responsibility for important decisions.",
+  "Environmental choices often involve trade-offs. A convenient option today may create a larger cost later, so communities need to compare short-term benefits with long-term impact.",
+  "Studying abroad can be exciting and challenging at the same time. Students must manage practical tasks, communicate with new people, and adapt to unfamiliar expectations.",
+  "People remember information better when they connect it to something meaningful. Examples, personal stories, and repeated practice can make new ideas easier to recall later.",
+  "A productive meeting needs a clear purpose. Participants should know what must be discussed, which decisions are required, and what actions will happen after the meeting ends.",
+  "Mistakes are useful when we examine them carefully. Instead of feeling embarrassed, learners can identify the cause, adjust their approach, and avoid repeating the same problem.",
+  "Customer service becomes difficult when expectations are unclear. Calm questions, accurate information, and practical solutions can turn a frustrating situation into a positive experience.",
+  "The ability to explain a complex idea simply is valuable. It shows that a speaker understands the topic and can choose language that matches the listener's needs.",
+  "Remote work offers flexibility, but it also requires discipline. People need to organise tasks, communicate progress, and create boundaries between working time and personal time.",
+  "Exercise can improve more than physical fitness. Regular movement may support mood, concentration, and energy, especially when it becomes a consistent part of a person's routine.",
+  "Different generations may view careers in different ways. Some value stability, while others prefer flexibility, rapid learning, or the freedom to change direction more often.",
+  "A good debate is not a competition to speak the loudest. Participants need evidence, logical reasons, and the ability to respond directly to the strongest point from the other side.",
+  "When people move to a new country, language is only one part of adaptation. Social habits, humour, workplace culture, and everyday rules can also take time to understand.",
+  "Buying something expensive often involves emotion as well as logic. Comparing real needs, long-term value, and alternative choices can reduce regret after the decision.",
+  "A clear explanation usually begins with the main idea. Details and examples should support that idea instead of forcing the listener to guess what the speaker is trying to say.",
+  "Building a new skill requires repetition with feedback. Practice becomes more effective when learners know what they did well and what specific detail they should change next time.",
+  "Communities become stronger when people participate. Sharing useful information, helping neighbours, and respecting common spaces can improve daily life in simple but meaningful ways.",
+  "The future of education may combine teachers, technology, and independent learning. The challenge is to use each method for the kind of learning it supports best.",
+  "People sometimes avoid difficult conversations because they expect conflict. Preparing the key message and listening without interrupting can make the discussion more respectful and useful.",
+  "Creativity often begins with ordinary observations. A small inconvenience, an unusual question, or a different combination of familiar ideas can become the start of something new.",
+  "Strong pronunciation is not about copying one perfect accent. The main goal is to make sounds, stress, and rhythm clear enough that other people can understand the message easily.",
+  "Time management is really about choosing what deserves attention. A full schedule can still be unproductive if important tasks are constantly delayed by smaller urgent requests.",
+  "When learning feels difficult, changing the method can be more useful than simply trying harder. A new example, shorter practice, or immediate feedback may unlock progress.",
+  "Public speaking becomes easier when the speaker knows the audience. The same idea can sound very different when it is explained to children, colleagues, customers, or experts.",
+  "A good question can improve a conversation immediately. Open questions invite longer answers, while focused follow-up questions show that the listener is genuinely paying attention.",
+  "Success can be measured in different ways. Income and status matter to some people, while others care more about freedom, relationships, personal growth, or meaningful work."
+];
+const V116_PRON_EXTENSIONS=[
+  "Try to keep a steady pace while reading, connect ideas naturally, and make important words slightly clearer. The goal is not speed, but speech that another person can follow without effort.",
+  "Pay attention to final consonants, word stress, and the rhythm between short and long phrases. A calm pace usually makes pronunciation easier to understand than rushing through every sentence.",
+  "Read as if you were explaining the idea to a real person. Pause briefly at punctuation, keep your voice relaxed, and avoid making every word sound equally strong.",
+  "Clear speech comes from accurate sounds and natural rhythm working together. Focus on complete words, especially endings, while keeping the sentence connected instead of reading one word at a time.",
+  "Do not worry about having a perfect accent. Concentrate on intelligibility, consistent word stress, and smooth transitions so the message sounds confident and easy to follow.",
+  "Use a conversational tone rather than a robotic reading voice. Let stressed words carry the meaning, reduce less important words slightly, and keep each sentence moving forward naturally.",
+  "Take enough time to pronounce difficult clusters and longer words. A short pause is better than swallowing a sound, because clarity matters more than finishing the paragraph quickly.",
+  "Keep your breathing comfortable and your volume steady. When a sentence becomes long, group words into meaningful phrases instead of trying to say the whole line in one breath.",
+  "Imagine that the listener cannot see the text. Your pronunciation should make the structure of the sentence clear through stress, small pauses, and smooth connections between related words.",
+  "Notice how English rhythm alternates between stronger and weaker syllables. You do not need to exaggerate the pattern, but a little contrast can make your speech sound much more natural.",
+  "For the word list, say each item separately and clearly. Give yourself a brief pause between words so the system can hear the complete pronunciation rather than one continuous string.",
+  "Accuracy and fluency should support each other. If a word feels difficult, slow down for that word, then return to a natural pace instead of keeping the entire paragraph unusually slow."
+];
+const V116_PRON_WORDS=`achievement accurate adapt advantage adventure affordable agreement ambitious analysis anxious apology approach argument arrangement audience authentic available awareness awkward balance behaviour benefit boundary breathe brilliant business calendar career challenge character choice comfortable community compare confident consequence consistent convenient cooperate courage creative culture curious customer debate decision describe detail develop different direction discipline discuss education effective efficient encourage energy entrepreneur environment especially essential evaluate evidence example experience familiar flexible fluency focus foreign fortunate function general genuine goal government grammar growth habit healthy hesitate identify imagine impact improve independent influence information interview knowledge language leadership likely maintain meaningful measure motivate natural necessary negotiate notice opportunity ordinary organise particular patience performance perspective practical prefer prepare priority probably problem productive progress pronunciation purpose quality question realistic recognise recommend relationship reliable remember responsibility result rhythm schedule serious similar situation solution specific strategy strength stress successful support technology thought through together tradition useful usually value variety vegetable vehicle vocabulary volunteer vulnerable weather world ability absolute academic accept access accident account achieve action active actually addition address adjust admire adult advice affect afford against allow almost alternative amazed amount ancient announce answer apartment appear apply appreciate argue arrive article avoid basic beautiful because become before belief belong better borrow brave break bridge bright bring broad budget build busy careful carry cause certain chance change choose citizen climate close colleague common communicate complete concern condition connect consider contact continue control conversation correct create current custom daily damage decide deep degree demand depend design difficult direct discover distance district divide document during early earn effect effort either employee empty enough equal escape event exact excellent expect explain express extra famous feature final finance follow formal forward freedom friendly future gentle global happen helpful honest include increase industry instead interest involve journey judge later leader learn level local manage market matter memory message method modern nearly normal object opinion patient pattern perhaps personal popular position possible present prevent private process promise protect public receive recent reduce regular relation report require respect safe science share simple skill social special speech spend standard strange strong student success system teacher team temperature travel various voice whole willing wonder work workplace abroad abstract accessible accommodation accomplish acknowledge acquire adequate administration advance advertise advocate agenda aggressive alert analyse anticipate apparent appeal appropriate approve arrange assess assume attach attempt attention attitude attract authority average aware background barrier brief campaign capable category circumstance clarify client combine comment commercial commit compete complain complex concentrate conclude conduct confirm conflict constant consumer context contrast contribute convince coordinate critical decline define demonstrate despite determine difference engage enhance ensure establish estimate examine exchange expand explore extend framework generate handle ignore illustrate implement indicate inform intention interpret introduce issue justify objective outcome participate policy potential promote propose provide reflect research resolve resource respond review significant structure suggest theory transfer development`.split(/\s+/);
+function vnDayBounds(){
+  const ymd=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  return {ymd,start:`${ymd}T00:00:00+07:00`,end:`${ymd}T23:59:59.999+07:00`};
+}
+async function pronunciationUsage(customerId){
+  const {start,end}=vnDayBounds();
+  const {count,error}=await supabase.from('pronunciation_tests').select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED').gte('created_at',start).lte('created_at',end);
+  if(error)throw error;
+  const used=Math.min(3,count||0);return {used,remaining:Math.max(0,3-used),limit:3};
+}
+function selectPronunciationContent(tier,usedReferences){
+  const used=(usedReferences||[]).map(x=>String(x||''));
+  const cfg=tier==='intermediate'?{paragraphs:V116_PRON_PARAGRAPHS,words:V116_PRON_WORDS}:V117_PRON_BANKS[tier]||V117_PRON_BANKS.beginner;
+  const extensions=tier==='intermediate'?V116_PRON_EXTENSIONS:[
+    'Read at a calm pace. Make each word clear and pause naturally at punctuation.',
+    'Keep your voice relaxed. Focus on complete words, clear endings, and steady rhythm.',
+    'Read as if you are talking to a real person. Clarity is more important than speed.',
+    'Take a small breath between ideas and keep the sentence connected naturally.'
+  ];
+  const tierUsed=used.filter(r=>r.startsWith(`TIER:${tier}\n`));
+  const total=cfg.paragraphs.length*extensions.length;let paragraph='',comboIndex=0;
+  for(let i=0;i<total;i++){const pi=i%cfg.paragraphs.length,ei=Math.floor(i/cfg.paragraphs.length)%extensions.length,candidate=`${cfg.paragraphs[pi]} ${extensions[ei]}`;if(!tierUsed.some(r=>r.includes(`PARAGRAPH:\n${candidate}\n`))){paragraph=candidate;comboIndex=i;break}}
+  if(!paragraph){comboIndex=0;paragraph=`${cfg.paragraphs[0]} ${extensions[0]}`}
+  const seenWords=new Set();for(const r of tierUsed){const m=r.match(/WORDS:\s*([^\n]+)/i);if(m)for(const w of m[1].split(/[,|\s]+/))if(w)seenWords.add(w.toLowerCase())}
+  const words=[];for(let i=0;i<cfg.words.length&&words.length<10;i++){const w=cfg.words[(comboIndex*10+i)%cfg.words.length];if(!seenWords.has(String(w).toLowerCase()))words.push(w)}
+  if(words.length<10){for(const w of cfg.words){if(!words.includes(w)){words.push(w);if(words.length===10)break}}}
+  return {tier,paragraph,words,reference_text:`TIER:${tier}\nPARAGRAPH:\n${paragraph}\nWORDS: ${words.join(', ')}`};
+}
+async function handlePronunciationPrompt(request){
+  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
+  const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const usage=await pronunciationUsage(customerId);if(usage.remaining<=0)return Response.json({error:'PRONUNCIATION_DAILY_LIMIT',usage},{status:429});
+  const tier=await customerAdaptiveTier(customerId);
+  const {data,error}=await supabase.from('pronunciation_tests').select('reference_text').eq('customer_id',customerId).eq('status','COMPLETED').order('created_at',{ascending:true}).limit(2000);if(error)throw error;
+  const content=selectPronunciationContent(tier,(data||[]).map(x=>x.reference_text));
+  return Response.json({success:true,usage,...content});
+}
+
+async function handlePronunciationScore(request){
+  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
+  if(!process.env.OPENAI_API_KEY)return Response.json({error:'OPENAI_API_KEY_MISSING'},{status:500});
+  const fd=await request.formData();const customerId=String(fd.get('customer_id')||''),token=String(fd.get('token')||''),reference=String(fd.get('reference_text')||'').slice(0,5000),audio=fd.get('audio');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});const usage=await pronunciationUsage(customerId);if(usage.remaining<=0)return Response.json({error:'PRONUNCIATION_DAILY_LIMIT',usage},{status:429});if(!audio||typeof audio.arrayBuffer!=='function')return Response.json({error:'AUDIO_REQUIRED'},{status:400});
+  const of=new FormData();of.append('file',audio,audio.name||'pronunciation.webm');of.append('model',process.env.OPENAI_TRANSCRIBE_MODEL||'gpt-4o-mini-transcribe');of.append('language','en');of.append('response_format','json');of.append('include[]','logprobs');of.append('prompt','Pronunciation assessment. Transcribe exactly what the learner says, including errors.');
+  const tr=await fetch('https://api.openai.com/v1/audio/transcriptions',{method:'POST',headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`},body:of});const td=await tr.json().catch(()=>({}));if(!tr.ok)throw new Error(td?.error?.message||'TRANSCRIPTION_FAILED');
+  const conf=averageTranscriptionConfidence(td.logprobs);const schema={type:'object',additionalProperties:false,properties:{overall_score:{type:'integer',minimum:0,maximum:100},accuracy_score:{type:'integer',minimum:0,maximum:100},clarity_score:{type:'integer',minimum:0,maximum:100},stress_score:{type:'integer',minimum:0,maximum:100},fluency_score:{type:'integer',minimum:0,maximum:100},summary_vi:{type:'string'},improvements_vi:{type:'array',items:{type:'string'},minItems:2,maxItems:5}},required:['overall_score','accuracy_score','clarity_score','stress_score','fluency_score','summary_vi','improvements_vi']};
+  const result=await v112AI(`You assess English pronunciation for SpeakHub. Compare REFERENCE with TRANSCRIPT. Transcription confidence is supporting evidence, not a perfect phonetic measurement. Be conservative: do not claim exact phoneme errors that cannot be inferred. Score intelligibility, word accuracy, likely stress/rhythm and fluency. Feedback is concise Vietnamese, with English examples when useful.\nREFERENCE: ${reference}\nTRANSCRIPT: ${String(td.text||'')}\nTRANSCRIPTION_CONFIDENCE: ${conf??'unknown'}`,schema,'speakhub_pronunciation_result');
+  const {data:saved,error}=await supabase.from('pronunciation_tests').insert({customer_id:customerId,reference_text:reference,transcript:String(td.text||''),transcription_confidence:conf,...result,status:'COMPLETED',raw_result:result}).select('id,created_at').single();if(error)throw error;return Response.json({success:true,id:saved.id,created_at:saved.created_at,...result});
+}
+async function handleComprehensionStatus(request){
+  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const {data,error}=await supabase.from('bookings').select(`id,status,session_id,class_sessions(id,session_date,ends_at,topic_title,programs(name))`).eq('user_id',customerId).in('status',['CONFIRMED','ATTENDED','NO_SHOW']).lte('class_sessions.session_date',today).order('created_at',{ascending:false}).limit(20);if(error)throw error;
+  const vnNow=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Ho_Chi_Minh'}));const nowHM=`${String(vnNow.getHours()).padStart(2,'0')}:${String(vnNow.getMinutes()).padStart(2,'0')}`;const rows=(data||[]).filter(x=>{const cs=x.class_sessions;if(!cs?.id)return false;if(String(cs.session_date)<today)return true;if(String(cs.session_date)>today)return false;const end=String(cs.ends_at||'23:59').slice(0,5);return end<=nowHM;}).sort((a,b)=>String(b.class_sessions.session_date).localeCompare(String(a.class_sessions.session_date))).slice(0,3);const ids=rows.map(x=>x.session_id);let done=new Set();if(ids.length){const q=await supabase.from('comprehension_tests').select('session_id').eq('customer_id',customerId).in('session_id',ids).eq('status','COMPLETED');if(q.error)throw q.error;done=new Set((q.data||[]).map(x=>x.session_id))}
+  return Response.json({success:true,sessions:rows.map(x=>({id:x.session_id,booking_id:x.id,session_date:x.class_sessions.session_date,topic_title:x.class_sessions.topic_title||'English Session',program_name:x.class_sessions.programs?.name||'SpeakHub',done:done.has(x.session_id)}))});
+}
+async function comprehensionSession(customerId,sessionId,demo){
+  if(demo||sessionId==='DEMO_SUCCESS')return {session_id:'DEMO_SUCCESS',topic_title:'Why Do Some People Become Successful Faster Than Others?',level:'Adult Intermediate',demo:true};
+  const {data,error}=await supabase.from('bookings').select(`session_id,class_sessions(id,session_date,ends_at,topic_title,programs(name))`).eq('user_id',customerId).eq('session_id',sessionId).in('status',['CONFIRMED','ATTENDED','NO_SHOW']).maybeSingle();if(error)throw error;if(!data)return null;const cs=data.class_sessions||{};const vnNow=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Ho_Chi_Minh'}));const today=`${vnNow.getFullYear()}-${String(vnNow.getMonth()+1).padStart(2,'0')}-${String(vnNow.getDate()).padStart(2,'0')}`,nowHM=`${String(vnNow.getHours()).padStart(2,'0')}:${String(vnNow.getMinutes()).padStart(2,'0')}`;if(String(cs.session_date)>today||(String(cs.session_date)===today&&String(cs.ends_at||'23:59').slice(0,5)>nowHM))return null;return {session_id:sessionId,topic_title:cs.topic_title||'English Session',level:cs.programs?.name||'SpeakHub',demo:false};
+}
+async function handleComprehensionQuiz(request){
+  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
+  const b=await request.json().catch(()=>({})),customerId=String(b.customer_id||''),token=String(b.token||'');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const sess=await comprehensionSession(customerId,String(b.session_id||''),!!b.demo);if(!sess)return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
+  if(!sess.demo){
+    const {data:existing,error:exErr}=await supabase.from('comprehension_tests').select('id,status,questions').eq('customer_id',customerId).eq('session_id',sess.session_id).maybeSingle();if(exErr)throw exErr;
+    if(existing?.status==='COMPLETED')return Response.json({error:'COMPREHENSION_ALREADY_COMPLETED'},{status:409});
+    if(existing?.status==='PENDING'&&Array.isArray(existing.questions)&&existing.questions.length)return Response.json({success:true,...sess,tier:await customerAdaptiveTier(customerId,sess.level),questions:existing.questions});
+  }
+  const tier=await customerAdaptiveTier(customerId,sess.level);
+  const {count}=await supabase.from('comprehension_tests').select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED');
+  const templates=[
+    'main idea and one practical example',
+    'cause and effect in the topic',
+    'one benefit and one possible problem',
+    'a personal application of the topic',
+    'a comparison between two viewpoints',
+    'one recommendation and the reason behind it',
+    'a situation where the idea becomes difficult',
+    'one misunderstanding people may have about the topic',
+    'a real-life example connected with the topic',
+    'one change the learner would make after the discussion',
+    'the strongest reason supporting one side',
+    'one consequence if people ignore the issue'
+  ];
+  const template=templates[(count||0)%templates.length];
+  const schema={type:'object',additionalProperties:false,properties:{questions:{type:'array',minItems:4,maxItems:5,items:{type:'object',additionalProperties:false,properties:{prompt:{type:'string'},word:{type:['string','null']},visual:{type:['string','null']}},required:['prompt','word','visual']}}},required:['questions']};
+  const q=await v112AI(`Create a short post-session comprehension check for topic: "${sess.topic_title}". Program: ${sess.level}. Learner tier: ${tier}. Difficulty: ${adaptiveDifficultyLabel(tier)}. This test cycle focus is: ${template}. Create 2-3 topic-understanding questions and exactly 2 vocabulary items. Vocabulary items must ask the learner to explain the word in English, not translate it. For youngKid, use very common concrete vocabulary and add a helpful emoji in visual for every question; for teenKid, visual may be an emoji when useful; for Beginner use practical vocabulary; for Intermediate use richer topic vocabulary and require reasons/examples. Do not test obscure facts. Avoid generic repeated wording and vary the question structure.`,schema,'speakhub_comprehension_quiz');
+  if(!sess.demo){const {error}=await supabase.from('comprehension_tests').upsert({customer_id:customerId,session_id:sess.session_id,topic_title:sess.topic_title,program_name:sess.level,questions:q.questions,answers:[],status:'PENDING',raw_result:{tier,template}},{onConflict:'customer_id,session_id'});if(error)throw error}
+  return Response.json({success:true,...sess,tier,questions:q.questions});
+}
+
+async function handleComprehensionScore(request){
+  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});const b=await request.json().catch(()=>({})),customerId=String(b.customer_id||''),token=String(b.token||'');const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});const sess=await comprehensionSession(customerId,String(b.session_id||''),!!b.demo);if(!sess)return Response.json({error:'SESSION_NOT_FOUND'},{status:404});
+  if(!sess.demo){const {data:done,error:doneErr}=await supabase.from('comprehension_tests').select('id').eq('customer_id',customerId).eq('session_id',sess.session_id).eq('status','COMPLETED').maybeSingle();if(doneErr)throw doneErr;if(done)return Response.json({error:'COMPREHENSION_ALREADY_COMPLETED'},{status:409});}
+  const schema={type:'object',additionalProperties:false,properties:{overall_score:{type:'integer',minimum:0,maximum:100},topic_understanding_score:{type:'integer',minimum:0,maximum:100},vocabulary_score:{type:'integer',minimum:0,maximum:100},summary_vi:{type:'string'},feedback_vi:{type:'array',items:{type:'string'},minItems:2,maxItems:5}},required:['overall_score','topic_understanding_score','vocabulary_score','summary_vi','feedback_vi']};const result=await v112AI(`Assess this learner's comprehension of an English speaking session. Topic: ${sess.topic_title}. Level: ${sess.level}. Reward understanding and ability to explain vocabulary in English. For Kid level, be encouraging and forgiving; Beginner normal/simple; Intermediate expect clearer reasoning and richer English. Questions/answers: ${JSON.stringify(b.answers||[])}`,schema,'speakhub_comprehension_result');
+  if(!sess.demo){const tier=await customerAdaptiveTier(customerId,sess.level);const {data:existing,error:findErr}=await supabase.from('comprehension_tests').select('id,status').eq('customer_id',customerId).eq('session_id',sess.session_id).maybeSingle();if(findErr)throw findErr;if(existing?.status==='COMPLETED')return Response.json({error:'COMPREHENSION_ALREADY_COMPLETED'},{status:409});const row={customer_id:customerId,session_id:sess.session_id,topic_title:sess.topic_title,program_name:sess.level,questions:b.questions||[],answers:b.answers||[],...result,status:'COMPLETED',raw_result:{...result,tier}};let error;if(existing?.id){({error}=await supabase.from('comprehension_tests').update(row).eq('id',existing.id))}else{({error}=await supabase.from('comprehension_tests').insert(row))}if(error)throw error}return Response.json({success:true,...result});
+}
+function weekStartVN(){const now=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Ho_Chi_Minh'}));const d=now.getDay()||7;now.setDate(now.getDate()-d+1);return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T00:00:00+07:00`}
+async function handleRecentTestHistory(request){
+  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
+  const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const [progress,pronunciation,comprehension]=await Promise.all([
+    supabase.from('progress_tests').select('id,created_at,program_name,topic_title,overall_score,summary_vi,improvements_vi,speaking_feedback_vi,recommended_study_focus_vi').eq('customer_id',customerId).eq('status','COMPLETED').order('created_at',{ascending:false}).limit(3),
+    supabase.from('pronunciation_tests').select('id,created_at,overall_score,summary_vi,improvements_vi').eq('customer_id',customerId).eq('status','COMPLETED').order('created_at',{ascending:false}).limit(3),
+    supabase.from('comprehension_tests').select('id,created_at,program_name,topic_title,overall_score,summary_vi,feedback_vi').eq('customer_id',customerId).eq('status','COMPLETED').order('created_at',{ascending:false}).limit(3)
+  ]);
+  for(const q of [progress,pronunciation,comprehension])if(q.error)throw q.error;
+  const rows=[
+    ...(progress.data||[]).map(x=>({...x,type:'PROGRESS'})),
+    ...(pronunciation.data||[]).map(x=>({...x,type:'PRONUNCIATION',program_name:'Pronunciation'})),
+    ...(comprehension.data||[]).map(x=>({...x,type:'COMPREHENSION'}))
+  ].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,3);
+  return Response.json({success:true,tests:rows});
+}
+
+async function handleTestDashboard(request){
+  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});const ws=weekStartVN();
+  async function counts(table){const [a,w]=await Promise.all([supabase.from(table).select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED'),supabase.from(table).select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED').gte('created_at',ws)]);if(a.error)throw a.error;if(w.error)throw w.error;return {all:a.count||0,week:w.count||0}}
+  const [placement,progress,pronunciation,comprehension]=await Promise.all([counts('placement_tests'),counts('progress_tests'),counts('pronunciation_tests'),counts('comprehension_tests')]);return Response.json({success:true,placement,progress,pronunciation,comprehension});
+}
+
 export default {
   async fetch(request){
     try{
@@ -3118,6 +3419,13 @@ export default {
       if(action==='progress-score') return await handleProgressScore(request);
       if(action==='progress-history') return await handleProgressHistory(request);
       if(action==='progress-status') return await handleProgressStatus(request);
+      if(action==='pronunciation-prompt') return await handlePronunciationPrompt(request);
+      if(action==='pronunciation-score') return await handlePronunciationScore(request);
+      if(action==='comprehension-status') return await handleComprehensionStatus(request);
+      if(action==='comprehension-quiz') return await handleComprehensionQuiz(request);
+      if(action==='comprehension-score') return await handleComprehensionScore(request);
+      if(action==='test-dashboard') return await handleTestDashboard(request);
+      if(action==='test-recent-history') return await handleRecentTestHistory(request);
       if(action==='notifications') return await handleNotifications(request);
       if(action==='community') return await handleCommunity(request);
       if(action==='chat'){
