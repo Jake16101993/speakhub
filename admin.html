@@ -1312,10 +1312,8 @@ async function loadOverview(){
     <div class="overview-analytics-grid">
       <div class="card overview-metric"><span>Topics this week</span><b>${Number(a.topics_this_week||0)} / ${Number(a.sessions_this_week||0)}</b><small>Uploaded / Total sessions</small></div>
       <div class="card overview-metric"><span>Active students</span><b>${Number(a.active_students||0)}</b><small>Has upcoming lessons</small></div>
-      <div class="card overview-metric"><span>Tests this week</span><b>${Number(a.tests_this_week?.placement||0)} / ${Number(a.tests_this_week?.progress||0)}</b><small>Placement / Progress</small></div>
-      <div class="card overview-metric"><span>All tests</span><b>${Number(a.tests_all?.placement||0)} / ${Number(a.tests_all?.progress||0)}</b><small>Placement / Progress</small></div>
-      <div class="card overview-metric"><span>Pronunciation tests</span><b>${Number(a.pronunciation_tests?.week||0)} / ${Number(a.pronunciation_tests?.all||0)}</b><small>This week / All tests</small></div>
-      <div class="card overview-metric"><span>Comprehension tests</span><b>${Number(a.comprehension_tests?.week||0)} / ${Number(a.comprehension_tests?.all||0)}</b><small>This week / All tests</small></div>
+      <div class="card overview-metric"><span>Tests this week</span><b>${Number(a.tests_this_week?.placement||0)} / ${Number(a.tests_this_week?.progress||0)} / ${Number(a.pronunciation_tests?.week||0)} / ${Number(a.comprehension_tests?.week||0)}</b><small>Placement / Progress / Pronunciation / Comprehension</small></div>
+      <div class="card overview-metric"><span>All tests</span><b>${Number(a.tests_all?.placement||0)} / ${Number(a.tests_all?.progress||0)} / ${Number(a.pronunciation_tests?.all||0)} / ${Number(a.comprehension_tests?.all||0)}</b><small>Placement / Progress / Pronunciation / Comprehension</small></div>
       <div class="card overview-metric"><span>Paid this week / month</span><b class="money-metric">${money(a.paid_amount?.week)} / ${money(a.paid_amount?.month)}</b><small>PAID</small></div>
       <div class="card overview-metric"><span>Visitors online now</span><b>${Number(a.website_visits?.online||0)}</b><small>Active within the last ~75 seconds</small></div>
       <div class="card overview-metric"><span>Visitors today / week / month</span><b class="visit-combined">${Number(a.website_visits?.day||0)} / ${Number(a.website_visits?.week||0)} / ${Number(a.website_visits?.month||0)}</b><small>Unique visitor · last write ${a.website_visits?.latest_seen_at?new Date(a.website_visits.latest_seen_at).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'—'}</small></div>
@@ -1330,9 +1328,11 @@ async function loadOverview(){
       </div>
     </div>
     <div class="card visit-chart-card"><h3 style="margin:0">Visitors in the last 30 days</h3><div class="muted" style="font-size:12px;margin-top:4px">Unique visitors per day</div><div class="visit-chart-wrap"><canvas id="visit30Chart"></canvas></div></div>
-    <div class="card visit-chart-card" style="margin-top:14px"><h3 style="margin:0">Daily fill rate in the last 30 days</h3><div class="muted" style="font-size:12px;margin-top:4px">Booked seats / total session capacity per day</div><div class="visit-chart-wrap"><canvas id="fill30Chart"></canvas></div></div>`;
+    <div class="card visit-chart-card" style="margin-top:14px"><h3 style="margin:0">Daily fill rate · 30-day window</h3><div class="muted" style="font-size:12px;margin-top:4px">23 previous days + today + 6 upcoming days · no-session days are left blank</div><div class="visit-chart-wrap"><canvas id="fill30Chart"></canvas></div></div>
+    <div class="card visit-chart-card" style="margin-top:14px"><h3 style="margin:0">Paid revenue in the last 30 days</h3><div class="muted" style="font-size:12px;margin-top:4px">Total PAID amount by payment date</div><div class="visit-chart-wrap"><canvas id="paid30Chart"></canvas></div></div>`;
   drawVisit30Chart(a.website_visits?.daily_30||[]);
   drawFill30Chart(a.fill_rate_daily_30||[]);
+  drawPaid30Chart(a.paid_daily_30||[]);
 }
 function drawVisit30Chart(rows){
   const c=document.getElementById('visit30Chart');if(!c)return;
@@ -1349,19 +1349,41 @@ function drawVisit30Chart(rows){
   ctx.fillStyle='#6b7772';ctx.textAlign='center';rows.forEach((r,i)=>{if(i%5===0||i===rows.length-1){const d=String(r.date||'').split('-');ctx.fillText(`${d[2]}/${d[1]}`,p.l+i*step,H-13)}});ctx.textAlign='start';
 }
 
+function chartTodayKey(){return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'})}
+function drawTodayHighlight(ctx,rows,p,step,H){
+  const today=chartTodayKey(),idx=rows.findIndex(r=>String(r.date)===today);if(idx<0)return;
+  const x=p.l+idx*step;ctx.save();ctx.fillStyle='rgba(255, 183, 77, 0.12)';ctx.fillRect(Math.max(p.l,x-step*.48),p.t,Math.min(step*.96,Math.max(8,step)),H-p.t-p.b);ctx.strokeStyle='#f59e0b';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(x,p.t);ctx.lineTo(x,H-p.b);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#a15c00';ctx.font='bold 10px system-ui';ctx.textAlign='center';ctx.fillText('Today',x,p.t+8);ctx.restore();
+}
 function drawFill30Chart(rows){
   const c=document.getElementById('fill30Chart');if(!c)return;
   const box=c.parentElement.getBoundingClientRect(),dpr=Math.max(1,window.devicePixelRatio||1);
   c.width=Math.max(300,Math.floor(box.width*dpr));c.height=Math.max(180,Math.floor(box.height*dpr));
-  const ctx=c.getContext('2d');ctx.scale(dpr,dpr);const W=box.width,H=box.height,p={l:42,r:12,t:16,b:34};
+  const ctx=c.getContext('2d');ctx.scale(dpr,dpr);const W=box.width,H=box.height,p={l:42,r:12,t:18,b:34};
   const iw=W-p.l-p.r,ih=H-p.t-p.b,max=100;
   ctx.font='11px system-ui';ctx.textBaseline='middle';ctx.strokeStyle='#e3ebe7';ctx.fillStyle='#6b7772';ctx.lineWidth=1;
   for(let i=0;i<=4;i++){const y=p.t+ih*i/4;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(W-p.r,y);ctx.stroke();ctx.fillText(`${Math.round(max*(1-i/4))}%`,5,y)}
   if(!rows.length)return;const step=rows.length>1?iw/(rows.length-1):iw;
-  ctx.strokeStyle='#0b7a5b';ctx.lineWidth=2.5;ctx.beginPath();rows.forEach((r,i)=>{const x=p.l+i*step,y=p.t+ih-(Math.max(0,Math.min(100,Number(r.rate||0)))/100)*ih;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();
-  ctx.fillStyle='#0b7a5b';rows.forEach((r,i)=>{const v=Math.max(0,Math.min(100,Number(r.rate||0))),x=p.l+i*step,y=p.t+ih-(v/100)*ih;ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill()});
-  ctx.font='bold 10px system-ui';ctx.textAlign='center';rows.forEach((r,i)=>{const v=Number(r.rate||0);if(Number(r.capacity||0)>0){const x=p.l+i*step,y=p.t+ih-(Math.max(0,Math.min(100,v))/100)*ih;ctx.fillText(`${v.toFixed(1).replace('.0','')}%`,x,Math.max(7,y-9))}});ctx.textAlign='start';
-  ctx.fillStyle='#6b7772';ctx.textAlign='center';rows.forEach((r,i)=>{if(i%5===0||i===rows.length-1){const d=String(r.date||'').split('-');ctx.fillText(`${d[2]}/${d[1]}`,p.l+i*step,H-13)}});ctx.textAlign='start';
+  drawTodayHighlight(ctx,rows,p,step,H);
+  ctx.strokeStyle='#0b7a5b';ctx.lineWidth=2.5;let drawing=false;ctx.beginPath();
+  rows.forEach((r,i)=>{const valid=Number(r.capacity||0)>0&&r.rate!==null&&r.rate!==undefined;if(!valid){drawing=false;return}const v=Math.max(0,Math.min(100,Number(r.rate))),x=p.l+i*step,y=p.t+ih-(v/100)*ih;if(drawing)ctx.lineTo(x,y);else{ctx.moveTo(x,y);drawing=true}});ctx.stroke();
+  ctx.fillStyle='#0b7a5b';rows.forEach((r,i)=>{if(Number(r.capacity||0)<=0||r.rate===null||r.rate===undefined)return;const v=Math.max(0,Math.min(100,Number(r.rate))),x=p.l+i*step,y=p.t+ih-(v/100)*ih;ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill()});
+  ctx.font='bold 10px system-ui';ctx.textAlign='center';rows.forEach((r,i)=>{if(Number(r.capacity||0)<=0||r.rate===null||r.rate===undefined)return;const v=Number(r.rate),x=p.l+i*step,y=p.t+ih-(Math.max(0,Math.min(100,v))/100)*ih;ctx.fillText(`${v.toFixed(1).replace('.0','')}%`,x,Math.max(p.t+15,y-9))});
+  ctx.fillStyle='#6b7772';ctx.textAlign='center';rows.forEach((r,i)=>{if(i%5===0||i===rows.length-1||r.is_today){const d=String(r.date||'').split('-');ctx.fillText(`${d[2]}/${d[1]}`,p.l+i*step,H-13)}});ctx.textAlign='start';
+}
+function drawPaid30Chart(rows){
+  const c=document.getElementById('paid30Chart');if(!c)return;
+  const box=c.parentElement.getBoundingClientRect(),dpr=Math.max(1,window.devicePixelRatio||1);
+  c.width=Math.max(300,Math.floor(box.width*dpr));c.height=Math.max(180,Math.floor(box.height*dpr));
+  const ctx=c.getContext('2d');ctx.scale(dpr,dpr);const W=box.width,H=box.height,p={l:64,r:12,t:18,b:34};
+  const vals=rows.map(x=>Number(x.amount||0)),max=Math.max(1,...vals),iw=W-p.l-p.r,ih=H-p.t-p.b;
+  const shortMoney=n=>n>=1000000?`${(n/1000000).toFixed(n>=10000000?0:1).replace('.0','')}M`:n>=1000?`${Math.round(n/1000)}k`:String(Math.round(n));
+  ctx.font='11px system-ui';ctx.textBaseline='middle';ctx.strokeStyle='#e3ebe7';ctx.fillStyle='#6b7772';ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){const y=p.t+ih*i/4;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(W-p.r,y);ctx.stroke();ctx.fillText(shortMoney(max*(1-i/4)),7,y)}
+  if(!rows.length)return;const step=rows.length>1?iw/(rows.length-1):iw;drawTodayHighlight(ctx,rows,p,step,H);
+  ctx.strokeStyle='#0b7a5b';ctx.lineWidth=2.5;ctx.beginPath();rows.forEach((r,i)=>{const x=p.l+i*step,y=p.t+ih-(Number(r.amount||0)/max)*ih;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();
+  ctx.fillStyle='#0b7a5b';rows.forEach((r,i)=>{const x=p.l+i*step,y=p.t+ih-(Number(r.amount||0)/max)*ih;ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill()});
+  ctx.font='bold 10px system-ui';ctx.textAlign='center';rows.forEach((r,i)=>{const v=Number(r.amount||0);if(v>0){const x=p.l+i*step,y=p.t+ih-(v/max)*ih;ctx.fillText(shortMoney(v),x,Math.max(p.t+15,y-9))}});
+  ctx.fillStyle='#6b7772';rows.forEach((r,i)=>{if(i%5===0||i===rows.length-1||r.is_today){const d=String(r.date||'').split('-');ctx.fillText(`${d[2]}/${d[1]}`,p.l+i*step,H-13)}});ctx.textAlign='start';
 }
 
 

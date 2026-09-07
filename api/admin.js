@@ -443,25 +443,38 @@ async function handleOverview(request){
   const dayStart=`${today}T00:00:00+07:00`,dayEnd=`${addDaysISO(today,1)}T00:00:00+07:00`;
   const weekStart=`${w.current_from}T00:00:00+07:00`,weekEnd=`${weekEndExclusive}T00:00:00+07:00`;
   const monthStart=`${month.first}T00:00:00+07:00`,monthEnd=`${month.next}T00:00:00+07:00`;
-  async function uniqueVisitors(from,to){
-    const {data,error}=await supabase.from('website_visit_daily').select('visitor_id').gte('last_seen_at',from).lt('last_seen_at',to);
-    if(error)throw error;
-    return new Set((data||[]).map(x=>String(x.visitor_id||'')).filter(Boolean)).size;
+  // Visitor rows can easily exceed Supabase's default 1,000-row response cap.
+  // Always page through the daily table so recent dates never disappear from the chart.
+  async function visitorIdsByVisitedOn(fromDate,toDate){
+    const out=[];const pageSize=1000;
+    for(let from=0;;from+=pageSize){
+      const {data,error}=await supabase.from('website_visit_daily').select('visitor_id,visited_on,last_seen_at').gte('visited_on',fromDate).lte('visited_on',toDate).order('visited_on',{ascending:true}).range(from,from+pageSize-1);
+      if(error)throw error;out.push(...(data||[]));if(!data||data.length<pageSize)break;
+    }
+    return out;
+  }
+  async function uniqueVisitorsByDate(fromDate,toDate){
+    const rows=await visitorIdsByVisitedOn(fromDate,toDate);
+    return new Set(rows.map(x=>String(x.visitor_id||'')).filter(Boolean)).size;
   }
   const chartFrom=addDaysISO(today,-29);
+  const fillFrom=addDaysISO(today,-23),fillTo=addDaysISO(today,6); // 23 previous days + today + 6 upcoming days = 30
   const onlineSince=new Date(Date.now()-75*1000).toISOString();
-  const [visDay,visWeek,visMonth,onlineRes,chartRes,latestVisitRes,fillSessionsRes]=await Promise.all([
-    uniqueVisitors(dayStart,dayEnd),uniqueVisitors(weekStart,weekEnd),uniqueVisitors(monthStart,monthEnd),
-    supabase.from('website_visit_daily').select('visitor_id').gte('last_seen_at',onlineSince),
-    supabase.from('website_visit_daily').select('visitor_id,visited_on').gte('visited_on',chartFrom).lte('visited_on',today),
+  const [visRows30,visDay,visWeek,visMonth,onlineRes,latestVisitRes,fillSessionsRes,paid30Res]=await Promise.all([
+    visitorIdsByVisitedOn(chartFrom,today),
+    uniqueVisitorsByDate(today,today),
+    uniqueVisitorsByDate(w.current_from,w.current_to),
+    uniqueVisitorsByDate(month.first,addDaysISO(month.next,-1)),
+    supabase.from('website_visit_daily').select('visitor_id').gte('last_seen_at',onlineSince).limit(5000),
     supabase.from('website_visit_daily').select('last_seen_at,visited_on').order('last_seen_at',{ascending:false}).limit(1),
-    sessionQ(supabase.from('class_sessions').select('id,session_date,capacity').gte('session_date',chartFrom).lte('session_date',today).neq('status','CANCELLED'))
+    sessionQ(supabase.from('class_sessions').select('id,session_date,capacity').gte('session_date',fillFrom).lte('session_date',fillTo).neq('status','CANCELLED')),
+    supabase.from('orders').select('id,total_amount,paid_at').eq('payment_status','PAID').gte('paid_at',`${chartFrom}T00:00:00+07:00`).lt('paid_at',`${addDaysISO(today,1)}T00:00:00+07:00`).order('paid_at',{ascending:true}).limit(5000)
   ]);
-  if(onlineRes.error)throw onlineRes.error;if(chartRes.error)throw chartRes.error;if(latestVisitRes.error)throw latestVisitRes.error;if(fillSessionsRes.error)throw fillSessionsRes.error;
+  if(onlineRes.error)throw onlineRes.error;if(latestVisitRes.error)throw latestVisitRes.error;if(fillSessionsRes.error)throw fillSessionsRes.error;if(paid30Res.error)throw paid30Res.error;
   const onlineVisitors=new Set((onlineRes.data||[]).map(x=>String(x.visitor_id||'')).filter(Boolean)).size;
   const dailyMap={};
   for(let i=0;i<30;i++)dailyMap[addDaysISO(chartFrom,i)]=new Set();
-  for(const x of (chartRes.data||[])){if(dailyMap[x.visited_on]&&x.visitor_id)dailyMap[x.visited_on].add(String(x.visitor_id));}
+  for(const x of visRows30){if(dailyMap[x.visited_on]&&x.visitor_id)dailyMap[x.visited_on].add(String(x.visitor_id));}
   const visits30=Object.entries(dailyMap).map(([date,set])=>({date,visitors:set.size}));
 
   const fillRows=fillSessionsRes.data||[];
@@ -473,13 +486,34 @@ async function handleOverview(request){
     for(const x of (fb||[]))fillCounts[x.session_id]=(fillCounts[x.session_id]||0)+1;
   }
   const fillDaily={};
-  for(let i=0;i<30;i++)fillDaily[addDaysISO(chartFrom,i)]={capacity:0,booked:0};
+  for(let i=0;i<30;i++)fillDaily[addDaysISO(fillFrom,i)]={capacity:0,booked:0};
   for(const x of fillRows){
     if(!fillDaily[x.session_date])continue;
     fillDaily[x.session_date].capacity+=Number(x.capacity||0);
     fillDaily[x.session_date].booked+=Number(fillCounts[x.id]||0);
   }
-  const fill30=Object.entries(fillDaily).map(([date,v])=>({date,rate:v.capacity?Math.round((v.booked/v.capacity)*1000)/10:0,booked:v.booked,capacity:v.capacity}));
+  // No-session days are null, not 0%. The frontend uses null to break the line.
+  const fill30=Object.entries(fillDaily).map(([date,v])=>({date,rate:v.capacity?Math.round((v.booked/v.capacity)*1000)/10:null,booked:v.booked,capacity:v.capacity,is_today:date===today}));
+
+  // Paid revenue by actual paid_at date (not order creation date).
+  // For branch views, keep only orders that contain at least one booking in that branch.
+  let paidRows30=paid30Res.data||[];
+  if(Array.isArray(scopedRoomIds)){
+    if(!scopedRoomIds.length)paidRows30=[];
+    else if(paidRows30.length){
+      const paidIds=paidRows30.map(x=>x.id);
+      const {data:scopeSessions,error:scopeSessionsErr}=await supabase.from('class_sessions').select('id').in('room_id',scopedRoomIds).limit(10000);if(scopeSessionsErr)throw scopeSessionsErr;
+      const sid=(scopeSessions||[]).map(x=>x.id);let allowed=new Set();
+      if(sid.length){
+        const {data:scopeBookings,error:scopeBookingsErr}=await supabase.from('bookings').select('order_id').in('session_id',sid).in('order_id',paidIds).limit(10000);if(scopeBookingsErr)throw scopeBookingsErr;
+        allowed=new Set((scopeBookings||[]).map(x=>x.order_id).filter(Boolean));
+      }
+      paidRows30=paidRows30.filter(x=>allowed.has(x.id));
+    }
+  }
+  const paidDaily={};for(let i=0;i<30;i++)paidDaily[addDaysISO(chartFrom,i)]=0;
+  for(const x of paidRows30){const d=String(x.paid_at||'').slice(0,10);if(Object.prototype.hasOwnProperty.call(paidDaily,d))paidDaily[d]+=Number(x.total_amount||0);}
+  const paid30=Object.entries(paidDaily).map(([date,amount])=>({date,amount,is_today:date===today}));
   let scopedCounts=null,scopedPaidWeek=null,scopedPaidMonth=null;
   if(Array.isArray(scopedRoomIds)){
     if(!scopedRoomIds.length){scopedCounts={customers:0,paid_orders:0,confirmed_bookings:0,open_sessions:s.count||0};scopedPaidWeek=0;scopedPaidMonth=0;}
@@ -518,7 +552,8 @@ async function handleOverview(request){
       },
       ranges:w,
       website_visits:{day:visDay,week:visWeek,month:visMonth,online:onlineVisitors,daily_30:visits30,latest_seen_at:latestVisitRes.data?.[0]?.last_seen_at||null,latest_visited_on:latestVisitRes.data?.[0]?.visited_on||null},
-      fill_rate_daily_30:fill30
+      fill_rate_daily_30:fill30,
+      paid_daily_30:paid30
     }
   });
 }
