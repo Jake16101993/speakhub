@@ -216,3 +216,11 @@ advisories**, never as public issues.
 - Removed the “Session Comprehension không tính” sentence from the Streak note.
 - Redesigned the Streak card with cleaner green/cream styling and more top spacing.
 - No new SQL in V127.
+
+
+## V128 – Test notification + admin metrics + streak voucher marker
+- Removed the student-facing “Test mode đang bật / Điểm được chấm...” notice.
+- Streak milestone row now marks day 10 with a visible 10% voucher gift marker.
+- Admin Overview test counters now show Placement / Progress / Pronunciation / Listening & Response / Grammar / Comprehension for both this week and all-time.
+- Test navigation badge now shows remaining required tests for today: Progress, Pronunciation, Listening & Response, Grammar, plus Session Comprehension only when one is required. It refreshes immediately after daily test status updates.
+- No SQL migration required for V128.
