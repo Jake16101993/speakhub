@@ -420,6 +420,7 @@ body{background:var(--admin-surface)}
       <button class="tab" onclick="showTab('lookup',this)">▣ Student Schedule</button>
       <button class="tab" onclick="showTab('remind',this);setTimeout(loadReminders,0)">◷ Remind</button>
       <button class="tab" onclick="showTab('discounts',this);setTimeout(loadDiscounts,0)">% Discounts</button>
+      <button class="tab" onclick="showTab('streak',this);setTimeout(loadStreakSettings,0)">🔥 Streak Settings</button>
       <button class="tab" onclick="showTab('topics',this)">▤ Topics</button>
       <button class="tab" onclick="showTab('price',this);setTimeout(loadPrice,0)">₫ Price</button>
       <button class="tab" onclick="showTab('publishers',this);setTimeout(loadPublishers,0)">↗ Publisher Management</button>
@@ -632,6 +633,29 @@ body{background:var(--admin-surface)}
         </div>
         <input id="remindFilter" placeholder="Filter by name, phone, last lesson date or class..." oninput="adminRemindPage=1;renderReminders()" style="margin-top:14px">
         <div id="remindTable" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <section id="tab-streak" class="hidden">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div>
+            <h3 style="margin:0">🔥 Test Streak Settings</h3>
+            <div class="muted" style="font-size:12px;margin-top:4px">A streak day is counted only when a student completes Progress, Pronunciation, Listening & Response and Grammar on the same Vietnam calendar day. Session Comprehension is excluded.</div>
+          </div>
+          <button class="btn" onclick="loadStreakSettings()">↻ Refresh</button>
+        </div>
+        <div class="row" style="margin-top:16px">
+          <div><label>Days required</label><input id="streakTargetDays" type="number" min="1" max="365" step="1" value="10"></div>
+          <div><label>Voucher discount (%)</label><input id="streakDiscountPercent" type="number" min="1" max="99" step="1" value="10"></div>
+          <div><label>Status</label><select id="streakEnabled"><option value="true">Enabled</option><option value="false">Disabled</option></select></div>
+        </div>
+        <button id="saveStreakBtn" class="btn primary" style="width:100%;margin-top:12px" onclick="saveStreakSettings()">Save Streak settings</button>
+        <div id="streakSettingsMsg"></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h3 style="margin-top:0">How it works</h3>
+        <div class="muted">Students build consecutive daily streaks. When they reach the configured milestone, SpeakHub automatically issues a unique voucher code and shows a congratulations card in the Test section.</div>
       </div>
     </section>
 
@@ -1191,6 +1215,29 @@ async function loadReminders(){
 
 
 let adminDiscountsCache=[];
+
+async function loadStreakSettings(){
+  const msg=document.getElementById('streakSettingsMsg');
+  try{
+    const d=await api('/api/admin?action=streak-settings');
+    const st=d.settings||{};
+    document.getElementById('streakTargetDays').value=Number(st.target_days||10);
+    document.getElementById('streakDiscountPercent').value=Number(st.discount_percent||10);
+    document.getElementById('streakEnabled').value=st.enabled===false?'false':'true';
+    if(msg)msg.innerHTML='';
+  }catch(e){if(msg)msg.innerHTML=`<div class="error">${e.message}</div>`}
+}
+async function saveStreakSettings(){
+  const btn=document.getElementById('saveStreakBtn'),msg=document.getElementById('streakSettingsMsg');
+  try{
+    btn.disabled=true;btn.textContent='Saving...';
+    const body={target_days:Number(document.getElementById('streakTargetDays').value||10),discount_percent:Number(document.getElementById('streakDiscountPercent').value||10),enabled:document.getElementById('streakEnabled').value==='true'};
+    const d=await api('/api/admin?action=streak-settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const st=d.settings||body;
+    msg.innerHTML=`<div class="success">Saved · ${Number(st.target_days||10)} days → ${Number(st.discount_percent||10)}% voucher</div>`;
+  }catch(e){msg.innerHTML=`<div class="error">${e.message}</div>`}
+  finally{btn.disabled=false;btn.textContent='Save Streak settings'}
+}
 
 async function loadDiscounts(){
   const msg=document.getElementById('discountMsg');

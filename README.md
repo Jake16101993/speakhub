@@ -1,3 +1,12 @@
+# SpeakHub V125 — Streak Rewards
+
+- Progress Test limited to 1 successful test per Vietnam calendar day.
+- Removes daily-attempt counter text from the Test UI.
+- Adds Test Streak card based on completing Progress + Pronunciation + Listening & Response + Grammar on the same day. Session Comprehension does not count toward streak.
+- Default reward: 10-day streak = 10% voucher.
+- Adds Admin > Streak Settings to control target days, discount percent and enabled status.
+- Requires one-time SQL: `125_streak_rewards.sql`.
+
 # SpeakHub V123 — Daily Test Suite
 
 - Pronunciation: 1 test/day, deterministic sequential bank, no repeats until the tier bank is exhausted.

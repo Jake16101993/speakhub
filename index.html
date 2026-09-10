@@ -1846,6 +1846,8 @@ linear-gradient(#111 10px,transparent 10px) 0 0/20px 20px,#fff;border:14px solid
   }
 }
 
+
+.streak-card{margin-top:14px;border:1px solid #e8e0c7;border-radius:20px;padding:16px;background:linear-gradient(145deg,#fffdf6,#fff8df);box-shadow:0 10px 26px #7d611014}.streak-card.reward{border-color:#f3c85c;background:linear-gradient(145deg,#fff9de,#fff2b8)}.streak-top{display:flex;align-items:center;gap:12px}.streak-fire{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;font-size:27px;background:#fff;box-shadow:0 5px 15px #6c4d1514}.streak-copy{display:grid;gap:1px;flex:1;min-width:0}.streak-copy>span{font-size:10px;letter-spacing:1.4px;font-weight:900;color:#a16d00}.streak-copy>b{font-size:23px;color:#45310b;line-height:1.1}.streak-copy>small{font-size:11px;color:#7b6a45;margin-top:2px}.streak-goal{font-size:14px;font-weight:900;color:#7d5e13;background:#fff;padding:8px 10px;border-radius:999px}.streak-track{height:8px;background:#eadfbe;border-radius:999px;overflow:hidden;margin-top:14px}.streak-track i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#f5b928,#f08b20)}.streak-dots{display:flex;gap:5px;margin-top:11px}.streak-dots span{flex:1;min-width:20px;height:25px;border-radius:8px;background:#fff;color:#aa9b78;font-size:10px;font-weight:900;display:grid;place-items:center;border:1px solid #eee4ca}.streak-dots span.on{background:#ffe28c;color:#6f4d00;border-color:#f0c54d}.streak-next{font-size:12px;color:#786947;margin-top:10px;text-align:center}.streak-congrats{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-top:13px;padding:12px;border-radius:14px;background:#fff;box-shadow:0 4px 14px #a4761514}.streak-congrats div{display:grid;gap:3px}.streak-congrats strong{font-size:13px;color:#5d4300}.streak-congrats span{font-size:12px;color:#80671f}.streak-congrats button{border:1px dashed #d6a72e;background:#fff8db;color:#604700;border-radius:10px;padding:9px 11px;font-weight:900;cursor:pointer}@media(max-width:560px){.streak-card{padding:14px}.streak-dots{gap:3px}.streak-dots span{height:23px}.streak-congrats{align-items:stretch;flex-direction:column}.streak-congrats button{width:100%}}
 </style>
 <!-- SPEAKHUB ACCOUNT LOGIN FIX 2026-08-09 -->
 <!-- SPEAKHUB MOBILE POPUP PDF FIX 2026-08-09 -->
@@ -8405,7 +8407,6 @@ async function renderPlacement(rv){
             <h2 style="margin:8px 0 6px">Tìm lớp phù hợp với bạn</h2>
             <div class="muted">Khoảng 5 phút · Reading ngắn + 2 câu Speaking với AI.</div>
           </div>
-          <span class="badge green">Kiểm tra xếp lớp hôm nay: còn ${remain}/3 lượt</span>
         </div>
         <div class="placement-progress"><span class="on"></span><span></span><span></span><span></span></div>
       </section>
@@ -8414,7 +8415,7 @@ async function renderPlacement(rv){
         <div class="field"><label>Năm sinh</label><input id="birthYear" inputmode="numeric" maxlength="4" placeholder="Ví dụ: 2014"></div>
         ${remain>0
           ? `<button type="button" id="placementBirthContinue" class="btn primary" style="width:100%;margin-top:18px">Tiếp tục</button>`
-          : `<div class="reschedule-box" style="margin-top:18px"><span class="badge orange">Đã dùng hết 3 lượt hôm nay</span><p class="tiny">Bạn có thể kiểm tra lại vào ngày mai.</p></div>`}
+          : `<div class="reschedule-box" style="margin-top:18px"><span class="badge orange">Đã hoàn thành giới hạn kiểm tra hôm nay</span><p class="tiny">Bạn có thể kiểm tra lại vào ngày mai.</p></div>`}
       </section>
     </div>`;
 
@@ -10118,6 +10119,7 @@ async function renderWeekly(rv){
 
   const progressUsage=await loadProgressDailyUsage();
   const dailyStatus=await loadDailyTestStatus();
+  const streak=await loadStreakStatus();
   let pending=[];
   try{
     pending=pendingProgressTestIds();
@@ -10139,27 +10141,26 @@ async function renderWeekly(rv){
           </div>
           <div style="display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end">
             <span class="badge ${pending.length?'orange':'green'}">${pending.length} bài đang chờ</span>
-            <span class="badge green">Hôm nay còn ${Number(progressUsage.remaining||0)}/3 lượt</span>
           </div>
         </div>
         ${dailyStatus.all_done?`<div class="reschedule-box" style="margin-top:14px;background:#ecfdf3;border-color:#86efac;color:#166534"><b>✓ Đã hoàn thành bài tập hôm nay</b><div class="tiny" style="margin-top:4px">Các bài cần làm hôm nay đã hoàn tất.</div></div>`:''}
         ${pending.length?`<div class="reschedule-box" style="margin-top:14px"><b>${pending[0]==='TEST_MODE_PROGRESS'?'Test mode đang bật':'Có session đã học cần Progress Test'}</b><div class="tiny" style="margin-top:4px">Điểm được chấm theo cùng benchmark để so sánh qua thời gian.</div></div>`:''}
         <div style="display:grid;gap:10px;margin-top:12px">
-          <button type="button" id="progressStartBtn" class="btn ${dailyStatus.progress?.done?'success':'primary'}" style="width:100%;font-size:15px;padding:13px 16px;${Number(progressUsage.remaining||0)<=0?'opacity:.55;cursor:not-allowed':''}" ${Number(progressUsage.remaining||0)<=0?'disabled':''}>${dailyStatus.progress?.done?'✓ Đã hoàn thành Progress Test hôm nay':`📈 Thực hiện Progress Test · còn ${Number(progressUsage.remaining||0)}/3 lượt hôm nay`}</button>
+          <button type="button" id="progressStartBtn" class="btn ${dailyStatus.progress?.done?'success':'primary'}" style="width:100%;font-size:15px;padding:13px 16px;${Number(progressUsage.remaining||0)<=0?'opacity:.55;cursor:not-allowed':''}" ${Number(progressUsage.remaining||0)<=0?'disabled':''}>${dailyStatus.progress?.done?'✓ Đã hoàn thành Progress Test hôm nay':'📈 Thực hiện Progress Test'}</button>
           <div class="progress-suite">
             <button type="button" class="progress-suite-card progress-suite-action ${dailyStatus.pronunciation?.done?'done':''}" ${dailyStatus.pronunciation?.done?'disabled':''} onclick="openPronunciationTest()">
               <div class="progress-suite-icon">${dailyStatus.pronunciation?.done?'✓':'🎙️'}</div>
-              <div class="progress-suite-copy"><b>Pronunciation Test</b><span>${dailyStatus.pronunciation?.done?'Đã hoàn thành bài tập hôm nay':'~2 phút · paragraph + vocabulary · 1 bài/ngày.'}</span></div>
+              <div class="progress-suite-copy"><b>Pronunciation Test</b><span>${dailyStatus.pronunciation?.done?'Đã hoàn thành bài tập hôm nay':'~2 phút · paragraph + vocabulary.'}</span></div>
               <span class="progress-suite-arrow">${dailyStatus.pronunciation?.done?'':'›'}</span>
             </button>
             <button type="button" class="progress-suite-card progress-suite-action ${dailyStatus.listening?.done?'done':''}" ${dailyStatus.listening?.done?'disabled':''} onclick="openListeningResponseTest()">
               <div class="progress-suite-icon">${dailyStatus.listening?.done?'✓':'🎧'}</div>
-              <div class="progress-suite-copy"><b>Listening & Response Test</b><span>${dailyStatus.listening?.done?'Đã hoàn thành bài tập hôm nay':'Nghe hội thoại ngắn + trả lời 5 câu hỏi · 1 bài/ngày.'}</span></div>
+              <div class="progress-suite-copy"><b>Listening & Response Test</b><span>${dailyStatus.listening?.done?'Đã hoàn thành bài tập hôm nay':'Nghe hội thoại ngắn + trả lời 5 câu hỏi.'}</span></div>
               <span class="progress-suite-arrow">${dailyStatus.listening?.done?'':'›'}</span>
             </button>
             <button type="button" class="progress-suite-card progress-suite-action ${dailyStatus.grammar?.done?'done':''}" ${dailyStatus.grammar?.done?'disabled':''} onclick="openGrammarTest()">
               <div class="progress-suite-icon">${dailyStatus.grammar?.done?'✓':'✍️'}</div>
-              <div class="progress-suite-copy"><b>Grammar Test</b><span>${dailyStatus.grammar?.done?'Đã hoàn thành bài tập hôm nay':'8 câu adaptive grammar · 1 bài/ngày.'}</span></div>
+              <div class="progress-suite-copy"><b>Grammar Test</b><span>${dailyStatus.grammar?.done?'Đã hoàn thành bài tập hôm nay':'8 câu adaptive grammar.'}</span></div>
               <span class="progress-suite-arrow">${dailyStatus.grammar?.done?'':'›'}</span>
             </button>
             <button type="button" class="progress-suite-card progress-suite-action ${dailyStatus.comprehension?.done?'done':''}" ${!dailyStatus.comprehension?.required||dailyStatus.comprehension?.done?'disabled':''} onclick="openComprehensionTest()">
@@ -10168,6 +10169,16 @@ async function renderWeekly(rv){
               <span class="progress-suite-arrow">${dailyStatus.comprehension?.required&&!dailyStatus.comprehension?.done?'›':''}</span>
             </button>
           </div>
+        </div>
+        <div class="streak-card ${streak.reward?'reward':''}">
+          <div class="streak-top">
+            <div class="streak-fire">${streak.current_streak>0?'🔥':'✨'}</div>
+            <div class="streak-copy"><span>TEST STREAK</span><b>${Number(streak.current_streak||0)} ngày</b><small>${streak.today_complete?'Hôm nay đã được tính vào streak':'Hoàn thành đủ 4 bài test để giữ streak hôm nay'}</small></div>
+            <div class="streak-goal">${Number(streak.current_streak||0)}/${Number(streak.target_days||10)}</div>
+          </div>
+          <div class="streak-track"><i style="width:${Math.min(100,Math.round((Number(streak.progress_to_reward||0)/Math.max(1,Number(streak.target_days||10)))*100))}%"></i></div>
+          <div class="streak-dots">${Array.from({length:Math.min(10,Number(streak.target_days||10))},(_,i)=>`<span class="${i<Math.min(Number(streak.current_streak||0),Math.min(10,Number(streak.target_days||10)))?'on':''}">${i<Math.min(Number(streak.current_streak||0),Math.min(10,Number(streak.target_days||10)))?'✓':i+1}</span>`).join('')}</div>
+          ${streak.reward?`<div class="streak-congrats"><div><strong>🎉 Congrats! Bạn đã đạt ${Number(streak.reward.milestone_days||streak.target_days||10)} ngày liên tiếp</strong><span>Voucher giảm ${Number(streak.reward.discount_percent||streak.discount_percent||10)}%</span></div><button type="button" onclick="navigator.clipboard?.writeText('${String(streak.reward.voucher_code||'').replace(/'/g,"\'")}');this.textContent='Đã copy ✓'">${escapeHtml(streak.reward.voucher_code||'')}</button></div>`:`<div class="streak-next">Còn <b>${Math.max(0,Number(streak.target_days||10)-Number(streak.current_streak||0))} ngày</b> để nhận voucher giảm ${Number(streak.discount_percent||10)}%</div>`}
         </div>
       </section>
 
@@ -10515,6 +10526,8 @@ async function scoreProgressWithAI(){
       localStorage.setItem('speakhub_progress_tests_done',JSON.stringify(state.progressTestsDone));
     }
     updateAccountStatusBadges();
+    loadDailyTestStatus().catch(()=>{});
+    loadStreakStatus().catch(()=>{});
     renderProgressAIResult(data);
   }catch(err){
     rv.innerHTML=`<div class="testbox"><section class="card success">
@@ -11380,6 +11393,15 @@ async function loadDailyTestStatus(){
   }catch(e){console.warn('Daily test status fallback',e);return {progress:{done:false},pronunciation:{done:false},listening:{done:false},grammar:{done:false},comprehension:{required:false,done:false},all_done:false}}
 }
 
+async function loadStreakStatus(){
+  const {customerId,token}=currentCustomerCredentials();
+  if(!customerId||!token)return {current_streak:0,target_days:10,discount_percent:10,today_complete:false,progress_to_reward:0,reward:null};
+  try{
+    const r=await fetch(`/api/admin?action=streak-status&customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}`,{cache:'no-store'});
+    const d=await r.json();if(!r.ok)throw new Error(d.error||'STREAK_STATUS_FAILED');return d;
+  }catch(e){console.warn('Streak status fallback',e);return {current_streak:0,target_days:10,discount_percent:10,today_complete:false,progress_to_reward:0,reward:null}}
+}
+
 function getTodayKey(){
   const d=new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -11938,12 +11960,12 @@ async function openPronunciationTest(){
     const d=await r.json();
     if(!r.ok){
       if(d.error==='PRONUNCIATION_DAILY_LIMIT'){
-        aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">Pronunciation · 1 bài/ngày</span><h2>Bạn đã hoàn thành Pronunciation hôm nay</h2><p class="muted">Ngày mai hệ thống sẽ mở bài mới với nội dung khác.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><button class="btn secondary" style="width:100%" onclick="closeAiTest()">Đóng</button>`);return;
+        aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">Pronunciation Test</span><h2>Bạn đã hoàn thành Pronunciation hôm nay</h2><p class="muted">Ngày mai hệ thống sẽ mở bài mới với nội dung khác.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><button class="btn secondary" style="width:100%" onclick="closeAiTest()">Đóng</button>`);return;
       }
       throw new Error(d.details||d.error||'Không tải được bài Pronunciation.');
     }
     window.__pronWords=d.words||[];window.__pronParagraph=d.paragraph||'';window.__pronReference=d.reference_text||'';window.__pronTier=d.tier||'';
-    aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">AI Pronunciation Test · ${escapeHtml(d.tier||'adaptive')}</span><h2>Read clearly & naturally</h2><p class="muted">Đọc paragraph trước, sau đó đọc từng từ. Mỗi ngày hệ thống đưa một bài mới theo thứ tự kho đề.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><h3>1. Short paragraph</h3><div class="test-reading">${escapeHtml(d.paragraph||'')}</div><h3>2. Random words</h3><div class="word-chips">${(d.words||[]).map(x=>`<span class="word-chip">${escapeHtml(x)}</span>`).join('')}</div><div id="pronOrb" class="rec-orb">🎙️</div><div id="pronTimer" style="text-align:center;font-weight:900">00:00</div><button id="pronRecBtn" class="btn primary" style="width:100%;margin-top:12px" onclick="startPronRecording()">Bắt đầu ghi âm</button><div class="tiny" style="text-align:center;margin-top:8px">1 bài/ngày · nội dung mới theo thứ tự kho đề.</div>`);
+    aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">AI Pronunciation Test · ${escapeHtml(d.tier||'adaptive')}</span><h2>Read clearly & naturally</h2><p class="muted">Đọc paragraph trước, sau đó đọc từng từ. Mỗi ngày hệ thống đưa một bài mới theo thứ tự kho đề.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><h3>1. Short paragraph</h3><div class="test-reading">${escapeHtml(d.paragraph||'')}</div><h3>2. Random words</h3><div class="word-chips">${(d.words||[]).map(x=>`<span class="word-chip">${escapeHtml(x)}</span>`).join('')}</div><div id="pronOrb" class="rec-orb">🎙️</div><div id="pronTimer" style="text-align:center;font-weight:900">00:00</div><button id="pronRecBtn" class="btn primary" style="width:100%;margin-top:12px" onclick="startPronRecording()">Bắt đầu ghi âm</button><div class="tiny" style="text-align:center;margin-top:8px">Nội dung mới theo thứ tự kho đề.</div>`);
   }catch(e){
     aiTestModal(`<div class="ai-test-head"><h2>Chưa mở được bài test</h2><button class="ai-test-close" onclick="closeAiTest()">×</button></div><p class="muted">${escapeHtml(String(e.message||e))}</p><button class="btn secondary" style="width:100%" onclick="closeAiTest()">Đóng</button>`)
   }
@@ -11971,7 +11993,7 @@ async function submitListeningResponse(){const d=window.__listenData,form=docume
 async function openGrammarTest(){
   const {customerId,token}=currentCustomerCredentials();
   if(!customerId||!token){alert('Vui lòng đăng nhập để làm Grammar Test.');return}
-  aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">Grammar Test · 1 bài/ngày</span><h2>Đang chuẩn bị bài mới...</h2><p class="muted">8 câu grammar theo level hiện tại của bạn.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div>`);
+  aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">Grammar Test</span><h2>Đang chuẩn bị bài mới...</h2><p class="muted">8 câu grammar theo level hiện tại của bạn.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div>`);
   try{
     const r=await fetch(`/api/admin?action=grammar-prompt&customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}`,{cache:'no-store'});
     const d=await r.json();

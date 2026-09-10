@@ -1833,7 +1833,7 @@ async function dailyPlacementUsage(customerId,visitorId){
 
   const {count,error}=await q;
   if(error)throw error;
-  const used=Number(count||0),limit=3;
+  const used=Number(count||0),limit=(testType==='PROGRESS'?1:3);
   return {used,remaining:Math.max(0,limit-used),limit,date:b.day};
 }
 async function recordPlacementAttempt(customerId,visitorId){
@@ -2007,7 +2007,7 @@ function extractResponseText(data){
 }
 
 async function handlePlacementScore(request){
-  // Limit successful AI tests to 3 per Vietnam calendar day.
+  // Limit successful Progress Tests to 1 per Vietnam calendar day.
 
   if(request.method!=='POST'){
     return Response.json({error:'Method not allowed'},{status:405});
@@ -2390,7 +2390,7 @@ async function verifyProgressBooking(customerId,bookingId){
 }
 
 async function handleProgressScore(request){
-  // Limit successful AI tests to 3 per Vietnam calendar day.
+  // Limit successful Progress Tests to 1 per Vietnam calendar day.
 
   if(request.method!=='POST'){
     return Response.json({error:'Method not allowed'},{status:405});
@@ -2735,7 +2735,7 @@ async function dailyTestUsage(customerId,testType){
     .eq('customer_id',customerId).eq('test_type',testType)
     .gte('created_at',b.start).lt('created_at',b.end);
   if(error)throw error;
-  const used=Number(count||0),limit=3;
+  const used=Number(count||0),limit=(testType==='PROGRESS'?1:3);
   return {used,remaining:Math.max(0,limit-used),limit,date:b.day};
 }
 async function recordTestAttempt(customerId,testType){
@@ -2952,7 +2952,7 @@ async function handleAccountBadges(request){
       return Response.json({
         notification_unread:0,community_unread:0,chat_unread:0,
         placement:{used:0,remaining:3,limit:3},
-        progress:{used:0,remaining:3,limit:3}
+        progress:{used:0,remaining:1,limit:1}
       });
     }
     const {count:chatUnread,error}=await supabase.from('support_messages')
@@ -2965,7 +2965,7 @@ async function handleAccountBadges(request){
     return Response.json({
       notification_unread:0,community_unread:0,chat_unread:chatUnread||0,
       placement:{used:0,remaining:3,limit:3},
-      progress:{used:0,remaining:3,limit:3}
+      progress:{used:0,remaining:1,limit:1}
     });
   }
 
@@ -3587,6 +3587,72 @@ async function handleGrammarScore(request){
   return Response.json({success:true,id:data.id,created_at:data.created_at,correct_count:correct,overall_score:score,feedback_vi:feedback,review});
 }
 
+async function getStreakSettings(){
+  const {data,error}=await supabase.from('streak_settings').select('id,target_days,discount_percent,enabled,updated_at').eq('id',1).maybeSingle();
+  if(error)throw error;
+  return data||{id:1,target_days:10,discount_percent:10,enabled:true,updated_at:null};
+}
+function vnDateKeyFromISO(v){
+  try{return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(v))}catch{return ''}
+}
+async function streakCompletedDays(customerId){
+  const tables=['progress_tests','pronunciation_tests','listening_tests','grammar_tests'];
+  const sets=[];
+  for(const table of tables){
+    const {data,error}=await supabase.from(table).select('created_at').eq('customer_id',customerId).eq('status','COMPLETED').order('created_at',{ascending:false}).limit(500);
+    if(error)throw error;
+    sets.push(new Set((data||[]).map(x=>vnDateKeyFromISO(x.created_at)).filter(Boolean)));
+  }
+  if(!sets.length)return new Set();
+  return new Set([...sets[0]].filter(day=>sets.slice(1).every(st=>st.has(day))));
+}
+function previousISODate(day){return addDaysISO(day,-1)}
+async function ensureStreakReward(customerId,streak,settings){
+  if(!settings.enabled||streak<Number(settings.target_days||10))return null;
+  const target=Math.max(1,Number(settings.target_days||10));
+  const milestone=Math.floor(streak/target)*target;
+  const {data:existing,error:e1}=await supabase.from('streak_rewards').select('id,customer_id,milestone_days,discount_percent,voucher_code,status,created_at').eq('customer_id',customerId).eq('milestone_days',milestone).maybeSingle();
+  if(e1)throw e1;
+  if(existing)return existing;
+  const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let suffix='';for(let i=0;i<6;i++)suffix+=alphabet[Math.floor(Math.random()*alphabet.length)];
+  const voucher=`SH${Math.round(Number(settings.discount_percent||10))}-${suffix}`;
+  const {data,error}=await supabase.from('streak_rewards').insert({customer_id:customerId,milestone_days:milestone,discount_percent:Number(settings.discount_percent||10),voucher_code:voucher,status:'ISSUED'}).select('id,customer_id,milestone_days,discount_percent,voucher_code,status,created_at').single();
+  if(error)throw error;
+  return data;
+}
+async function getStreakStatus(customerId){
+  const settings=await getStreakSettings();
+  const days=await streakCompletedDays(customerId);
+  const today=vnDayBounds().ymd;
+  let cursor=days.has(today)?today:previousISODate(today),streak=0;
+  while(days.has(cursor)&&streak<1000){streak++;cursor=previousISODate(cursor)}
+  const target=Math.max(1,Number(settings.target_days||10));
+  const reward=await ensureStreakReward(customerId,streak,settings);
+  let latestReward=reward;
+  if(!latestReward){
+    const {data,error}=await supabase.from('streak_rewards').select('id,milestone_days,discount_percent,voucher_code,status,created_at').eq('customer_id',customerId).order('created_at',{ascending:false}).limit(1).maybeSingle();
+    if(error)throw error;latestReward=data||null;
+  }
+  return {current_streak:streak,target_days:target,discount_percent:Number(settings.discount_percent||10),enabled:!!settings.enabled,today_complete:days.has(today),progress_to_reward:Math.min(streak,target),reward:latestReward};
+}
+async function handleStreakStatus(request){
+  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
+  const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  return Response.json({success:true,...await getStreakStatus(customerId)});
+}
+async function handleStreakSettings(request){
+  if(request.method==='GET')return Response.json({success:true,settings:await getStreakSettings()});
+  if(request.method==='POST'){
+    const b=await request.json().catch(()=>({}));
+    const target=Math.max(1,Math.min(365,Math.round(Number(b.target_days||10))));
+    const pct=Math.max(1,Math.min(99,Number(b.discount_percent||10)));
+    const enabled=b.enabled!==false;
+    const {data,error}=await supabase.from('streak_settings').upsert({id:1,target_days:target,discount_percent:pct,enabled,updated_at:new Date().toISOString()},{onConflict:'id'}).select('id,target_days,discount_percent,enabled,updated_at').single();
+    if(error)throw error;return Response.json({success:true,settings:data});
+  }
+  return Response.json({error:'Method not allowed'},{status:405});
+}
 async function handleDailyTestStatus(request){
   if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
   const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');
@@ -3729,6 +3795,7 @@ export default {
       if(action==='grammar-prompt') return await handleGrammarPrompt(request);
       if(action==='grammar-score') return await handleGrammarScore(request);
       if(action==='daily-test-status') return await handleDailyTestStatus(request);
+      if(action==='streak-status') return await handleStreakStatus(request);
       if(action==='comprehension-status') return await handleComprehensionStatus(request);
       if(action==='comprehension-quiz') return await handleComprehensionQuiz(request);
       if(action==='comprehension-score') return await handleComprehensionScore(request);
@@ -3765,6 +3832,7 @@ export default {
       if(action==='overview') return await runAdminActionWithRetry(()=>handleOverview(request));
       if(action==='reminders') return await runAdminActionWithRetry(()=>handleReminders(request));
       if(action==='discounts') return await runAdminActionWithRetry(()=>handleDateDiscounts(request));
+      if(action==='streak-settings') return await runAdminActionWithRetry(()=>handleStreakSettings(request));
       if(action==='price') return await runAdminActionWithRetry(()=>handlePrice(request));
       if(action==='sessions') return await runAdminActionWithRetry(()=>handleSessions(request));
       if(action==='customer-search') return await runAdminActionWithRetry(()=>handleCustomerSearch(request));
