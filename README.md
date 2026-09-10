@@ -198,3 +198,12 @@ advisories**, never as public issues.
 - Pronunciation pool: youngKid 160, teenKid 160, beginner 200, intermediate 576 (1,096 total prompt sets).
 - Daily all-done status now requires Grammar too; Session Comprehension remains optional when there is no completed session requiring a test.
 - Run `124_grammar_test.sql` once before using Grammar Test.
+
+## V126 — Streak continuity + resumable daily tests
+- Streak label simplified to `STREAK`, with extra top spacing and an explicit note listing the four tests that count. Session Comprehension is explicitly excluded.
+- Streak counter is continuous beyond each voucher milestone. Missing a required day breaks the consecutive-day chain; reward progress advances toward the next configured milestone without resetting the displayed streak.
+- Progress Test question sequencing now includes a stable per-customer offset, so different accounts do not all start on the same speaking prompt, while each customer's sequence still cycles through the bank before repeating.
+- Progress Test draft state persists locally for the current day: quiz answers, selected question set, speaking prompts, transcripts and stage. Reopening resumes the unfinished test.
+- Progress speaking recorder is reset cleanly between Speaking 1 and Speaking 2.
+- Listening & Response, Grammar, and Session Comprehension save unfinished answers locally and restore them when reopened. Pronunciation keeps the same day's assigned prompt when reopened; an interrupted recording can be recorded again.
+- No database migration is required for V126.

@@ -3633,7 +3633,9 @@ async function getStreakStatus(customerId){
     const {data,error}=await supabase.from('streak_rewards').select('id,milestone_days,discount_percent,voucher_code,status,created_at').eq('customer_id',customerId).order('created_at',{ascending:false}).limit(1).maybeSingle();
     if(error)throw error;latestReward=data||null;
   }
-  return {current_streak:streak,target_days:target,discount_percent:Number(settings.discount_percent||10),enabled:!!settings.enabled,today_complete:days.has(today),progress_to_reward:Math.min(streak,target),reward:latestReward};
+  const cycleProgress=streak>0&&streak%target===0?target:(streak%target);
+  const nextRewardAt=(Math.floor(streak/target)+1)*target;
+  return {current_streak:streak,target_days:target,discount_percent:Number(settings.discount_percent||10),enabled:!!settings.enabled,today_complete:days.has(today),progress_to_reward:cycleProgress,next_reward_at:nextRewardAt,reward:latestReward};
 }
 async function handleStreakStatus(request){
   if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
