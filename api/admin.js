@@ -3495,16 +3495,108 @@ async function handleListeningScore(request){
   const {data,error}=await supabase.from('listening_tests').insert({customer_id:customerId,scenario_id:expected.scenario_id,tier,dialogue:expected.dialogue,questions:expected.questions,answers,correct_count:correct,overall_score:score,feedback_vi:feedback,status:'COMPLETED'}).select('id,created_at').single(); if(error)throw error;
   return Response.json({success:true,id:data.id,created_at:data.created_at,correct_count:correct,overall_score:score,feedback_vi:feedback});
 }
+
+function grammarScenario(index,tier){
+  const poolSize=1440;
+  const idx=Math.max(0,Number(index)||0)%poolSize;
+  const names=['Anna','Ben','Mia','Leo','Nora','Sam','Emma','Jack','Lily','Noah','Chloe','Max'];
+  const nouns=['project','meeting','homework','report','presentation','English class','bus','book','coffee','phone','schedule','exercise'];
+  const places=['school','office','library','cafe','park','station','classroom','store'];
+  const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const verbs=[['go','goes','went'],['study','studies','studied'],['work','works','worked'],['play','plays','played'],['watch','watches','watched'],['finish','finishes','finished'],['visit','visits','visited'],['carry','carries','carried']];
+  const adjectives=[['fast','faster','fastest'],['easy','easier','easiest'],['quiet','quieter','quietest'],['busy','busier','busiest'],['small','smaller','smallest'],['cheap','cheaper','cheapest'],['strong','stronger','strongest'],['friendly','friendlier','friendliest']];
+  let code=idx;
+  const take=arr=>{const v=arr[code%arr.length];code=Math.floor(code/arr.length);return v;};
+  // Mixed-radix selection makes the visible context tuple unique for all 1,440 sets.
+  const n1=take(names),noun=take(nouns),place=take(places),day=take(days);
+  const n2=names[(idx*5+3)%names.length],v=verbs[(idx*3+1)%verbs.length],adj=adjectives[(idx*5+2)%adjectives.length];
+  const shuffle=(correct,alts,salt)=>{const base=[correct,...alts];const shift=(idx+salt)%base.length;const options=base.slice(shift).concat(base.slice(0,shift));return {options,answer:(base.length-shift)%base.length};};
+  const mk=(prompt,correct,alts,explanation,salt)=>({prompt,...shuffle(correct,alts,salt),explanation});
+  let qs=[];
+  if(tier==='youngKid'){
+    qs=[
+      mk(`${n1} ___ to school near the ${place} every ${day}.`,v[1],[v[0],v[2],'going'],'Use the third-person singular form after he/she/a name in the present simple.',1),
+      mk(`There ___ two books on the desk.`,'are',['is','be','am'],'Use “are” with plural nouns.',2),
+      mk(`Yesterday, ${n2} ___ at the ${place}.`,v[2],[v[0],v[1],'will '+v[0]],'“Yesterday” normally needs the past simple.',3),
+      mk(`I have ___ apple.`,'an',['a','the','some'],'Use “an” before a vowel sound.',4),
+      mk(`The bag is ___ the chair.`,'under',['at','for','from'],'“Under” shows a lower position.',5),
+      mk(`She ___ swim very well.`,'can',['cans','can to','is can'],'Modal “can” is followed by the base verb.',6),
+      mk(`This book is ___ than that one.`,adj[1],[adj[0],adj[2],'more '+adj[2]],'Use the comparative form with “than”.',7),
+      mk(`If it rains, we ___ inside.`,'will stay',['stayed','stays','staying'],'Use “will + verb” for a likely future result.',8)
+    ];
+  }else if(tier==='teenKid'){
+    qs=[
+      mk(`${n1} usually ___ the ${noun} at the ${place} every ${day}.`,v[1],[v[0],v[2],'is '+v[0]],'Present simple third-person singular takes -s/-es.',1),
+      mk(`They ___ at the ${place} right now.`,'are studying',['study','studied','studies'],'“Right now” calls for the present continuous.',2),
+      mk(`We ___ the ${noun} last ${day}.`,v[2],[v[0],v[1],'have '+v[1]],'A finished past time takes the past simple.',3),
+      mk(`She bought ___ new phone yesterday.`,'a',['an','some','any'],'Use “a” before a singular countable noun beginning with a consonant sound.',4),
+      mk(`The meeting starts ___ 9:00.`,'at',['in','on','for'],'Use “at” for clock times.',5),
+      mk(`You ___ bring your ID tomorrow.`,'should',['should to','shoulds','are should'],'A modal is followed by the base form.',6),
+      mk(`This exercise is ___ than the last one.`,adj[1],[adj[0],adj[2],'most '+adj[0]],'Use the comparative form with “than”.',7),
+      mk(`If I have time tonight, I ___ you.`,'will call',['called','would called','calling'],'First conditional: if + present, will + base verb.',8)
+    ];
+  }else if(tier==='intermediate'){
+    qs=[
+      mk(`By the time the meeting at the ${place} started on ${day}, ${n1} ___ the ${noun}.`,'had finished',['has finished','finished','was finishing'],'Past perfect shows an earlier action before another past event.',1),
+      mk(`The report ___ by the team before Friday.`,'will be completed',['will complete','is completing','has complete'],'Future passive: will be + past participle.',2),
+      mk(`If the company ___ earlier, it might have avoided the problem.`,'had acted',['acted','would act','has acted'],'Third conditional uses if + past perfect.',3),
+      mk(`${n2} suggested ___ the discussion until everyone arrived.`,'delaying',['to delay','delay','delayed'],'“Suggest” is commonly followed by a gerund.',4),
+      mk(`The manager, ___ joined last month, is leading the project.`,'who',['which','where','whose'],'Use “who” for a person as the subject of a relative clause.',5),
+      mk(`Hardly ___ the presentation started when the power went out.`,'had',['has','did','was'],'After “hardly” at the beginning, use inversion with past perfect.',6),
+      mk(`The new process is considerably ___ than the old one.`,adj[1],[adj[0],adj[2],'more '+adj[2]],'A comparative form is required after “than”.',7),
+      mk(`I would rather you ___ me before changing the schedule.`,'told',['tell','will tell','have told'],'“Would rather + subject” takes a past form for present/future preference.',8)
+    ];
+  }else{
+    qs=[
+      mk(`${n1} usually ___ the ${noun} at the ${place} every ${day}.`,v[1],[v[0],v[2],'is '+v[0]],'Use present simple for routines; third-person singular takes -s/-es.',1),
+      mk(`We ___ at the ${place} when you called.`,'were waiting',['wait','are waiting','have waited'],'Past continuous describes an action in progress at a past moment.',2),
+      mk(`${n2} ___ the ${noun} yesterday.`,v[2],[v[0],v[1],'has '+v[0]],'“Yesterday” takes the past simple.',3),
+      mk(`She needs ___ umbrella because it may rain.`,'an',['a','the','some'],'Use “an” before a vowel sound.',4),
+      mk(`The class begins ___ ${day}.`,'on',['at','in','by'],'Use “on” with days of the week.',5),
+      mk(`You ___ check the details before you send the email.`,'should',['should to','shoulds','are should'],'Modal verbs are followed by the base verb.',6),
+      mk(`This option is ___ than the first one.`,adj[1],[adj[0],adj[2],'most '+adj[0]],'Use the comparative form with “than”.',7),
+      mk(`If we finish early, we ___ the plan together.`,'will review',['reviewed','would reviewed','reviewing'],'First conditional uses will + base verb in the result clause.',8)
+    ];
+  }
+  return {scenario_id:`${tier}-${idx}`,tier,questions:qs,pool_size:poolSize};
+}
+async function handleGrammarPrompt(request){
+  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
+  const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const b=vnDayBounds();
+  const {count:todayCount,error:e1}=await supabase.from('grammar_tests').select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED').gte('created_at',b.start).lte('created_at',b.end);if(e1)throw e1;
+  if(Number(todayCount||0)>=1)return Response.json({error:'GRAMMAR_DAILY_LIMIT'},{status:429});
+  const {count:allCount,error:e2}=await supabase.from('grammar_tests').select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED');if(e2)throw e2;
+  const tier=await customerAdaptiveTier(customerId);const item=grammarScenario(Number(allCount||0),tier);
+  return Response.json({success:true,...item,usage:{used:0,remaining:1,limit:1,date:b.ymd}});
+}
+async function handleGrammarScore(request){
+  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
+  const body=await request.json().catch(()=>({})),customerId=String(body.customer_id||''),token=String(body.token||'');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const b=vnDayBounds();
+  const {count,error:e1}=await supabase.from('grammar_tests').select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED').gte('created_at',b.start).lte('created_at',b.end);if(e1)throw e1;
+  if(Number(count||0)>=1)return Response.json({error:'GRAMMAR_DAILY_LIMIT'},{status:429});
+  const tier=await customerAdaptiveTier(customerId);const idx=Math.max(0,parseInt(String(body.scenario_id||'').split('-').pop()||'0',10)||0);const expected=grammarScenario(idx,tier);
+  const answers=Array.isArray(body.answers)?body.answers:[];let correct=0;
+  const review=expected.questions.map((q,i)=>{const ok=Number(answers[i])===q.answer;if(ok)correct++;return {correct:ok,correct_answer:q.options[q.answer],explanation:q.explanation};});
+  const score=Math.round(correct/expected.questions.length*100);
+  const feedback=score>=88?'Grammar rất ổn. Tiếp tục duy trì độ chính xác và chú ý các cấu trúc khó hơn.':score>=63?'Nền grammar khá ổn; xem lại các câu sai và ghi nhớ dấu hiệu thời gian/cấu trúc đi kèm.':'Nên ôn lại các cấu trúc cơ bản trong bộ hôm nay rồi thử áp dụng chúng vào câu nói ngắn.';
+  const {data,error}=await supabase.from('grammar_tests').insert({customer_id:customerId,scenario_id:expected.scenario_id,tier,questions:expected.questions,answers,correct_count:correct,overall_score:score,feedback_vi:feedback,status:'COMPLETED'}).select('id,created_at').single();if(error)throw error;
+  return Response.json({success:true,id:data.id,created_at:data.created_at,correct_count:correct,overall_score:score,feedback_vi:feedback,review});
+}
+
 async function handleDailyTestStatus(request){
   if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
   const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');
   const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
   const b=vnDayBounds();
   const countToday=async table=>{const {count,error}=await supabase.from(table).select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED').gte('created_at',b.start).lte('created_at',b.end);if(error)throw error;return Number(count||0)};
-  const [progress,pronunciation,listening]=await Promise.all([countToday('progress_tests'),countToday('pronunciation_tests'),countToday('listening_tests')]);
+  const [progress,pronunciation,listening,grammar]=await Promise.all([countToday('progress_tests'),countToday('pronunciation_tests'),countToday('listening_tests'),countToday('grammar_tests')]);
   const sessions=await comprehensionStatusRows(customerId);
   const compRequired=sessions.length>0,compDone=compRequired&&!!sessions[0]?.done;
-  return Response.json({success:true,date:b.ymd,progress:{done:progress>0},pronunciation:{done:pronunciation>0},listening:{done:listening>0},comprehension:{required:compRequired,done:compDone},all_done:progress>0&&pronunciation>0&&listening>0&&(!compRequired||compDone)});
+  return Response.json({success:true,date:b.ymd,progress:{done:progress>0},pronunciation:{done:pronunciation>0},listening:{done:listening>0},grammar:{done:grammar>0},comprehension:{required:compRequired,done:compDone},all_done:progress>0&&pronunciation>0&&listening>0&&grammar>0&&(!compRequired||compDone)});
 }
 
 async function handlePronunciationScore(request){
@@ -3595,7 +3687,7 @@ async function handleRecentTestHistory(request){
 async function handleTestDashboard(request){
   if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});const ws=weekStartVN();
   async function counts(table){const [a,w]=await Promise.all([supabase.from(table).select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED'),supabase.from(table).select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED').gte('created_at',ws)]);if(a.error)throw a.error;if(w.error)throw w.error;return {all:a.count||0,week:w.count||0}}
-  const [placement,progress,pronunciation,comprehension]=await Promise.all([counts('placement_tests'),counts('progress_tests'),counts('pronunciation_tests'),counts('comprehension_tests')]);return Response.json({success:true,placement,progress,pronunciation,comprehension});
+  const [placement,progress,pronunciation,listening,grammar,comprehension]=await Promise.all([counts('placement_tests'),counts('progress_tests'),counts('pronunciation_tests'),counts('listening_tests'),counts('grammar_tests'),counts('comprehension_tests')]);return Response.json({success:true,placement,progress,pronunciation,listening,grammar,comprehension});
 }
 
 export default {
@@ -3634,6 +3726,8 @@ export default {
       if(action==='pronunciation-score') return await handlePronunciationScore(request);
       if(action==='listening-prompt') return await handleListeningPrompt(request);
       if(action==='listening-score') return await handleListeningScore(request);
+      if(action==='grammar-prompt') return await handleGrammarPrompt(request);
+      if(action==='grammar-score') return await handleGrammarScore(request);
       if(action==='daily-test-status') return await handleDailyTestStatus(request);
       if(action==='comprehension-status') return await handleComprehensionStatus(request);
       if(action==='comprehension-quiz') return await handleComprehensionQuiz(request);

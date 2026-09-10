@@ -178,3 +178,14 @@ advisories**, never as public issues.
 - CS Remind tab and unread Chat SpeakHub badge.
 - Publisher: new 4-character alphanumeric slugs (letter + number, uniqueness checked), 10-customer pagination with step filter and scroll-to-top, plus 30-day click chart.
 - No new SQL migration required for V120.
+
+
+## V124 — Daily Test Suite updates
+- Daily test cards refresh immediately after Pronunciation, Listening, Grammar, or Session Comprehension is successfully submitted, so the green completion tick appears without reopening the test.
+- Mobile order: Pronunciation → Listening & Response → Grammar → Session Comprehension.
+- Added Grammar Test: 8 adaptive multiple-choice questions, 1 completed test per Vietnam calendar day.
+- Grammar pool: 1,440 unique daily sets per tier (5,760 across youngKid / teenKid / beginner / intermediate).
+- Listening pool: 960 sets per tier (3,840 total).
+- Pronunciation pool: youngKid 160, teenKid 160, beginner 200, intermediate 576 (1,096 total prompt sets).
+- Daily all-done status now requires Grammar too; Session Comprehension remains optional when there is no completed session requiring a test.
+- Run `124_grammar_test.sql` once before using Grammar Test.
