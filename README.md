@@ -207,3 +207,12 @@ advisories**, never as public issues.
 - Progress speaking recorder is reset cleanly between Speaking 1 and Speaking 2.
 - Listening & Response, Grammar, and Session Comprehension save unfinished answers locally and restore them when reopened. Pronunciation keeps the same day's assigned prompt when reopened; an interrupted recording can be recorded again.
 - No database migration is required for V126.
+
+## V127 – Progress recorder + test navigation + Streak polish
+- Fixed `testType is not defined` in the placement/progress transcription path. Progress Speaking 1 can now transcribe and continue to Speaking 2.
+- Resets recorder/media tracks cleanly between Speaking 1 and Speaking 2.
+- Test tab responds immediately on first tap with an active state + loading placeholder.
+- Parallelized daily test/streak requests and moved progress-history loading to background for faster perceived load.
+- Removed the “Session Comprehension không tính” sentence from the Streak note.
+- Redesigned the Streak card with cleaner green/cream styling and more top spacing.
+- No new SQL in V127.

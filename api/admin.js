@@ -1833,7 +1833,7 @@ async function dailyPlacementUsage(customerId,visitorId){
 
   const {count,error}=await q;
   if(error)throw error;
-  const used=Number(count||0),limit=(testType==='PROGRESS'?1:3);
+  const used=Number(count||0),limit=3;
   return {used,remaining:Math.max(0,limit-used),limit,date:b.day};
 }
 async function recordPlacementAttempt(customerId,visitorId){
