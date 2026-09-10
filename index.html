@@ -4847,6 +4847,10 @@ button.primary.ui-button-busy::after{
 .progress-suite-card{min-width:0;border:1px solid #f3c27c;border-radius:14px;background:#ffe1b5;padding:15px 16px;display:flex;gap:11px;align-items:center;text-align:left;box-shadow:0 5px 14px rgba(219,119,18,.10)}
 .progress-suite-action{font:inherit;cursor:pointer;position:relative;transition:.18s ease;color:#17201d}
 .progress-suite-action:hover{transform:translateY(-1px);background:#ffd59a;border-color:#eeb367;box-shadow:0 8px 20px rgba(219,119,18,.16)}
+.progress-suite-card.done{background:#ecfdf3;border-color:#86efac;box-shadow:none;color:#166534}
+.progress-suite-card.done .progress-suite-copy b,.progress-suite-card.done .progress-suite-copy span{color:#166534}
+.progress-suite-card:disabled{cursor:default;opacity:1}
+.btn.success{background:#dcfce7;border-color:#86efac;color:#166534}
 .progress-suite-icon{width:42px;height:42px;flex:0 0 42px;border-radius:11px;background:rgba(255,255,255,.52);display:grid;place-items:center;font-size:21px}
 .progress-suite-copy{display:grid;gap:4px;min-width:0;padding-right:6px}
 .progress-suite-copy b{font-size:16px;color:#17201d}
@@ -10088,7 +10092,7 @@ async function showProgressTestHistory(){
 }
 
 async function renderWeekly(rv){
-  setTitle('Kiểm tra tiến độ','Progress Test · Pronunciation · Session Comprehension');
+  setTitle('Kiểm tra tiến độ','Progress · Pronunciation · Listening & Response · Session Comprehension');
 
   if(!state.logged){
     rv.innerHTML=`<div class="testbox"><section class="card success">
@@ -10113,6 +10117,7 @@ async function renderWeekly(rv){
   }
 
   const progressUsage=await loadProgressDailyUsage();
+  const dailyStatus=await loadDailyTestStatus();
   let pending=[];
   try{
     pending=pendingProgressTestIds();
@@ -10130,38 +10135,35 @@ async function renderWeekly(rv){
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
           <div>
             <h2 style="margin:0">Kiểm tra tiến độ</h2>
-            <p class="muted" style="margin:5px 0 0;font-size:14px">Theo dõi tiến bộ qua 3 bài test: Progress · Pronunciation · Session Comprehension</p>
+            <p class="muted" style="margin:5px 0 0;font-size:14px">Theo dõi tiến bộ qua Progress · Pronunciation · Listening & Response · Session Comprehension</p>
           </div>
           <div style="display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end">
             <span class="badge ${pending.length?'orange':'green'}">${pending.length} bài đang chờ</span>
             <span class="badge green">Hôm nay còn ${Number(progressUsage.remaining||0)}/3 lượt</span>
           </div>
         </div>
-        ${pending.length?`
-          <div class="reschedule-box" style="margin-top:14px">
-            <b>${pending[0]==='TEST_MODE_PROGRESS'?'Test mode đang bật':'Có session đã học cần Progress Test'}</b>
-            <div class="tiny" style="margin-top:4px">Điểm được chấm theo cùng benchmark để so sánh qua thời gian.</div>
-          </div>
-          <div style="display:grid;gap:10px;margin-top:12px">
-            <button type="button" id="progressStartBtn" class="btn primary" style="width:100%;font-size:15px;padding:13px 16px;${Number(progressUsage.remaining||0)<=0?'opacity:.45;cursor:not-allowed':''}" ${Number(progressUsage.remaining||0)<=0?'disabled':''}>📈 ${Number(progressUsage.remaining||0)>0?`Thực hiện Progress Test · còn ${Number(progressUsage.remaining||0)}/3 lượt hôm nay`:'Đã dùng hết 3 lượt hôm nay'}</button>
-            <div class="progress-suite">
-              <button type="button" class="progress-suite-card progress-suite-action" onclick="openPronunciationTest()">
-                <div class="progress-suite-icon">🎙️</div>
-                <div class="progress-suite-copy"><b>Pronunciation Test</b><span>~2 phút · paragraph + random words · tối đa 3/3 lượt mỗi ngày.</span></div>
-                <span class="progress-suite-arrow">›</span>
-              </button>
-              <button type="button" class="progress-suite-card progress-suite-action" onclick="openComprehensionTest()">
-                <div class="progress-suite-icon">🧠</div>
-                <div class="progress-suite-copy"><b>Session Comprehension</b><span>Mỗi session chỉ test 1 lần · câu hỏi theo đúng level.</span></div>
-                <span class="progress-suite-arrow">›</span>
-              </button>
-            </div>
-          </div>
-        `:`<div class="reschedule-box" style="margin-top:14px"><b>✓ Đã hoàn thành tất cả Progress Test hiện có.</b></div>
+        ${dailyStatus.all_done?`<div class="reschedule-box" style="margin-top:14px;background:#ecfdf3;border-color:#86efac;color:#166534"><b>✓ Đã hoàn thành bài tập hôm nay</b><div class="tiny" style="margin-top:4px">Các bài cần làm hôm nay đã hoàn tất.</div></div>`:''}
+        ${pending.length?`<div class="reschedule-box" style="margin-top:14px"><b>${pending[0]==='TEST_MODE_PROGRESS'?'Test mode đang bật':'Có session đã học cần Progress Test'}</b><div class="tiny" style="margin-top:4px">Điểm được chấm theo cùng benchmark để so sánh qua thời gian.</div></div>`:''}
+        <div style="display:grid;gap:10px;margin-top:12px">
+          <button type="button" id="progressStartBtn" class="btn ${dailyStatus.progress?.done?'success':'primary'}" style="width:100%;font-size:15px;padding:13px 16px;${Number(progressUsage.remaining||0)<=0?'opacity:.55;cursor:not-allowed':''}" ${Number(progressUsage.remaining||0)<=0?'disabled':''}>${dailyStatus.progress?.done?'✓ Đã hoàn thành Progress Test hôm nay':`📈 Thực hiện Progress Test · còn ${Number(progressUsage.remaining||0)}/3 lượt hôm nay`}</button>
           <div class="progress-suite">
-            <button type="button" class="progress-suite-card progress-suite-action" onclick="openPronunciationTest()"><div class="progress-suite-icon">🎙️</div><div class="progress-suite-copy"><b>Pronunciation Test</b><span>~2 phút · paragraph + random words · tối đa 3/3 lượt mỗi ngày.</span></div><span class="progress-suite-arrow">›</span></button>
-            <button type="button" class="progress-suite-card progress-suite-action" onclick="openComprehensionTest()"><div class="progress-suite-icon">🧠</div><div class="progress-suite-copy"><b>Session Comprehension</b><span>Mỗi session chỉ test 1 lần · câu hỏi theo level.</span></div><span class="progress-suite-arrow">›</span></button>
-          </div>`}
+            <button type="button" class="progress-suite-card progress-suite-action ${dailyStatus.pronunciation?.done?'done':''}" ${dailyStatus.pronunciation?.done?'disabled':''} onclick="openPronunciationTest()">
+              <div class="progress-suite-icon">${dailyStatus.pronunciation?.done?'✓':'🎙️'}</div>
+              <div class="progress-suite-copy"><b>Pronunciation Test</b><span>${dailyStatus.pronunciation?.done?'Đã hoàn thành bài tập hôm nay':'~2 phút · paragraph + vocabulary · 1 bài/ngày.'}</span></div>
+              <span class="progress-suite-arrow">${dailyStatus.pronunciation?.done?'':'›'}</span>
+            </button>
+            <button type="button" class="progress-suite-card progress-suite-action ${dailyStatus.comprehension?.done?'done':''}" ${!dailyStatus.comprehension?.required||dailyStatus.comprehension?.done?'disabled':''} onclick="openComprehensionTest()">
+              <div class="progress-suite-icon">${dailyStatus.comprehension?.done?'✓':'🧠'}</div>
+              <div class="progress-suite-copy"><b>Session Comprehension</b><span>${dailyStatus.comprehension?.done?'Đã hoàn thành bài tập hôm nay':(!dailyStatus.comprehension?.required?'Chưa có session đã kết thúc cần test':'Mỗi session chỉ test 1 lần · theo đúng level.')}</span></div>
+              <span class="progress-suite-arrow">${dailyStatus.comprehension?.required&&!dailyStatus.comprehension?.done?'›':''}</span>
+            </button>
+          </div>
+          <button type="button" class="progress-suite-card progress-suite-action ${dailyStatus.listening?.done?'done':''}" style="width:100%" ${dailyStatus.listening?.done?'disabled':''} onclick="openListeningResponseTest()">
+            <div class="progress-suite-icon">${dailyStatus.listening?.done?'✓':'🎧'}</div>
+            <div class="progress-suite-copy"><b>Listening & Response Test</b><span>${dailyStatus.listening?.done?'Đã hoàn thành bài tập hôm nay':'Nghe hội thoại ngắn + trả lời 5 câu hỏi · 1 bài/ngày.'}</span></div>
+            <span class="progress-suite-arrow">${dailyStatus.listening?.done?'':'›'}</span>
+          </button>
+        </div>
       </section>
 
       <section class="card dash-card" style="margin-top:18px" id="realProgressChart">
@@ -10180,7 +10182,8 @@ async function renderWeekly(rv){
           <div>📝 <b>5 câu standardized:</b> Grammar · Vocabulary · Comprehension theo level.</div>
           <div>🎙️ <b>Speaking 1:</b> general English để so sánh Fluency ổn định qua từng session.</div>
           <div>💬 <b>Speaking 2:</b> liên quan nhẹ topic vừa học, nhưng AI chỉ chấm English chứ không chấm kiến thức topic.</div>
-          <div>🎙️ <b>Pronunciation:</b> paragraph + random words để đo Accuracy · Clarity · Stress & Rhythm · Fluency.</div>
+          <div>🎙️ <b>Pronunciation:</b> paragraph + vocabulary để đo Accuracy · Clarity · Stress & Rhythm · Fluency.</div>
+          <div>🎧 <b>Listening & Response:</b> nghe hội thoại ngắn rồi trả lời 5 câu để đo khả năng bắt ý và chi tiết.</div>
           <div>🧠 <b>Session Comprehension:</b> kiểm tra hiểu topic và khả năng giải thích vocabulary bằng English theo đúng level.</div>
         </div>
       </section>
@@ -11360,6 +11363,16 @@ async function loadProgressDailyUsage(){
   if(res.ok)serverAccountMeta.progress=data;
   return serverAccountMeta.progress;
 }
+async function loadDailyTestStatus(){
+  const {customerId,token}=currentCustomerCredentials();
+  if(!customerId||!token)return {progress:{done:false},pronunciation:{done:false},listening:{done:false},comprehension:{required:false,done:false},all_done:false};
+  try{
+    const r=await fetch(`/api/admin?action=daily-test-status&customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}`,{cache:'no-store'});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'STATUS_FAILED');
+    return d;
+  }catch(e){console.warn('Daily test status fallback',e);return {progress:{done:false},pronunciation:{done:false},listening:{done:false},comprehension:{required:false,done:false},all_done:false}}
+}
 
 function getTodayKey(){
   const d=new Date();
@@ -11912,12 +11925,12 @@ async function openPronunciationTest(){
     const d=await r.json();
     if(!r.ok){
       if(d.error==='PRONUNCIATION_DAILY_LIMIT'){
-        aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">Pronunciation 3/3</span><h2>Hôm nay bạn đã dùng đủ 3 lượt</h2><p class="muted">Ngày mai hệ thống sẽ mở lại 3 lượt với nội dung mới.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><button class="btn secondary" style="width:100%" onclick="closeAiTest()">Đóng</button>`);return;
+        aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">Pronunciation · 1 bài/ngày</span><h2>Bạn đã hoàn thành Pronunciation hôm nay</h2><p class="muted">Ngày mai hệ thống sẽ mở bài mới với nội dung khác.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><button class="btn secondary" style="width:100%" onclick="closeAiTest()">Đóng</button>`);return;
       }
       throw new Error(d.details||d.error||'Không tải được bài Pronunciation.');
     }
     window.__pronWords=d.words||[];window.__pronParagraph=d.paragraph||'';window.__pronReference=d.reference_text||'';window.__pronTier=d.tier||'';
-    aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">AI Pronunciation Test · ${escapeHtml(d.tier||'adaptive')} · còn ${Number(d.usage?.remaining||0)}/3 lượt hôm nay</span><h2>Read clearly & naturally</h2><p class="muted">Đọc paragraph trước, sau đó đọc từng từ. Mỗi lượt dùng nội dung khác để tránh học thuộc bài.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><h3>1. Short paragraph</h3><div class="test-reading">${escapeHtml(d.paragraph||'')}</div><h3>2. Random words</h3><div class="word-chips">${(d.words||[]).map(x=>`<span class="word-chip">${escapeHtml(x)}</span>`).join('')}</div><div id="pronOrb" class="rec-orb">🎙️</div><div id="pronTimer" style="text-align:center;font-weight:900">00:00</div><button id="pronRecBtn" class="btn primary" style="width:100%;margin-top:12px" onclick="startPronRecording()">Bắt đầu ghi âm</button><div class="tiny" style="text-align:center;margin-top:8px">Tối đa 3 lượt/ngày.</div>`);
+    aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">AI Pronunciation Test · ${escapeHtml(d.tier||'adaptive')}</span><h2>Read clearly & naturally</h2><p class="muted">Đọc paragraph trước, sau đó đọc từng từ. Mỗi ngày hệ thống đưa một bài mới theo thứ tự kho đề.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><h3>1. Short paragraph</h3><div class="test-reading">${escapeHtml(d.paragraph||'')}</div><h3>2. Random words</h3><div class="word-chips">${(d.words||[]).map(x=>`<span class="word-chip">${escapeHtml(x)}</span>`).join('')}</div><div id="pronOrb" class="rec-orb">🎙️</div><div id="pronTimer" style="text-align:center;font-weight:900">00:00</div><button id="pronRecBtn" class="btn primary" style="width:100%;margin-top:12px" onclick="startPronRecording()">Bắt đầu ghi âm</button><div class="tiny" style="text-align:center;margin-top:8px">1 bài/ngày · nội dung mới theo thứ tự kho đề.</div>`);
   }catch(e){
     aiTestModal(`<div class="ai-test-head"><h2>Chưa mở được bài test</h2><button class="ai-test-close" onclick="closeAiTest()">×</button></div><p class="muted">${escapeHtml(String(e.message||e))}</p><button class="btn secondary" style="width:100%" onclick="closeAiTest()">Đóng</button>`)
   }
@@ -11926,6 +11939,22 @@ async function startPronRecording(){try{const stream=await navigator.mediaDevice
 function stopPronRecording(){clearInterval(aiTestTimer);if(aiTestRecorder?.state==='recording')aiTestRecorder.stop();const b=document.getElementById('pronRecBtn');if(b){b.disabled=true;b.textContent='AI đang phân tích...'}}
 async function submitPronRecording(){try{const blob=new Blob(aiTestChunks,{type:aiTestChunks[0]?.type||'audio/webm'});const {customerId,token}=currentCustomerCredentials();if(!customerId||!token)throw new Error('Vui lòng đăng nhập/đặt chỗ trước để lưu kết quả test.');const fd=new FormData();fd.append('customer_id',customerId);fd.append('token',token);fd.append('audio',blob,'pronunciation.webm');fd.append('reference_text',window.__pronReference||('PARAGRAPH:\n'+(window.__pronParagraph||'')+'\nWORDS: '+(window.__pronWords||[]).join(', ')));const r=await fetch('/api/admin?action=pronunciation-score',{method:'POST',body:fd});const d=await r.json();if(!r.ok)throw new Error(d.details||d.error);renderPronResult(d)}catch(e){aiTestModal(`<div class="ai-test-head"><h2>Chưa chấm được bài test</h2><button class="ai-test-close" onclick="closeAiTest()">×</button></div><p class="muted">${escapeHtml(String(e.message||e))}</p><button class="btn primary" onclick="openPronunciationTest()">Thử lại</button>`)}}
 function renderPronResult(d){aiTestModal(`<div class="ai-test-head"><div><span class="badge green">Pronunciation Result</span><h2>Kết quả phát âm</h2></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><div class="score-ring">${Number(d.overall_score||0)}</div><div class="test-center-stats"><div class="test-stat"><b>${d.accuracy_score||0}</b><span>Accuracy</span></div><div class="test-stat"><b>${d.clarity_score||0}</b><span>Clarity</span></div><div class="test-stat"><b>${d.stress_score||0}</b><span>Stress & rhythm</span></div><div class="test-stat"><b>${d.fluency_score||0}</b><span>Fluency</span></div></div><h3>AI feedback</h3><p>${escapeHtml(d.summary_vi||'')}</p>${(d.improvements_vi||[]).map(x=>`<div class="reschedule-box" style="margin-top:8px">${escapeHtml(x)}</div>`).join('')}<button class="btn primary" style="width:100%;margin-top:15px" onclick="closeAiTest();if(state.route==='weekly')go('weekly');else hydrateTestCenterStats()">Hoàn tất</button>`) }
+let listenPlayCount=0;
+function speakListeningDialogue(text,tier){
+  try{
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);u.lang='en-US';u.rate=tier==='youngKid'?.82:tier==='teenKid'?.88:tier==='beginner'?.92:.98;u.pitch=1;
+    const voices=speechSynthesis.getVoices();const en=voices.find(v=>String(v.lang||'').toLowerCase().startsWith('en-us'))||voices.find(v=>String(v.lang||'').toLowerCase().startsWith('en'));if(en)u.voice=en;
+    speechSynthesis.speak(u);
+  }catch(e){alert('Trình duyệt chưa phát được audio. Hãy thử lại bằng Chrome/Safari mới.')}
+}
+async function openListeningResponseTest(){
+  const {customerId,token}=currentCustomerCredentials();if(!customerId||!token){alert('Vui lòng đăng nhập để làm Listening & Response Test.');return}
+  aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">Listening & Response</span><h2>Đang chuẩn bị hội thoại mới...</h2></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div>`);
+  try{const r=await fetch(`/api/admin?action=listening-prompt&customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}`,{cache:'no-store'});const d=await r.json();if(!r.ok){if(d.error==='LISTENING_DAILY_LIMIT'){aiTestModal(`<div class="ai-test-head"><div><span class="badge green">✓ Hoàn thành</span><h2>Bạn đã hoàn thành Listening & Response hôm nay</h2><p class="muted">Ngày mai sẽ có hội thoại mới.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div>`);return}throw new Error(d.error||'Không tải được bài nghe.')}window.__listenData=d;listenPlayCount=0;renderListeningResponse(d)}catch(e){aiTestModal(`<div class="ai-test-head"><h2>Chưa mở được bài nghe</h2><button class="ai-test-close" onclick="closeAiTest()">×</button></div><p class="muted">${escapeHtml(String(e.message||e))}</p>`)}}
+function renderListeningResponse(d){aiTestModal(`<div class="ai-test-head"><div><span class="badge orange">Listening & Response · ${escapeHtml(d.tier||'adaptive')}</span><h2>Nghe hội thoại và trả lời 5 câu hỏi</h2><p class="muted">Bạn có thể nghe lại tối đa 2 lần. Transcript chỉ hiện sau khi nộp bài.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><button id="listenPlayBtn" class="btn primary" style="width:100%;margin-bottom:14px" onclick="playListeningNow()">▶ Nghe hội thoại · còn 2 lượt</button><form id="listenForm">${(d.questions||[]).map((q,i)=>`<div class="qa-block"><b>${i+1}. ${escapeHtml(q.prompt)}</b><div style="display:grid;gap:7px;margin-top:9px">${(q.options||[]).map((o,j)=>`<label style="display:flex;gap:8px;align-items:flex-start"><input type="radio" name="l${i}" value="${j}"><span>${escapeHtml(o)}</span></label>`).join('')}</div></div>`).join('')}<button type="button" class="btn primary" style="width:100%;margin-top:15px" onclick="submitListeningResponse()">Nộp bài</button></form>`)}
+function playListeningNow(){const d=window.__listenData;if(!d||listenPlayCount>=2)return;listenPlayCount++;speakListeningDialogue(d.dialogue,d.tier);const b=document.getElementById('listenPlayBtn');if(b){const left=Math.max(0,2-listenPlayCount);b.textContent=left?`▶ Nghe lại · còn ${left} lượt`:'Đã dùng đủ 2 lượt nghe';if(!left)b.disabled=true}}
+async function submitListeningResponse(){const d=window.__listenData,form=document.getElementById('listenForm');if(!d||!form)return;const answers=(d.questions||[]).map((_,i)=>{const el=form.querySelector(`input[name="l${i}"]:checked`);return el?Number(el.value):-1});if(answers.some(x=>x<0)){alert('Trả lời đủ 5 câu trước khi nộp nha.');return}const {customerId,token}=currentCustomerCredentials();const btn=form.querySelector('button[type="button"]');btn.disabled=true;btn.textContent='Đang chấm...';try{const r=await fetch('/api/admin?action=listening-score',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer_id:customerId,token,scenario_id:d.scenario_id,answers})});const out=await r.json();if(!r.ok)throw new Error(out.error||'Không chấm được bài.');aiTestModal(`<div class="ai-test-head"><div><span class="badge green">✓ Listening & Response</span><h2>${out.overall_score||0}/100 · ${out.correct_count||0}/5 câu đúng</h2></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div><div class="reschedule-box"><b>AI/Smart feedback</b><div style="margin-top:5px">${escapeHtml(out.feedback_vi||'')}</div></div><h3>Transcript</h3><div class="test-reading">${escapeHtml(d.dialogue||'')}</div><button class="btn primary" style="width:100%;margin-top:14px" onclick="closeAiTest();go('weekly')">Hoàn tất</button>`)}catch(e){btn.disabled=false;btn.textContent='Nộp bài';alert(String(e.message||e))}}
 async function openComprehensionTest(){const {customerId,token}=currentCustomerCredentials();if(!customerId||!token){alert('Vui lòng đăng nhập để làm Session Comprehension Test.');return}aiTestModal(`<div class="ai-test-head"><h2>Session Comprehension</h2><button class="ai-test-close" onclick="closeAiTest()">×</button></div><p class="muted">Đang tìm 3 session gần nhất...</p>`);try{const r=await fetch(`/api/admin?action=comprehension-status&customer_id=${encodeURIComponent(customerId)}&token=${encodeURIComponent(token)}`,{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error(d.details||d.error);renderComprehensionSessions(d.sessions||[])}catch(e){aiTestModal(`<div class="ai-test-head"><h2>Session Comprehension</h2><button class="ai-test-close" onclick="closeAiTest()">×</button></div><div class="reschedule-box"><b>Chưa tải được session.</b><div class="tiny" style="margin-top:5px">Vui lòng thử lại sau.</div></div>`)}}
 function renderComprehensionSessions(items){aiTestModal(`<div class="ai-test-head"><div><span class="badge green">After-session AI check</span><h2>Session Comprehension</h2><p class="muted">Chỉ hiển thị tối đa 3 session gần nhất. Mỗi session chỉ được làm 1 lần; bài đã hoàn thành sẽ khóa lại.</p></div><button class="ai-test-close" onclick="closeAiTest()">×</button></div>${items.length?items.map(x=>`<div class="session-test-card ${x.done?'done':''}"><div><b>${escapeHtml(x.topic_title||'English Session')}</b><div class="tiny">${escapeHtml(x.program_name||'SpeakHub')} · ${escapeHtml(String(x.session_date||''))}</div></div><button class="btn ${x.done?'ghost':'primary'} small" ${x.done?'disabled':''} onclick="loadComprehensionQuiz('${x.id}',false)">${x.done?'✓ Đã test':'Bắt đầu'}</button></div>`).join(''):'<div class="reschedule-box"><b>Chưa có session đã kết thúc.</b></div>'}`) }
 async function loadComprehensionQuiz(sessionId,demo=false){const {customerId,token}=currentCustomerCredentials();aiTestModal(`<div class="ai-test-head"><h2>Đang tạo câu hỏi...</h2><button class="ai-test-close" onclick="closeAiTest()">×</button></div><p class="muted">AI đang điều chỉnh độ khó theo level của session.</p>`);try{const r=await fetch('/api/admin?action=comprehension-quiz',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({customer_id:customerId,token,session_id:sessionId,demo})});const d=await r.json();if(!r.ok)throw new Error(d.details||d.error);window.__compQuiz=d;renderComprehensionQuiz(d)}catch(e){alert(String(e.message||e));openComprehensionTest()}}

@@ -3395,35 +3395,116 @@ async function pronunciationUsage(customerId){
   const {start,end}=vnDayBounds();
   const {count,error}=await supabase.from('pronunciation_tests').select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED').gte('created_at',start).lte('created_at',end);
   if(error)throw error;
-  const used=Math.min(3,count||0);return {used,remaining:Math.max(0,3-used),limit:3};
+  const used=Math.min(1,count||0);return {used,remaining:Math.max(0,1-used),limit:1};
 }
-function selectPronunciationContent(tier,usedReferences){
-  const used=(usedReferences||[]).map(x=>String(x||''));
+function pronunciationPoolForTier(tier){
   const cfg=tier==='intermediate'?{paragraphs:V116_PRON_PARAGRAPHS,words:V116_PRON_WORDS}:V117_PRON_BANKS[tier]||V117_PRON_BANKS.beginner;
   const extensions=tier==='intermediate'?V116_PRON_EXTENSIONS:[
     'Read at a calm pace. Make each word clear and pause naturally at punctuation.',
     'Keep your voice relaxed. Focus on complete words, clear endings, and steady rhythm.',
     'Read as if you are talking to a real person. Clarity is more important than speed.',
-    'Take a small breath between ideas and keep the sentence connected naturally.'
+    'Pause briefly between ideas and pronounce the final sound of each important word.',
+    'Use a steady rhythm and make stressed words slightly stronger than small grammar words.',
+    'Do not rush. A natural, comfortable pace is better than speaking as fast as possible.',
+    'Finish each sentence clearly, then take a short breath before the next sentence.',
+    'Keep vowels open and consonant endings complete, especially when two words connect.'
   ];
-  const tierUsed=used.filter(r=>r.startsWith(`TIER:${tier}\n`));
-  const total=cfg.paragraphs.length*extensions.length;let paragraph='',comboIndex=0;
-  for(let i=0;i<total;i++){const pi=i%cfg.paragraphs.length,ei=Math.floor(i/cfg.paragraphs.length)%extensions.length,candidate=`${cfg.paragraphs[pi]} ${extensions[ei]}`;if(!tierUsed.some(r=>r.includes(`PARAGRAPH:\n${candidate}\n`))){paragraph=candidate;comboIndex=i;break}}
-  if(!paragraph){comboIndex=0;paragraph=`${cfg.paragraphs[0]} ${extensions[0]}`}
-  const seenWords=new Set();for(const r of tierUsed){const m=r.match(/WORDS:\s*([^\n]+)/i);if(m)for(const w of m[1].split(/[,|\s]+/))if(w)seenWords.add(w.toLowerCase())}
-  const words=[];for(let i=0;i<cfg.words.length&&words.length<10;i++){const w=cfg.words[(comboIndex*10+i)%cfg.words.length];if(!seenWords.has(String(w).toLowerCase()))words.push(w)}
-  if(words.length<10){for(const w of cfg.words){if(!words.includes(w)){words.push(w);if(words.length===10)break}}}
-  return {tier,paragraph,words,reference_text:`TIER:${tier}\nPARAGRAPH:\n${paragraph}\nWORDS: ${words.join(', ')}`};
+  const pool=[];
+  const para=cfg.paragraphs||[];
+  const words=cfg.words||[];
+  // Deterministic bank: each paragraph cycles through every extension before repeating.
+  // Word windows are also shifted, so the complete prompt remains unique for the whole pool.
+  for(let pi=0;pi<para.length;pi++){
+    for(let ei=0;ei<extensions.length;ei++){
+      const picked=[];
+      const offset=(pi*13+ei*17)%Math.max(1,words.length);
+      for(let k=0;k<10&&k<words.length;k++)picked.push(words[(offset+k*7)%words.length]);
+      const paragraph=`${para[pi]} ${extensions[ei]}`;
+      pool.push({tier,paragraph,words:picked,reference_text:`BANK:${tier}:${pi}:${ei}\nPARAGRAPH:\n${paragraph}\nWORDS: ${picked.join(', ')}`});
+    }
+  }
+  return pool;
 }
 async function handlePronunciationPrompt(request){
   if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
   const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');
   const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
-  const usage=await pronunciationUsage(customerId);if(usage.remaining<=0)return Response.json({error:'PRONUNCIATION_DAILY_LIMIT',usage},{status:429});
+  const b=vnDayBounds();
+  const {count:todayCount,error:todayErr}=await supabase.from('pronunciation_tests').select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED').gte('created_at',b.start).lte('created_at',b.end);
+  if(todayErr)throw todayErr;
+  if(Number(todayCount||0)>=1)return Response.json({error:'PRONUNCIATION_DAILY_LIMIT',usage:{used:1,remaining:0,limit:1,date:b.ymd}},{status:429});
   const tier=await customerAdaptiveTier(customerId);
-  const {data,error}=await supabase.from('pronunciation_tests').select('reference_text').eq('customer_id',customerId).eq('status','COMPLETED').order('created_at',{ascending:true}).limit(2000);if(error)throw error;
-  const content=selectPronunciationContent(tier,(data||[]).map(x=>x.reference_text));
-  return Response.json({success:true,usage,...content});
+  const {count:allCount,error:allErr}=await supabase.from('pronunciation_tests').select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED');
+  if(allErr)throw allErr;
+  const pool=pronunciationPoolForTier(tier);
+  const content=pool[Number(allCount||0)%Math.max(1,pool.length)]||pool[0];
+  return Response.json({success:true,usage:{used:0,remaining:1,limit:1,date:b.ymd},pool_size:pool.length,...content});
+}
+
+function listeningScenario(index,tier){
+  const names=[['Mia','Leo'],['Anna','Ben'],['Nora','Sam'],['Emma','Jack'],['Lily','Noah'],['Chloe','Max'],['Sophie','Daniel'],['Grace','Ryan']];
+  const places=['library','coffee shop','school office','bookstore','bus stop','community center','sports club','supermarket','train station','study room'];
+  const times=['8:30','9:15','10:00','11:45','1:30','2:20','3:15','4:40','5:30','6:10'];
+  const items=['English book','notebook','train ticket','lunch box','presentation file','blue jacket','phone charger','sports bag','coffee order','homework folder'];
+  const prices=['45,000 dong','60,000 dong','75,000 dong','90,000 dong','120,000 dong','150,000 dong','180,000 dong','200,000 dong'];
+  const reasons=['the weather may change','they have an English class later','the first option is sold out','they need more time to prepare','the bus is running late','a friend recommended it','the room is quieter','it is closer to home'];
+  const actions=['meet near the entrance','send a message after class','buy the item before leaving','wait for ten minutes','call the teacher','take the next bus','finish the work together','return tomorrow morning'];
+  let n=Math.max(0,Number(index)||0);
+  const pick=arr=>{const v=arr[n%arr.length];n=Math.floor(n/arr.length);return v};
+  const [a,b]=pick(names),place=pick(places),time=pick(times),item=pick(items),price=pick(prices),reason=pick(reasons),action=pick(actions);
+  let dialogue;
+  if(tier==='youngKid') dialogue=`${a}: Hi ${b}! Are you going to the ${place} at ${time}? ${b}: Yes. I need my ${item}. ${a}: Great. Why are you going there? ${b}: Because ${reason}. ${a}: Okay. After that, let's ${action}.`;
+  else if(tier==='teenKid') dialogue=`${a}: Are we still meeting at the ${place} at ${time}? ${b}: Yes, but I need to bring my ${item}. ${a}: No problem. I heard it costs about ${price}. ${b}: That's fine. I chose this plan because ${reason}. ${a}: Good idea. Then we can ${action}.`;
+  else if(tier==='beginner') dialogue=`${a}: Hi ${b}, are you free to meet at the ${place} at ${time}? ${b}: Yes. I also need to pick up my ${item}. ${a}: I checked earlier and it should cost around ${price}. ${b}: That works for me. I prefer this plan because ${reason}. ${a}: Perfect. When we're finished, let's ${action}.`;
+  else dialogue=`${a}: Before we confirm the plan, can we meet at the ${place} at ${time}? ${b}: That should work. I also need to collect my ${item}, and the estimated cost is ${price}. ${a}: Fine with me. Is there a particular reason you prefer that option? ${b}: Mainly because ${reason}. It seems more practical. ${a}: Agreed. Once that's done, we should ${action} so we don't lose any more time.`;
+  const mk=(prompt,correct,alts)=>({prompt,options:[correct,...alts],answer:0});
+  const questions=[
+    mk('Where are the speakers planning to meet?',place,['at home','at a hospital','at an airport']),
+    mk('What time do they plan to meet?',time,['7:00','12:00','8:00']),
+    mk(`What item does ${b} mention?`,item,['a camera','an umbrella','a bicycle']),
+    mk('Why do they prefer this plan?',reason,['they forgot the address','they want to cancel','they dislike the place']),
+    mk('What will they do afterward?',action,['go home immediately','change the plan completely','wait until next week'])
+  ];
+  if(tier!=='kid_u10') questions[2]=mk('What cost is mentioned?',price,['20,000 dong','300,000 dong','500,000 dong']);
+  const mixed=questions.map((q,i)=>{const shift=(index+i)%q.options.length;const options=q.options.slice(shift).concat(q.options.slice(0,shift));return {...q,options,answer:(q.options.length-shift)%q.options.length};});
+  return {dialogue,questions:mixed,scenario_id:`${tier}-${index}`,tier};
+}
+async function handleListeningPrompt(request){
+  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
+  const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const b=vnDayBounds();
+  const {count:todayCount,error:e1}=await supabase.from('listening_tests').select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED').gte('created_at',b.start).lte('created_at',b.end);if(e1)throw e1;
+  if(Number(todayCount||0)>=1)return Response.json({error:'LISTENING_DAILY_LIMIT'},{status:429});
+  const {count:allCount,error:e2}=await supabase.from('listening_tests').select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED');if(e2)throw e2;
+  const tier=await customerAdaptiveTier(customerId); const poolSize=960; const item=listeningScenario(Number(allCount||0)%poolSize,tier);
+  return Response.json({success:true,...item,pool_size:poolSize,usage:{used:0,remaining:1,limit:1,date:b.ymd}});
+}
+async function handleListeningScore(request){
+  if(request.method!=='POST')return Response.json({error:'Method not allowed'},{status:405});
+  const body=await request.json().catch(()=>({})),customerId=String(body.customer_id||''),token=String(body.token||'');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const b=vnDayBounds();
+  const {count,error:e1}=await supabase.from('listening_tests').select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED').gte('created_at',b.start).lte('created_at',b.end);if(e1)throw e1;
+  if(Number(count||0)>=1)return Response.json({error:'LISTENING_DAILY_LIMIT'},{status:429});
+  const tier=await customerAdaptiveTier(customerId); const idx=Math.max(0,parseInt(String(body.scenario_id||'').split('-').pop()||'0',10)||0); const expected=listeningScenario(idx,tier);
+  const answers=Array.isArray(body.answers)?body.answers:[]; let correct=0;
+  expected.questions.forEach((q,i)=>{if(Number(answers[i])===q.answer)correct++});
+  const score=correct*20;
+  const feedback=score>=80?'Nghe tốt và nắm được phần lớn chi tiết quan trọng.':score>=60?'Bạn hiểu ý chính khá ổn; nên chú ý thêm thời gian, lý do và chi tiết cụ thể.':'Nên nghe theo cụm ý, tập bắt từ khóa về nơi chốn, thời gian, lý do và hành động tiếp theo.';
+  const {data,error}=await supabase.from('listening_tests').insert({customer_id:customerId,scenario_id:expected.scenario_id,tier,dialogue:expected.dialogue,questions:expected.questions,answers,correct_count:correct,overall_score:score,feedback_vi:feedback,status:'COMPLETED'}).select('id,created_at').single(); if(error)throw error;
+  return Response.json({success:true,id:data.id,created_at:data.created_at,correct_count:correct,overall_score:score,feedback_vi:feedback});
+}
+async function handleDailyTestStatus(request){
+  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});
+  const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');
+  const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  const b=vnDayBounds();
+  const countToday=async table=>{const {count,error}=await supabase.from(table).select('*',{count:'exact',head:true}).eq('customer_id',customerId).eq('status','COMPLETED').gte('created_at',b.start).lte('created_at',b.end);if(error)throw error;return Number(count||0)};
+  const [progress,pronunciation,listening]=await Promise.all([countToday('progress_tests'),countToday('pronunciation_tests'),countToday('listening_tests')]);
+  const sessions=await comprehensionStatusRows(customerId);
+  const compRequired=sessions.length>0,compDone=compRequired&&!!sessions[0]?.done;
+  return Response.json({success:true,date:b.ymd,progress:{done:progress>0},pronunciation:{done:pronunciation>0},listening:{done:listening>0},comprehension:{required:compRequired,done:compDone},all_done:progress>0&&pronunciation>0&&listening>0&&(!compRequired||compDone)});
 }
 
 async function handlePronunciationScore(request){
@@ -3437,15 +3518,20 @@ async function handlePronunciationScore(request){
   const result=await v112AI(`You assess English pronunciation for SpeakHub. Compare REFERENCE with TRANSCRIPT. Transcription confidence is supporting evidence, not a perfect phonetic measurement. Be conservative: do not claim exact phoneme errors that cannot be inferred. Score intelligibility, word accuracy, likely stress/rhythm and fluency. Feedback is concise Vietnamese, with English examples when useful.\nREFERENCE: ${reference}\nTRANSCRIPT: ${String(td.text||'')}\nTRANSCRIPTION_CONFIDENCE: ${conf??'unknown'}`,schema,'speakhub_pronunciation_result');
   const {data:saved,error}=await supabase.from('pronunciation_tests').insert({customer_id:customerId,reference_text:reference,transcript:String(td.text||''),transcription_confidence:conf,...result,status:'COMPLETED',raw_result:result}).select('id,created_at').single();if(error)throw error;return Response.json({success:true,id:saved.id,created_at:saved.created_at,...result});
 }
-async function handleComprehensionStatus(request){
-  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+async function comprehensionStatusRows(customerId){
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const {data,error}=await supabase.from('bookings').select(`id,status,session_id,class_sessions(id,session_date,ends_at,topic_title,programs(name))`).eq('user_id',customerId).in('status',['CONFIRMED','ATTENDED','NO_SHOW']).lte('class_sessions.session_date',today).order('created_at',{ascending:false}).limit(20);if(error)throw error;
-  const vnNow=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Ho_Chi_Minh'}));const nowHM=`${String(vnNow.getHours()).padStart(2,'0')}:${String(vnNow.getMinutes()).padStart(2,'0')}`;const rows=(data||[]).filter(x=>{const cs=x.class_sessions;if(!cs?.id)return false;if(String(cs.session_date)<today)return true;if(String(cs.session_date)>today)return false;const end=String(cs.ends_at||'23:59').slice(0,5);return end<=nowHM;}).sort((a,b)=>String(b.class_sessions.session_date).localeCompare(String(a.class_sessions.session_date))).slice(0,3);const ids=rows.map(x=>x.session_id);let done=new Set();if(ids.length){const q=await supabase.from('comprehension_tests').select('session_id').eq('customer_id',customerId).in('session_id',ids).eq('status','COMPLETED');if(q.error)throw q.error;done=new Set((q.data||[]).map(x=>x.session_id))}
-  return Response.json({success:true,sessions:rows.map(x=>({id:x.session_id,booking_id:x.id,session_date:x.class_sessions.session_date,topic_title:x.class_sessions.topic_title||'English Session',program_name:x.class_sessions.programs?.name||'SpeakHub',done:done.has(x.session_id)}))});
+  const vnNow=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Ho_Chi_Minh'}));const nowHM=`${String(vnNow.getHours()).padStart(2,'0')}:${String(vnNow.getMinutes()).padStart(2,'0')}`;
+  const rows=(data||[]).filter(x=>{const cs=x.class_sessions;if(!cs?.id)return false;if(String(cs.session_date)<today)return true;if(String(cs.session_date)>today)return false;const end=String(cs.ends_at||'23:59').slice(0,5);return end<=nowHM;}).sort((a,b)=>String(b.class_sessions.session_date).localeCompare(String(a.class_sessions.session_date))).slice(0,3);
+  const ids=rows.map(x=>x.session_id);let done=new Set();if(ids.length){const q=await supabase.from('comprehension_tests').select('session_id').eq('customer_id',customerId).in('session_id',ids).eq('status','COMPLETED');if(q.error)throw q.error;done=new Set((q.data||[]).map(x=>x.session_id))}
+  return rows.map(x=>({id:x.session_id,booking_id:x.id,session_date:x.class_sessions.session_date,topic_title:x.class_sessions.topic_title||'English Session',program_name:x.class_sessions.programs?.name||'SpeakHub',done:done.has(x.session_id)}));
 }
+async function handleComprehensionStatus(request){
+  if(request.method!=='GET')return Response.json({error:'Method not allowed'},{status:405});const u=new URL(request.url),customerId=String(u.searchParams.get('customer_id')||''),token=String(u.searchParams.get('token')||'');const auth=await requireActiveCustomer(customerId,token);if(auth.error)return Response.json({error:auth.error},{status:auth.status});
+  return Response.json({success:true,sessions:await comprehensionStatusRows(customerId)});
+}
+
 async function comprehensionSession(customerId,sessionId,demo){
-  if(demo||sessionId==='DEMO_SUCCESS')return {session_id:'DEMO_SUCCESS',topic_title:'Why Do Some People Become Successful Faster Than Others?',level:'Adult Intermediate',demo:true};
   const {data,error}=await supabase.from('bookings').select(`session_id,class_sessions(id,session_date,ends_at,topic_title,programs(name))`).eq('user_id',customerId).eq('session_id',sessionId).in('status',['CONFIRMED','ATTENDED','NO_SHOW']).maybeSingle();if(error)throw error;if(!data)return null;const cs=data.class_sessions||{};const vnNow=new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Ho_Chi_Minh'}));const today=`${vnNow.getFullYear()}-${String(vnNow.getMonth()+1).padStart(2,'0')}-${String(vnNow.getDate()).padStart(2,'0')}`,nowHM=`${String(vnNow.getHours()).padStart(2,'0')}:${String(vnNow.getMinutes()).padStart(2,'0')}`;if(String(cs.session_date)>today||(String(cs.session_date)===today&&String(cs.ends_at||'23:59').slice(0,5)>nowHM))return null;return {session_id:sessionId,topic_title:cs.topic_title||'English Session',level:cs.programs?.name||'SpeakHub',demo:false};
 }
 async function handleComprehensionQuiz(request){
@@ -3546,6 +3632,9 @@ export default {
       if(action==='progress-status') return await handleProgressStatus(request);
       if(action==='pronunciation-prompt') return await handlePronunciationPrompt(request);
       if(action==='pronunciation-score') return await handlePronunciationScore(request);
+      if(action==='listening-prompt') return await handleListeningPrompt(request);
+      if(action==='listening-score') return await handleListeningScore(request);
+      if(action==='daily-test-status') return await handleDailyTestStatus(request);
       if(action==='comprehension-status') return await handleComprehensionStatus(request);
       if(action==='comprehension-quiz') return await handleComprehensionQuiz(request);
       if(action==='comprehension-score') return await handleComprehensionScore(request);

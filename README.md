@@ -1,3 +1,11 @@
+# SpeakHub V123 — Daily Test Suite
+
+- Pronunciation: 1 test/day, deterministic sequential bank, no repeats until the tier bank is exhausted.
+- New Listening & Response Test: short dialogue + 5 questions, 1 test/day, 960 sequential scenarios per tier before cycling.
+- Daily completion state: green tick/message for completed Progress, Pronunciation, Listening; Session Comprehension only shows completed state when an eligible ended session exists and its latest test is done.
+- Run `123_listening_response_test.sql` once before deploying V123.
+- Existing `112_ai_test_center.sql` is still required if it has never been run.
+
 # V122 — Unified CS Login + Pagination + Registration Full State
 
 - `/cs` is now the only CS portal. The password determines the branch: `CS_GOVAP_PASSWORD` => Gò Vấp, `CS_D2_PASSWORD` => District 2. Backend-issued supporter token remains branch-locked.
