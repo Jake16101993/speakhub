@@ -36,9 +36,25 @@ function requireAdmin(request){
   }
 }
 
-function signSupporterToken(){const secret=process.env.SPEAKHUB_SUPPORTER_SECRET||process.env.SPEAKHUB_ADMIN_SECRET;if(!secret)throw new Error('SUPPORTER_SECRET_MISSING');const payload=Buffer.from(JSON.stringify({role:'supporter',exp:Date.now()+12*60*60*1000})).toString('base64url');const sig=crypto.createHmac('sha256',secret).update(payload).digest('base64url');return `${payload}.${sig}`}
-function requireSupporter(request){const secret=process.env.SPEAKHUB_SUPPORTER_SECRET||process.env.SPEAKHUB_ADMIN_SECRET;if(!secret)return false;const auth=request.headers.get('authorization')||'',token=auth.startsWith('Bearer ')?auth.slice(7):'', [payload,sig]=token.split('.');if(!payload||!sig)return false;const expected=crypto.createHmac('sha256',secret).update(payload).digest('base64url');try{if(sig.length!==expected.length||!crypto.timingSafeEqual(Buffer.from(sig),Buffer.from(expected)))return false;const d=JSON.parse(Buffer.from(payload,'base64url').toString('utf8'));return d.role==='supporter'&&Number(d.exp)>Date.now()}catch{return false}}
-async function handleSupporterLogin(request){if(request.method!=='POST')return Response.json({error:'METHOD_NOT_ALLOWED'},{status:405});const b=await request.json().catch(()=>({})),expected=process.env.SPEAKHUB_SUPPORTER_PASSWORD;if(!expected)return Response.json({error:'SUPPORTER_PASSWORD_MISSING'},{status:500});if(String(b.password||'')!==expected)return Response.json({error:'INVALID_PASSWORD'},{status:401});return Response.json({token:signSupporterToken()})}
+function normalizeSupporterBranch(branch){
+  const b=String(branch||'').trim().toLowerCase();
+  if(b==='go-vap'||b==='govap'||b==='go_vap') return 'go-vap';
+  if(b==='district-2'||b==='d2'||b==='district_2') return 'district-2';
+  return '';
+}
+function signSupporterToken(branch){const secret=process.env.SPEAKHUB_SUPPORTER_SECRET||process.env.SPEAKHUB_ADMIN_SECRET;if(!secret)throw new Error('SUPPORTER_SECRET_MISSING');const cleanBranch=normalizeSupporterBranch(branch);if(!cleanBranch)throw new Error('INVALID_SUPPORTER_BRANCH');const payload=Buffer.from(JSON.stringify({role:'supporter',branch:cleanBranch,exp:Date.now()+12*60*60*1000})).toString('base64url');const sig=crypto.createHmac('sha256',secret).update(payload).digest('base64url');return `${payload}.${sig}`}
+function requireSupporter(request){const secret=process.env.SPEAKHUB_SUPPORTER_SECRET||process.env.SPEAKHUB_ADMIN_SECRET;if(!secret)return null;const auth=request.headers.get('authorization')||'',token=auth.startsWith('Bearer ')?auth.slice(7):'', [payload,sig]=token.split('.');if(!payload||!sig)return null;const expected=crypto.createHmac('sha256',secret).update(payload).digest('base64url');try{if(sig.length!==expected.length||!crypto.timingSafeEqual(Buffer.from(sig),Buffer.from(expected)))return null;const d=JSON.parse(Buffer.from(payload,'base64url').toString('utf8'));const branch=normalizeSupporterBranch(d.branch);return d.role==='supporter'&&branch&&Number(d.exp)>Date.now()?{...d,branch}:null}catch{return null}}
+function supporterScopedRequest(request,branch){const u=new URL(request.url);u.searchParams.set('scope',branch);return new Request(u.toString(),request)}
+async function handleSupporterLogin(request){
+  if(request.method!=='POST')return Response.json({error:'METHOD_NOT_ALLOWED'},{status:405});
+  const b=await request.json().catch(()=>({})),branch=normalizeSupporterBranch(b.branch);
+  if(!branch)return Response.json({error:'INVALID_BRANCH'},{status:400});
+  const envKey=branch==='district-2'?'CS_D2_PASSWORD':'CS_GOVAP_PASSWORD';
+  const expected=process.env[envKey];
+  if(!expected)return Response.json({error:`${envKey}_MISSING`},{status:500});
+  if(String(b.password||'')!==String(expected))return Response.json({error:'INVALID_PASSWORD'},{status:401});
+  return Response.json({token:signSupporterToken(branch),branch});
+}
 
 
 // ===== Publisher / affiliate =====
@@ -46,7 +62,13 @@ function publisherPasswordHash(password){
   const secret=process.env.SPEAKHUB_ADMIN_SECRET||'speakhub-publisher';
   return crypto.createHmac('sha256',secret).update(String(password||'')).digest('hex');
 }
-function randomPublisherSlug(){return crypto.randomBytes(5).toString('base64url').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,7)}
+function randomPublisherSlug(){
+  const letters='abcdefghijklmnopqrstuvwxyz',digits='0123456789',all=letters+digits;
+  // Always include at least one letter and one digit, then shuffle the 4 characters.
+  const chars=[letters[crypto.randomInt(letters.length)],digits[crypto.randomInt(digits.length)],all[crypto.randomInt(all.length)],all[crypto.randomInt(all.length)]];
+  for(let i=chars.length-1;i>0;i--){const j=crypto.randomInt(i+1);[chars[i],chars[j]]=[chars[j],chars[i]]}
+  return chars.join('');
+}
 function signPublisherToken(publisherId){
   const secret=process.env.SPEAKHUB_ADMIN_SECRET;if(!secret)throw new Error('ADMIN_SECRET_MISSING');
   const payload=Buffer.from(JSON.stringify({role:'publisher',publisher_id:publisherId,exp:Date.now()+12*60*60*1000})).toString('base64url');
@@ -107,8 +129,29 @@ async function handlePublisherLogin(request){
   if(!data||data.status!=='ACTIVE'||data.password_hash!==publisherPasswordHash(password))return Response.json({error:'INVALID_LOGIN'},{status:401});
   return Response.json({token:signPublisherToken(data.id),publisher:{id:data.id,name:data.name,slug:data.slug,phone:data.phone||'',commission_rate:Number(data.commission_rate||0)}});
 }
+async function publisherClicksLast30Days(publisherId){
+  const now=new Date();
+  const fmt=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'});
+  const today=fmt.format(now);
+  const startDay=addDaysISO(today,-29);
+  const startIso=new Date(`${startDay}T00:00:00+07:00`).toISOString();
+  const counts=Object.fromEntries(Array.from({length:30},(_,i)=>[addDaysISO(startDay,i),0]));
+  let from=0;
+  while(true){
+    const {data,error}=await supabase.from('publisher_clicks').select('clicked_at').eq('publisher_id',publisherId).gte('clicked_at',startIso).order('clicked_at',{ascending:true}).range(from,from+999);
+    if(error)throw error;
+    const rows=data||[];
+    for(const row of rows){const day=fmt.format(new Date(row.clicked_at));if(Object.prototype.hasOwnProperty.call(counts,day))counts[day]++}
+    if(rows.length<1000)break;
+    from+=1000;
+    if(from>=50000)break;
+  }
+  return Object.entries(counts).map(([date,clicks])=>({date,clicks}));
+}
+
 async function publisherReportRows(publisherId,month='',from='',to=''){
   const bounds=publisherPeriodBounds(month,from,to);
+  const dailyClicksPromise=publisherClicksLast30Days(publisherId);
   let clicksQ=supabase.from('publisher_clicks').select('id,visitor_id,clicked_at').eq('publisher_id',publisherId).order('clicked_at',{ascending:false}).limit(10000);
   let eventsQ=supabase.from('publisher_events').select('visitor_id,customer_id,event_type,event_at').eq('publisher_id',publisherId).order('event_at',{ascending:false}).limit(20000);
   let attrsQ=supabase.from('publisher_order_attributions').select('order_id,customer_id,attributed_at').eq('publisher_id',publisherId).order('attributed_at',{ascending:false}).limit(10000);
@@ -131,7 +174,8 @@ async function publisherReportRows(publisherId,month='',from='',to=''){
   const sets={LANDING:new Set(),BOOKING_OPEN:new Set(),CUSTOMER_INFO:new Set(),ORDER_CREATED:new Set(),PAYMENT_QR:new Set(),PAID:new Set()};
   for(const e of (events||[])){const k=String(e.customer_id||e.visitor_id||'');if(k&&sets[e.event_type])sets[e.event_type].add(k)}
   funnel.landing=sets.LANDING.size;funnel.booking_open=sets.BOOKING_OPEN.size;funnel.customer_info=sets.CUSTOMER_INFO.size;funnel.order_created=sets.ORDER_CREATED.size;funnel.payment_qr=sets.PAYMENT_QR.size;funnel.paid=Math.max(sets.PAID.size,paid.length);
-  return {publisher:{...pub,login_code:pub.slug},period:bounds||null,summary:{clicks:(clicks||[]).length,unique_visitors:uniqueVisitors,orders:customersRows.length,paid_orders:paid.length,revenue,commission,conversion_rate:uniqueVisitors?paid.length*100/uniqueVisitors:0,funnel},customers:customersRows.slice(0,1000)};
+  const daily_clicks=await dailyClicksPromise;
+  return {publisher:{...pub,login_code:pub.slug},period:bounds||null,summary:{clicks:(clicks||[]).length,unique_visitors:uniqueVisitors,orders:customersRows.length,paid_orders:paid.length,revenue,commission,conversion_rate:uniqueVisitors?paid.length*100/uniqueVisitors:0,funnel},customers:customersRows.slice(0,1000),daily_clicks};
 }
 async function handlePublisherPortal(request){
   const auth=publisherFromRequest(request);if(!auth)return Response.json({error:'UNAUTHORIZED'},{status:401});
@@ -152,7 +196,14 @@ async function handlePublisherAdmin(request){
   if(request.method==='POST'){
     const b=await request.json().catch(()=>({})),name=String(b.name||'').trim(),phone=String(b.phone||'').replace(/[\s.-]/g,''),password=String(b.password||''),scheme=normalizeCommissionScheme(b.commission_scheme||[]);if(!name||password.length<6)return Response.json({error:'NAME_AND_PASSWORD_REQUIRED'},{status:400});
     if(phone){const {data:existing,error:pe}=await supabase.from('publishers').select('id').eq('phone',phone).maybeSingle();if(pe)throw pe;if(existing)return Response.json({error:'PHONE_ALREADY_REGISTERED'},{status:409})}
-    let slug=randomPublisherSlug();for(let i=0;i<5;i++){const {data}=await supabase.from('publishers').select('id').eq('slug',slug).maybeSingle();if(!data)break;slug=randomPublisherSlug()}
+    let slug='';
+    for(let i=0;i<50;i++){
+      const candidate=randomPublisherSlug();
+      const {data:exists,error:checkErr}=await supabase.from('publishers').select('id').eq('slug',candidate).maybeSingle();
+      if(checkErr)throw checkErr;
+      if(!exists){slug=candidate;break}
+    }
+    if(!slug)return Response.json({error:'PUBLISHER_SLUG_POOL_BUSY'},{status:503});
     const loginCode=slug;const {data,error}=await supabase.from('publishers').insert({name,phone:phone||null,slug,login_code:loginCode,password_hash:publisherPasswordHash(password),commission_rate:0,commission_scheme:scheme,status:'ACTIVE'}).select('id,name,phone,slug,login_code,status,commission_rate,commission_scheme,created_at').single();if(error)throw error;return Response.json({publisher:data,link:`https://speakhub.vn/${slug}`},{status:201});
   }
   if(request.method==='PUT'){
@@ -188,18 +239,41 @@ function scopeQuery(q,scopeInfo,column='room_id'){
 }
 
 
-async function handleSupporterRegistrationSessions(){
+async function handleSupporterRegistrationSessions(request){
   const today=vnTodayBounds().day;
-  const {data,error}=await supabase.from('class_sessions')
-    .select('id,session_date,starts_at,ends_at,capacity,status,programs(name),rooms(name)')
+  const u=new URL(request.url),scopeInfo=await resolveAdminScope(u.searchParams.get('scope')||'overall');
+  let sessionsQ=supabase.from('class_sessions')
+    .select('id,room_id,session_date,starts_at,ends_at,capacity,status,programs(name),rooms(name)')
     .gte('session_date',today).eq('status','OPEN')
     .order('session_date',{ascending:true}).order('starts_at',{ascending:true}).limit(500);
+  sessionsQ=scopeQuery(sessionsQ,scopeInfo,'room_id');
+  const {data,error}=await sessionsQ;
   if(error)throw error;
   const nowTime=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date());
   const rows=(data||[]).filter(x=>String(x.session_date)>today||(String(x.session_date)===today&&String(x.ends_at||'23:59').slice(0,5)>nowTime));
   const ids=rows.map(x=>x.id),counts={};
   if(ids.length){const {data:bs,error:bErr}=await supabase.from('bookings').select('session_id').in('session_id',ids).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);if(bErr)throw bErr;for(const b of (bs||[]))counts[b.session_id]=(counts[b.session_id]||0)+1;}
   return Response.json({sessions:rows.map(x=>({id:x.id,session_date:x.session_date,starts_at:x.starts_at,ends_at:x.ends_at,capacity:Number(x.capacity||0),booked_count:Number(counts[x.id]||0),program_name:x.programs?.name||'',room_name:x.rooms?.name||''})).filter(x=>x.capacity>0&&x.booked_count<x.capacity)});
+}
+
+async function handleSupporterSessions(request){
+  const today=vnTodayBounds().day;
+  const u=new URL(request.url),scopeInfo=await resolveAdminScope(u.searchParams.get('scope')||'overall');
+  let q=supabase.from('class_sessions').select('id,room_id,session_date,starts_at,ends_at,capacity,status,topic_title,topic_storage_path,programs(name),rooms(name),teachers(full_name)')
+    .gte('session_date',today).neq('status','CANCELLED').not('topic_storage_path','is',null)
+    .order('session_date',{ascending:true}).order('starts_at',{ascending:true}).limit(300);
+  q=scopeQuery(q,scopeInfo,'room_id');
+  const {data,error}=await q;if(error)throw error;
+  const rows=(data||[]).filter(x=>String(x.topic_storage_path||'').trim());
+  const ids=rows.map(x=>x.id),counts={};
+  if(ids.length){const {data:bs,error:bErr}=await supabase.from('bookings').select('session_id').in('session_id',ids).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);if(bErr)throw bErr;for(const b of (bs||[]))counts[b.session_id]=(counts[b.session_id]||0)+1;}
+  const eligible=rows.filter(x=>Number(x.capacity||0)<=0||Number(counts[x.id]||0)<Number(x.capacity||0));
+  const sessions=await Promise.all(eligible.map(async x=>{
+    const {data:signed,error:sErr}=await supabase.storage.from('topics').createSignedUrl(String(x.topic_storage_path),1800);
+    if(sErr){console.error('supporter topic signed url failed',sErr);return null}
+    return {id:x.id,session_date:x.session_date,starts_at:x.starts_at,ends_at:x.ends_at,program_name:x.programs?.name||'',room_name:x.rooms?.name||'',teacher_name:x.teachers?.full_name||'',topic_title:x.topic_title||'Tài liệu buổi học',download_url:signed?.signedUrl||''};
+  }));
+  return Response.json({sessions:sessions.filter(x=>x&&x.download_url)});
 }
 
 function slug(s){
@@ -270,8 +344,9 @@ function fillRate(sessions,bookingCounts){
   return seats>0?Math.round((booked/seats)*1000)/10:0;
 }
 
-async function getRenewalInsights(){
+async function getRenewalInsights(scope='overall'){
   const nowMs=Date.now();
+  const scopeInfo=await resolveAdminScope(scope);
 
   const {data,error}=await supabase
     .from('orders')
@@ -280,7 +355,7 @@ async function getRenewalInsights(){
       customers:user_id(full_name,phone,status),
       bookings(
         id,status,
-        class_sessions(session_date,starts_at,ends_at,programs(name))
+        class_sessions(room_id,session_date,starts_at,ends_at,programs(name))
       )
     `)
     .eq('payment_status','PAID')
@@ -298,6 +373,7 @@ async function getRenewalInsights(){
 
     const lessons=(order.bookings||[])
       .filter(b=>['CONFIRMED','ATTENDED','NO_SHOW'].includes(String(b.status||'')))
+      .filter(b=>scopeInfo.room_ids===null || (scopeInfo.room_ids||[]).includes(b.class_sessions?.room_id))
       .map(b=>{
         const s=b.class_sessions||{};
         const date=String(s.session_date||'');
@@ -380,8 +456,9 @@ async function getRenewalInsights(){
   };
 }
 
-async function handleReminders(){
-  const insights=await getRenewalInsights();
+async function handleReminders(request){
+  const u=request?new URL(request.url):null;
+  const insights=await getRenewalInsights(u?.searchParams.get('scope')||'overall');
   return Response.json({
     reminders:insights.reminders,
     renewal_rate:insights.renewal_rate,
@@ -3445,10 +3522,16 @@ export default {
       }
 
       if(action==='supporter-login') return await handleSupporterLogin(request);
-      if(action==='supporter-sessions'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await handleSupporterSessions()}
-      if(action==='supporter-registration-sessions'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await handleSupporterRegistrationSessions()}
-      if(action==='supporter-student-schedule'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await handleStudentSchedule(request)}
-      if(action==='supporter-chat'){if(!requireSupporter(request))return Response.json({error:'UNAUTHORIZED'},{status:401});return await runAdminActionWithRetry(()=>handleAdminChat(request))}
+      if(action.startsWith('supporter-')&&action!=='supporter-login'){
+        const supporter=requireSupporter(request);
+        if(!supporter)return Response.json({error:'UNAUTHORIZED'},{status:401});
+        const scopedRequest=supporterScopedRequest(request,supporter.branch);
+        if(action==='supporter-sessions') return await handleSupporterSessions(scopedRequest);
+        if(action==='supporter-registration-sessions') return await handleSupporterRegistrationSessions(scopedRequest);
+        if(action==='supporter-student-schedule') return await handleStudentSchedule(scopedRequest);
+        if(action==='supporter-chat') return await runAdminActionWithRetry(()=>handleAdminChat(scopedRequest));
+        if(action==='supporter-reminders') return await runAdminActionWithRetry(()=>handleReminders(scopedRequest));
+      }
 
       // Customer-authenticated public AI placement actions.
       // Kept inside existing /api/admin.js so SpeakHub does not add another
@@ -3496,7 +3579,7 @@ export default {
       }
 
       if(action==='overview') return await runAdminActionWithRetry(()=>handleOverview(request));
-      if(action==='reminders') return await runAdminActionWithRetry(()=>handleReminders());
+      if(action==='reminders') return await runAdminActionWithRetry(()=>handleReminders(request));
       if(action==='discounts') return await runAdminActionWithRetry(()=>handleDateDiscounts(request));
       if(action==='price') return await runAdminActionWithRetry(()=>handlePrice(request));
       if(action==='sessions') return await runAdminActionWithRetry(()=>handleSessions(request));

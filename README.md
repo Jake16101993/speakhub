@@ -1,3 +1,11 @@
+# V121 — Branch-locked CS login
+
+- `/cs_govap` uses Vercel env `CS_GOVAP_PASSWORD`.
+- `/cs_d2` uses Vercel env `CS_D2_PASSWORD`.
+- Supporter tokens now carry the authenticated branch. Backend overrides any client `scope` with the token branch, so changing URL/query cannot access another branch.
+- Separate sessionStorage tokens per branch.
+- No SQL migration required.
+
 # SpeakHub V117
 
 Adaptive, non-repeating test banks for Placement, Progress, Pronunciation, and Session Comprehension. Young Kid (<10), Teen Kid (10-15), Beginner, and Intermediate receive different difficulty. Content is consumed sequentially and cycles only after the relevant bank is exhausted. No new SQL beyond V112 AI Test Center schema.
@@ -147,3 +155,9 @@ advisories**, never as public issues.
 - Publisher portal month filter also includes `Toàn bộ`.
 - Added per-publisher fixed-VND commission ranges by number of sessions, with `+ Add range`, plus editing for existing publishers.
 - Run `110_publisher_commission_scheme.sql` once before deploy.
+
+## V120
+- CS split by branch: `/cs_govap` and `/cs_d2`; branch-scoped documents, registration sessions, student schedule, and reminders.
+- CS Remind tab and unread Chat SpeakHub badge.
+- Publisher: new 4-character alphanumeric slugs (letter + number, uniqueness checked), 10-customer pagination with step filter and scroll-to-top, plus 30-day click chart.
+- No new SQL migration required for V120.

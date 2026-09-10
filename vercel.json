@@ -46,7 +46,11 @@
       "destination": "/admin.html"
     },
     {
-      "source": "/cs",
+      "source": "/cs_govap",
+      "destination": "/cs.html"
+    },
+    {
+      "source": "/cs_d2",
       "destination": "/cs.html"
     },
     {
@@ -54,8 +58,15 @@
       "destination": "/publisher.html"
     },
     {
-      "source": "/:pub([a-zA-Z0-9]{6,16})",
+      "source": "/:pub([a-zA-Z0-9]{4,16})",
       "destination": "/index.html?pub=:pub"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/cs",
+      "destination": "/cs_govap",
+      "permanent": false
     }
   ]
 }
