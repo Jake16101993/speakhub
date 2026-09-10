@@ -1,3 +1,10 @@
+# SpeakHub V129 – Streak UI polish
+
+- Removed the “x bài đang chờ” label from Progress Test header.
+- Day 10 is displayed as a normal numbered day; “Voucher 10%” appears below the day box.
+- Increased Streak requirement note and day-number sizes.
+- No SQL changes.
+
 # SpeakHub V125 — Streak Rewards
 
 - Progress Test limited to 1 successful test per Vietnam calendar day.
