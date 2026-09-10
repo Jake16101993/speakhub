@@ -46,11 +46,7 @@
       "destination": "/admin.html"
     },
     {
-      "source": "/cs_govap",
-      "destination": "/cs.html"
-    },
-    {
-      "source": "/cs_d2",
+      "source": "/cs",
       "destination": "/cs.html"
     },
     {
@@ -64,8 +60,13 @@
   ],
   "redirects": [
     {
-      "source": "/cs",
-      "destination": "/cs_govap",
+      "source": "/cs_govap",
+      "destination": "/cs",
+      "permanent": false
+    },
+    {
+      "source": "/cs_d2",
+      "destination": "/cs",
       "permanent": false
     }
   ]

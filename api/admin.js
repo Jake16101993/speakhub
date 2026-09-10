@@ -47,12 +47,13 @@ function requireSupporter(request){const secret=process.env.SPEAKHUB_SUPPORTER_S
 function supporterScopedRequest(request,branch){const u=new URL(request.url);u.searchParams.set('scope',branch);return new Request(u.toString(),request)}
 async function handleSupporterLogin(request){
   if(request.method!=='POST')return Response.json({error:'METHOD_NOT_ALLOWED'},{status:405});
-  const b=await request.json().catch(()=>({})),branch=normalizeSupporterBranch(b.branch);
-  if(!branch)return Response.json({error:'INVALID_BRANCH'},{status:400});
-  const envKey=branch==='district-2'?'CS_D2_PASSWORD':'CS_GOVAP_PASSWORD';
-  const expected=process.env[envKey];
-  if(!expected)return Response.json({error:`${envKey}_MISSING`},{status:500});
-  if(String(b.password||'')!==String(expected))return Response.json({error:'INVALID_PASSWORD'},{status:401});
+  const b=await request.json().catch(()=>({})),password=String(b.password||'');
+  const govap=String(process.env.CS_GOVAP_PASSWORD||''),d2=String(process.env.CS_D2_PASSWORD||'');
+  if(!govap||!d2)return Response.json({error:'CS_BRANCH_PASSWORD_MISSING'},{status:500});
+  const goMatch=password===govap,d2Match=password===d2;
+  if(goMatch&&d2Match)return Response.json({error:'CS_PASSWORDS_MUST_BE_DIFFERENT'},{status:500});
+  const branch=goMatch?'go-vap':(d2Match?'district-2':'');
+  if(!branch)return Response.json({error:'INVALID_PASSWORD'},{status:401});
   return Response.json({token:signSupporterToken(branch),branch});
 }
 
@@ -253,7 +254,7 @@ async function handleSupporterRegistrationSessions(request){
   const rows=(data||[]).filter(x=>String(x.session_date)>today||(String(x.session_date)===today&&String(x.ends_at||'23:59').slice(0,5)>nowTime));
   const ids=rows.map(x=>x.id),counts={};
   if(ids.length){const {data:bs,error:bErr}=await supabase.from('bookings').select('session_id').in('session_id',ids).in('status',['CONFIRMED','ATTENDED','NO_SHOW']);if(bErr)throw bErr;for(const b of (bs||[]))counts[b.session_id]=(counts[b.session_id]||0)+1;}
-  return Response.json({sessions:rows.map(x=>({id:x.id,session_date:x.session_date,starts_at:x.starts_at,ends_at:x.ends_at,capacity:Number(x.capacity||0),booked_count:Number(counts[x.id]||0),program_name:x.programs?.name||'',room_name:x.rooms?.name||''})).filter(x=>x.capacity>0&&x.booked_count<x.capacity)});
+  return Response.json({sessions:rows.map(x=>({id:x.id,session_date:x.session_date,starts_at:x.starts_at,ends_at:x.ends_at,capacity:Number(x.capacity||0),booked_count:Number(counts[x.id]||0),program_name:x.programs?.name||'',room_name:x.rooms?.name||''})).filter(x=>x.capacity>0)});
 }
 
 async function handleSupporterSessions(request){

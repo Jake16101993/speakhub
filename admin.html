@@ -26,7 +26,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 
 .publisher-card{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;background:#fff}.publisher-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:10px 0}.publisher-kpi{background:#f3f8f6;border-radius:10px;padding:10px}.publisher-kpi b{display:block;font-size:18px;color:var(--gd)}.pub-link{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#eef8f4;padding:6px 8px;border-radius:8px;word-break:break-all}@media(max-width:900px){.publisher-kpis{grid-template-columns:repeat(2,1fr)}}.publisher-toolbar{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap}.publisher-toolbar input{width:auto;min-width:170px}.pub-pager{display:flex;justify-content:center;align-items:center;gap:6px;flex-wrap:wrap;margin-top:14px}.pub-pager button{min-width:38px;padding:8px 10px;border:1px solid var(--line);background:#fff;border-radius:9px;font-weight:800;cursor:pointer}.pub-pager button.on{background:var(--g);color:#fff;border-color:var(--g)}.pub-pager button:disabled{opacity:.4;cursor:not-allowed}.publisher-summary-table td,.publisher-summary-table th{white-space:nowrap}.pub-scheme{border:1px solid var(--line);border-radius:12px;padding:12px;background:#f8fbfa;margin-top:12px}.pub-scheme-row{display:grid;grid-template-columns:110px 110px 1fr 42px;gap:8px;align-items:end;margin-top:8px}.pub-scheme-row input{width:100%}.pub-summary-kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}.pub-summary-kpis .publisher-kpi{min-height:82px}@media(max-width:1100px){.pub-summary-kpis{grid-template-columns:repeat(3,1fr)}}@media(max-width:700px){.pub-summary-kpis{grid-template-columns:repeat(2,1fr)}.pub-scheme-row{grid-template-columns:1fr 1fr}.pub-scheme-row .scheme-amount{grid-column:1/-1}}
 .period-filter{background:#f7faf9;border:1px solid var(--line);border-radius:14px;padding:8px}.period-tabs{display:flex;gap:4px;background:#eaf2ef;padding:4px;border-radius:10px}.period-tabs button{border:0;background:transparent;padding:8px 11px;border-radius:8px;font-weight:800;color:#5f6e68;cursor:pointer}.period-tabs button.on{background:#fff;color:var(--gd);box-shadow:0 1px 5px #1232}.period-fields{display:flex;align-items:end;gap:8px;padding:9px 4px 2px}.period-fields input{width:auto;min-width:145px}.period-fields label{font-size:11px;color:var(--muted);display:grid;gap:4px}.publisher-profile{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.publisher-profile input{width:100%}@media(max-width:700px){.publisher-profile{grid-template-columns:1fr}.period-fields[data-panel="range"]{align-items:stretch;flex-direction:column}}
-</style>
+.simple-remind-pager{display:flex;gap:6px;justify-content:center;align-items:center;margin-top:14px;flex-wrap:wrap}.simple-remind-pager button{min-width:34px;height:34px;border:1px solid #dce7e2;border-radius:9px;background:#fff;font-weight:800;cursor:pointer}.simple-remind-pager button.on{background:#0b7a5b;border-color:#0b7a5b;color:#fff}.simple-remind-pager button:disabled{opacity:.4;cursor:not-allowed}.assist-session.full{opacity:.58;text-decoration:line-through;background:#f5f5f5}.assist-session.full input{cursor:not-allowed}</style>
 <!-- SPEAKHUB ADMIN RECURRING SESSION 2026-08-09 -->
 <!-- SPEAKHUB ADMIN PROGRAM + TEACHER FIX 2026-08-09 -->
 <!-- SPEAKHUB ADMIN DUPLICATE-SAFE SESSION FIX -->
@@ -457,7 +457,7 @@ body{background:var(--admin-surface)}
           <input id="pubPassword" type="password" placeholder="Login password (min 6 chars)">
         </div>
         <div class="pub-scheme">
-          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><div><b>Commission scheme</b><div class="muted" style="font-size:12px">Fixed commission by number of sessions in a paid order. Leave “To” blank for no upper limit.</div></div><button class="btn secondary" type="button" onclick="addCreatePubSchemeRow()">+ Add range</button></div>
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><div><b>Commission scheme</b><div class="muted" style="font-size:12px">Fixed commission by number of sessions in a paid order. Leave “To” blank for no upper limit.</div></div><button class="btn secondary" type="button" onclick="addCreateSchemeRow()">+ Add range</button></div>
           <div id="createPubSchemeRows"></div>
         </div>
         <button class="btn primary" style="margin-top:10px" onclick="createPublisher()">Create publisher</button>
@@ -630,7 +630,7 @@ body{background:var(--admin-surface)}
           </div>
           <button class="btn" onclick="loadReminders()">↻ Refresh</button>
         </div>
-        <input id="remindFilter" placeholder="Filter by name, phone, last lesson date or class..." oninput="renderReminders()" style="margin-top:14px">
+        <input id="remindFilter" placeholder="Filter by name, phone, last lesson date or class..." oninput="adminRemindPage=1;renderReminders()" style="margin-top:14px">
         <div id="remindTable" style="margin-top:12px"></div>
       </div>
     </section>
@@ -1166,22 +1166,26 @@ function renderBookingsTable(){
   ]));
 }
 
+let adminRemindPage=1;const ADMIN_REMIND_PAGE_SIZE=10;
 function renderReminders(){
   const q=document.getElementById('remindFilter')?.value||'';
   const rows=adminFilterRows(adminRemindersCache,q,['full_name','phone','last_session_date','last_starts_at','last_program_name']);
   const host=document.getElementById('remindTable'); if(!host)return;
+  const pages=Math.max(1,Math.ceil(rows.length/ADMIN_REMIND_PAGE_SIZE));adminRemindPage=Math.min(Math.max(1,adminRemindPage),pages);
+  const start=(adminRemindPage-1)*ADMIN_REMIND_PAGE_SIZE,shown=rows.slice(start,start+ADMIN_REMIND_PAGE_SIZE);
+  let pager='';if(pages>1){let nums=[];for(let i=Math.max(1,adminRemindPage-2);i<=Math.min(pages,adminRemindPage+2);i++)nums.push(i);pager=`<div class="simple-remind-pager"><button ${adminRemindPage<=1?'disabled':''} onclick="adminRemindPage--;renderReminders()">‹</button>${nums.map(i=>`<button class="${i===adminRemindPage?'on':''}" onclick="adminRemindPage=${i};renderReminders()">${i}</button>`).join('')}<button ${adminRemindPage>=pages?'disabled':''} onclick="adminRemindPage++;renderReminders()">›</button></div>`}
   host.innerHTML=rows.length
-    ? table(['Name','Phone','Last lesson','Time','Class'],rows.map(x=>[
+    ? table(['Name','Phone','Last lesson','Time','Class'],shown.map(x=>[
         x.full_name||'',x.phone||'',x.last_session_date||'',
         `${String(x.last_starts_at||'').slice(0,5)}–${String(x.last_ends_at||'').slice(0,5)}`,
         x.last_program_name||''
-      ]))
+      ]))+pager
     : '<div class="muted" style="padding:18px;text-align:center">No students need a renewal reminder.</div>';
 }
 
 async function loadReminders(){
   const d=await api('/api/admin?action=reminders');
-  adminRemindersCache=d.reminders||[];
+  adminRemindersCache=d.reminders||[];adminRemindPage=1;
   renderReminders();
 }
 
@@ -1388,8 +1392,8 @@ function drawPaid30Chart(rows){
 
 
 let assistLookupTimer=null,assistPollTimer=null,assistHeartbeatTimer=null,assistActiveOrder=null;
-function assistUpcomingSessions(){const now=new Date(),today=now.toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}),tm=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now);return (cache.sessions||[]).filter(x=>{const cap=Number(x.capacity||0),booked=Number(x.booked_count||0);return String(x.status||'').toUpperCase()==='OPEN'&&cap>0&&booked<cap&&(String(x.session_date)>today||(String(x.session_date)===today&&String(x.ends_at||'23:59').slice(0,5)>tm))}).sort((a,b)=>`${a.session_date} ${a.starts_at}`.localeCompare(`${b.session_date} ${b.starts_at}`))}
-function renderAssistSessions(){const box=document.getElementById('assistSessions');if(!box)return;const filter=document.getElementById('assistClassFilter')?.value||'';const rows=assistUpcomingSessions().filter(x=>!filter||String(x.program_name||'')===filter);box.innerHTML=rows.map(x=>`<label class="assist-session"><input type="checkbox" value="${x.id}"><span><b>${adminEscapeHtml(x.program_name||'Class')}</b><small>${adminEscapeHtml(x.session_date)} · ${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)} · ${Number(x.booked_count||0)}/${Number(x.capacity||0)}${x.room_name?' · '+adminEscapeHtml(x.room_name):''}</small></span></label>`).join('')||'<div class="muted">Không có session còn chỗ phù hợp.</div>';}
+function assistUpcomingSessions(){const now=new Date(),today=now.toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'}),tm=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(now);return (cache.sessions||[]).filter(x=>{const cap=Number(x.capacity||0);return String(x.status||'').toUpperCase()==='OPEN'&&cap>0&&(String(x.session_date)>today||(String(x.session_date)===today&&String(x.ends_at||'23:59').slice(0,5)>tm))}).sort((a,b)=>`${a.session_date} ${a.starts_at}`.localeCompare(`${b.session_date} ${b.starts_at}`))}
+function renderAssistSessions(){const box=document.getElementById('assistSessions');if(!box)return;const filter=document.getElementById('assistClassFilter')?.value||'';const rows=assistUpcomingSessions().filter(x=>!filter||String(x.program_name||'')===filter);box.innerHTML=rows.map(x=>{const cap=Number(x.capacity||0),booked=Number(x.booked_count||0),full=booked>=cap;return `<label class="assist-session ${full?'full':''}"><input type="checkbox" value="${x.id}" ${full?'disabled':''}><span><b>${adminEscapeHtml(x.program_name||'Class')}${full?' · FULL':''}</b><small>${adminEscapeHtml(x.session_date)} · ${String(x.starts_at||'').slice(0,5)}–${String(x.ends_at||'').slice(0,5)} · ${booked}/${cap}${x.room_name?' · '+adminEscapeHtml(x.room_name):''}</small></span></label>`}).join('')||'<div class="muted">Không có session phù hợp.</div>';}
 async function loadAssistRegistration(){if(!cache.sessions?.length)await loadSessions();const box=document.getElementById('assistSessions');if(!box)return;const filter=document.getElementById('assistClassFilter'),current=filter?.value||'',rows=assistUpcomingSessions(),classes=[...new Set(rows.map(x=>String(x.program_name||'Class')))].sort((a,b)=>a.localeCompare(b,'vi'));if(filter){filter.innerHTML='<option value="">Tất cả lớp</option>'+classes.map(n=>`<option value="${adminEscapeHtml(n)}">${adminEscapeHtml(n)}</option>`).join('');if(classes.includes(current))filter.value=current;}renderAssistSessions();}
 function assistPhoneChanged(){const el=document.getElementById('assistPhone');if(!el)return;el.value=el.value.replace(/\D/g,'').slice(0,10);clearTimeout(assistLookupTimer);if(el.value.length<10)return;assistLookupTimer=setTimeout(async()=>{try{const d=await api('/api/admin?action=customer-search&q='+encodeURIComponent(el.value));const exact=(d.customers||[]).find(c=>String(c.phone)===el.value);if(exact)document.getElementById('assistName').value=exact.full_name||'';}catch(_){}},250)}
 function clearAssistTimers(){clearInterval(assistPollTimer);clearInterval(assistHeartbeatTimer);assistPollTimer=assistHeartbeatTimer=null;}

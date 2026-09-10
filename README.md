@@ -1,3 +1,12 @@
+# V122 — Unified CS Login + Pagination + Registration Full State
+
+- `/cs` is now the only CS portal. The password determines the branch: `CS_GOVAP_PASSWORD` => Gò Vấp, `CS_D2_PASSWORD` => District 2. Backend-issued supporter token remains branch-locked.
+- Legacy `/cs_govap` and `/cs_d2` redirect to `/cs`.
+- Fixed Admin Publisher `+ Add range` button function mismatch.
+- Admin Remind and CS Remind paginate 10 students per page with numbered pages and previous/next buttons.
+- Admin and CS Registration Support now show full sessions crossed out and disabled instead of hiding them.
+- No new SQL.
+
 # V121 — Branch-locked CS login
 
 - `/cs_govap` uses Vercel env `CS_GOVAP_PASSWORD`.
